@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/*__FAVICON__*/">
+<title>BharatPulse — India Markets Dashboard</title>
+<style>
+:root{--bg:#0b0f16;--card:#141a24;--card2:#1a2230;--line:#263040;--txt:#e6edf3;--mut:#8b97a8;--pos:#2ecc9a;--neg:#ef5b5b;--acc:#4cc9f0;--fii:#f59f3a;--dii:#7c6cf0}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.4 Inter,"Segoe UI",system-ui,sans-serif}
+header{position:sticky;top:0;z-index:20;background:rgba(11,15,22,.96);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:10px 20px;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
+h1{font-size:15px;margin:0;font-weight:600;color:var(--mut);letter-spacing:.2px}
+.brand{display:block;background:#fff;border-radius:12px;padding:4px 12px;line-height:0}
+.logo{height:64px;width:auto;display:block}
+.asof{color:var(--mut);font-size:12px}
+.sp{flex:1}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{background:transparent;color:var(--mut);border:0;border-right:1px solid var(--line);padding:6px 11px;cursor:pointer;font:inherit;font-size:13px}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--txt);color:#0b0f16;font-weight:600}
+.seg button:hover:not(.on){color:var(--txt);background:var(--card2)}
+input.search{background:var(--card);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px 12px;width:260px;font:inherit}
+input.search:focus{outline:1px solid var(--acc)}
+nav{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--line);background:var(--bg);overflow-x:auto}
+nav button{background:none;border:0;color:var(--mut);padding:12px 16px;cursor:pointer;font:inherit;font-weight:600;border-bottom:2px solid transparent;white-space:nowrap}
+nav button.on{color:var(--txt);border-bottom-color:var(--acc)}
+main{padding:18px 20px 60px;max-width:1500px;margin:0 auto}
+.tab{display:none}.tab.on{display:block}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(12,1fr)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 16px 12px;min-width:0}
+.c12{grid-column:span 12}.c6{grid-column:span 6}.c5{grid-column:span 5}.c7{grid-column:span 7}
+@media(max-width:1000px){.c6,.c5,.c7{grid-column:span 12}}
+.card h2{margin:0 0 2px;font-size:16px}
+.card .sub{color:var(--mut);font-size:12px;margin-bottom:8px}
+.card .hd{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;margin-bottom:6px}
+.hint{color:var(--mut);font-size:11px}
+.chart{width:100%;height:380px}
+.strip{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.strip .lbl{color:var(--mut);font-size:12px;margin-right:2px}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
+.chip:hover{border-color:var(--acc)}
+.up{color:var(--pos)}.dn{color:var(--neg)}
+table{border-collapse:collapse;width:100%}
+th,td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--line);font-size:13px;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mut);font-weight:600;font-size:12px;position:sticky;top:0;background:var(--card);cursor:pointer;user-select:none}
+th.sel{color:var(--acc)}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover td{background:var(--card2)}
+.heat td.h{text-align:center;font-weight:600;color:#fff;border-left:1px solid var(--bg)}
+.scroll{overflow:auto;max-height:520px;-webkit-overflow-scrolling:touch}
+#d-tbl td:nth-child(2){max-width:170px;overflow:hidden;text-overflow:ellipsis}
+#d-tbl td:first-child,#d-tbl th:first-child{position:sticky;left:0;background:var(--card);z-index:1}
+.bcell{position:relative;height:22px;min-width:150px}
+.bcell .b{position:absolute;top:3px;height:16px;border-radius:2px}
+.bcell .v{position:absolute;top:2px;font-size:11px;color:#fff;padding:0 4px;text-shadow:0 0 3px #000}
+.pbar{display:inline-block;width:90px;height:8px;background:var(--line);border-radius:4px;position:relative;vertical-align:middle}
+.pbar i{position:absolute;top:-2px;width:3px;height:12px;background:var(--acc);border-radius:1px}
+.badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;margin-left:4px;border:1px solid}
+.b-g{color:var(--pos);border-color:#1f6b52}.b-r{color:var(--neg);border-color:#7a3030}.b-n{color:var(--mut);border-color:var(--line)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:10px 0}
+.tile{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.tile .k{color:var(--mut);font-size:11px}.tile .v{font-size:16px;font-weight:700}
+.btn{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:5px 11px;cursor:pointer;font:inherit;font-size:12px}
+.btn:hover{border-color:var(--acc)}
+select{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:5px 9px;font:inherit}
+/* drawer */
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:30;display:none}
+#drawer{position:fixed;top:0;right:0;bottom:0;width:min(1240px,100vw);max-width:100vw;background:var(--bg);border-left:1px solid var(--line);z-index:40;transform:translateX(102%);transition:transform .22s;display:flex;flex-direction:column}
+#drawer.open{transform:none}
+#dhead{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+#dhead h3{margin:0;font-size:18px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#drawer.wide{width:100vw}
+#dbody{overflow:auto;padding:14px 16px 40px;flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+@media(max-width:700px){
+  header{padding:8px 12px;gap:8px 12px}
+  .logo{height:46px}.brand{padding:3px 8px}
+  h1{display:none}
+  input.search{width:100%;order:5;flex:1 1 100%}
+  .sp{display:none}
+  .seg{max-width:100%;overflow-x:auto}
+  .seg button{padding:6px 9px;font-size:12px}
+  nav{padding:0 8px}nav button{padding:10px 12px;font-size:13px}
+  main{padding:12px 10px 40px}
+  .card{padding:12px 10px 8px;border-radius:10px}
+  .chart{height:300px}
+  .strip{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}
+  .tiles{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}
+  #dhead{padding:10px 12px}#dhead h3{font-size:15px}
+  #dbody{padding:10px 10px 40px}
+  th,td{padding:6px 6px;font-size:12px}
+  footer{margin:20px 12px}
+}
+footer{margin:30px 20px;color:var(--mut);font-size:12px}
+footer table td,footer table th{font-size:12px;padding:3px 10px;cursor:default;border:0}
+footer th{background:none;position:static}
+.warn{color:var(--fii)}
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="#" title="BharatPulse — India Markets Dashboard"><img class="logo" src="/*__LOGO__*/" alt="BharatPulse logo"></a><h1>India Markets Dashboard</h1>
+  <span class="asof" id="asof"></span>
+  <span class="sp"></span>
+  <input class="search" id="search" list="searchlist" placeholder="Search stock or index…" autocomplete="off">
+  <datalist id="searchlist"></datalist>
+  <span class="asof">All charts:</span><div class="seg" id="periods" title="Sets the period on every chart. Each chart also has its own buttons. 3Y and 5Y are annualised."></div>
+</header>
+<nav id="nav">
+  <button data-tab="overview" class="on">Overview</button>
+  <button data-tab="sectors">Sectors</button>
+  <button data-tab="breadth">Breadth &amp; Trend</button>
+  <button data-tab="flows">Flows &amp; Valuation</button>
+</nav>
+<main>
+  <section class="tab on" id="tab-overview">
+    <div class="strip" id="movers"></div>
+    <div class="grid">
+      <div class="card c12"><div class="hd"><div><h2>Benchmark Indices Overview</h2><div class="sub" id="bench-sub"></div></div><div class="pseg seg" data-k="bench"></div></div><div id="ch-bench" class="chart" style="height:340px"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Global Indices Overview</h2><div class="sub" id="glob-sub"></div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><div class="pseg seg" data-k="glob"></div><div class="seg" id="ccy"><button data-v="usd" class="on">In $ terms</button><button data-v="local">Local currency</button></div></div></div>
+        <div id="ch-glob" class="chart"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Global Indices Momentum</h2><div class="sub">Rank by return (1 = best). Indian rows are clickable.</div></div></div><div class="scroll" style="max-height:none"><table class="heat" id="tb-globrank"></table></div></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-sectors">
+    <div class="grid">
+      <div class="card c12"><div class="hd"><div><h2>Sector Performance</h2><div class="sub" id="sec-sub"></div></div><div class="pseg seg" data-k="sec"></div></div><div id="ch-sec" class="chart"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Sector Momentum Rank</h2><div class="sub">Rank by return across periods (1 = best). Click a sector row.</div></div></div><div class="scroll" style="max-height:none"><table class="heat" id="tb-secrank"></table></div></div>
+      <div class="card c12"><div class="hd"><div><h2>% of stocks above moving average (sectors)</h2><div class="sub">Share of each sector's stocks trading above their SMA. Grey bar = Nifty 500.</div></div>
+        <div class="seg" id="smaSel"><button data-v="a50" class="on">SMA 50</button><button data-v="a200">SMA 200</button></div></div><div id="ch-sma" class="chart"></div></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-breadth">
+    <div class="grid">
+      <div class="card c12"><div class="hd"><div><h2>Advance / Decline</h2><div class="sub" id="ad-sub"></div></div><div class="pseg seg" data-k="ad"></div></div><div id="ch-ad" class="chart" style="height:340px"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Brutal Strength &amp; Brutal Weakness</h2><div class="sub">Golden cross: 50 &gt; 200 DMA · Brutal strength: Price &gt; 25 &gt; 50 &gt; 200 DMA · Brutal weakness: Price &lt; 25 &lt; 50 &lt; 200 DMA</div></div></div><table id="tb-strength"></table></div>
+      <div class="card c12"><div class="hd"><div><h2>Market Breadth Analysis</h2><div class="sub" id="band-sub"></div></div><span class="hint">Click a band to see its stocks</span></div><div class="scroll" style="max-height:none"><table id="tb-bands"></table></div></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-flows">
+    <div class="grid">
+      <div class="card c12"><div class="hd"><div><h2>FII / DII Stats</h2><div class="sub">Net cash-market buying (+) / selling (–), ₹ crore, NSE provisional</div></div>
+        <div class="seg" id="flowSel"><button data-v="FII" class="on">FII Cash (Cr.)</button><button data-v="DII">DII Cash (Cr.)</button><button data-v="both">Both</button></div></div>
+        <div class="tiles" id="flow-tiles"></div><div id="ch-flow" class="chart" style="height:340px"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Index Valuation</h2><div class="sub" id="val-sub"></div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><select id="peIdx"></select>
+        <div class="seg" id="peMetric"><button data-v="pe" class="on">P/E</button><button data-v="pb">P/B</button><button data-v="dy">Div Yield</button></div>
+        <div class="seg" id="peRange"><button data-v="1">1Y</button><button data-v="3">3Y</button><button data-v="5">5Y</button><button data-v="99" class="on">All</button></div></div></div>
+        <div id="ch-pe" class="chart"></div></div>
+    </div>
+  </section>
+</main>
+<footer><div id="status"></div><p>BharatPulse · built by Abhijit Kikale</p><p>Data: NSE (index closes, constituents, FII/DII), Yahoo Finance (stocks, global indices, FX). End-of-day data for information only — not investment advice.</p></footer>
+
+<div id="scrim"></div>
+<aside id="drawer"><div id="dhead"><button class="btn" id="dback" style="display:none">← Back</button><h3 id="dtitle"></h3><button class="btn" id="dwide" title="Toggle full width">⤢ Expand</button><button class="btn" id="dclose">✕ Close</button></div><div id="dbody"></div></aside>
+
+<script>/*__PLOTLY__*/</script>
+<script>
+const D = /*__DATA__*/null;
+const C = {pos:'#2ecc9a', neg:'#ef5b5b', acc:'#4cc9f0', fii:'#f59f3a', dii:'#7c6cf0', grey:'#8b97a8', india:'#f5c542'};
+const CFG = {displayModeBar:false, responsive:true};
+const IDX = Object.fromEntries(D.indices.map(i=>[i.label,i]));
+const STK = Object.fromEntries(D.stocks.map(s=>[s.s,s]));
+const BENCH = D.indices.filter(i=>i.group==='benchmark');
+const SECT = D.indices.filter(i=>i.group==='sector');
+const S = {pp:{bench:'1M',glob:'1M',sec:'1M',ad:'1M',drawer:'1M'}, tab:'overview', ccy:'usd', sma:'a50', flow:'FII', peIdx:'Nifty 50', peMetric:'pe', peRange:'99', stack:[], sort:{k:'ret',dir:-1}};
+const $ = s=>document.querySelector(s);
+const PL = (k='drawer')=>S.pp[k];
+const from = k=>l=>{S.pp.drawer=S.pp[k];openIndex(l,true)};
+
+/* ---------- helpers ---------- */
+const fmt = (v,d=1)=> v==null?'–':(v>0?'+':'')+v.toFixed(d)+'%';
+const num = (v,d=0)=> v==null?'–':v.toLocaleString('en-IN',{maximumFractionDigits:d,minimumFractionDigits:d});
+const cls = v=> v==null?'':v>0?'up':v<0?'dn':'';
+const esc = s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const annNote = p=> (p==='3Y'||p==='5Y')?' · annualised':'';
+function merge(a,b){for(const k in b){a[k]=(b[k]&&typeof b[k]==='object'&&!Array.isArray(b[k])&&a[k]&&typeof a[k]==='object')?merge(a[k],b[k]):b[k]}return a}
+function layout(o){return merge({paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:{color:'#c9d1d9',family:'Inter,Segoe UI,system-ui,sans-serif',size:12},
+  margin:{l:50,r:16,t:16,b:100},xaxis:{tickangle:-55,gridcolor:'#1b2433',automargin:true,fixedrange:true},
+  yaxis:{gridcolor:'#263040',zerolinecolor:'#586174',ticksuffix:'%',fixedrange:true},hoverlabel:{bgcolor:'#1c2330',bordercolor:'#3a475c',font:{color:'#e6edf3'}},showlegend:false},o||{})}
+function onClick(el,fn){const d=typeof el==='string'?$(el):el;d.removeAllListeners&&d.removeAllListeners('plotly_click');d.on('plotly_click',e=>{const p=e.points[0];fn(p.customdata??p.x??p.y)})}
+function bar(sel,labels,vals,fn,colors){
+  Plotly.react($(sel),[{type:'bar',x:labels,y:vals,customdata:labels,marker:{color:colors||vals.map(v=>v==null?'#555':v>=0?C.pos:C.neg)},
+    text:vals.map(v=>v==null?'':v.toFixed(1)),textposition:'outside',cliponaxis:false,textfont:{size:11},hovertemplate:'%{x}<br><b>%{y:.2f}%</b><extra></extra>'}],layout(),CFG);
+  if(fn)onClick(sel,fn);
+}
+function heatColor(t){ // t 0 (best) .. 1 (worst)
+  const g=[31,150,106],m=[34,42,56],r=[200,72,72];const lerp=(a,b,x)=>a.map((v,i)=>Math.round(v+(b[i]-v)*x));
+  const c=t<.5?lerp(g,m,t*2):lerp(m,r,(t-.5)*2);return `rgb(${c})`}
+function ranks(items,get){ // 1 = highest value
+  const out={};PERIODS.forEach(p=>{const v=items.map(i=>[i,get(i,p)]).filter(x=>x[1]!=null).sort((a,b)=>b[1]-a[1]);v.forEach((x,k)=>{(out[x[0].key]??={})[p]=[k+1,v.length]})});return out}
+const PERIODS = D.periods;
+function members(label){return (D.members[label]||[]).map(s=>STK[s]).filter(Boolean)}
+function median(a){a=a.filter(x=>x!=null).sort((x,y)=>x-y);return a.length?a[Math.floor(a.length/2)]:null}
+
+/* ---------- header ---------- */
+$('#asof').textContent = `Index data as of ${D.asof} · Stocks as of ${D.stock_asof}`;
+function renderPsegs(){
+  document.querySelectorAll('.pseg').forEach(el=>{const k=el.dataset.k;el.innerHTML=PERIODS.map(p=>`<button data-p="${p}" class="${p===S.pp[k]?'on':''}">${p}</button>`).join('')});
+  const vals=Object.values(S.pp),same=vals.every(v=>v===vals[0]);
+  $('#periods').innerHTML=PERIODS.map(p=>`<button data-p="${p}" class="${same&&p===vals[0]?'on':''}">${p}</button>`).join('')}
+document.addEventListener('click',e=>{const b=e.target.closest('.pseg button');if(!b)return;S.pp[b.parentElement.dataset.k]=b.dataset.p;renderTab();if(isOpen())renderDrawer()});
+$('#periods').onclick = e=>{const p=e.target.dataset.p;if(!p)return;Object.keys(S.pp).forEach(k=>S.pp[k]=p);renderTab();if(isOpen())renderDrawer()};
+$('#nav').onclick = e=>{const t=e.target.dataset.tab;if(!t)return;S.tab=t;[...$('#nav').children].forEach(b=>b.classList.toggle('on',b===e.target));document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.id==='tab-'+t));renderTab()};
+function segBind(sel,key,after){$(sel).onclick=e=>{const v=e.target.dataset.v;if(v==null)return;S[key]=v;[...$(sel).children].forEach(b=>b.classList.toggle('on',b.dataset.v===v));after()}}
+segBind('#ccy','ccy',()=>renderOverview());segBind('#smaSel','sma',()=>renderSectors());segBind('#flowSel','flow',()=>renderFlows());
+segBind('#peMetric','peMetric',()=>renderVal());segBind('#peRange','peRange',()=>renderVal());
+
+/* ---------- search ---------- */
+$('#searchlist').innerHTML = D.indices.map(i=>`<option value="Index: ${esc(i.label)}">`).join('')+D.stocks.map(s=>`<option value="${esc(s.s)} — ${esc(s.n)}">`).join('');
+$('#search').addEventListener('change',e=>{
+  const v=e.target.value.trim();let m;
+  if(v.startsWith('Index: ')&&IDX[v.slice(7)])openIndex(v.slice(7),true);
+  else if((m=v.split(' — ')[0].toUpperCase())&&STK[m])openStock(m,true);
+  else{const q=v.toLowerCase();const hit=D.stocks.find(s=>s.n.toLowerCase().includes(q)||s.s.toLowerCase()===q);if(hit)openStock(hit.s,true)}
+  e.target.value='';e.target.blur()});
+
+/* ---------- overview ---------- */
+function renderMovers(){
+  const a=D.stocks.filter(s=>s.d1!=null).sort((x,y)=>y.d1-x.d1);
+  const chip=s=>`<span class="chip" data-s="${s.s}">${esc(s.s)} <b class="${cls(s.d1)}">${fmt(s.d1,2)}</b></span>`;
+  $('#movers').innerHTML=`<span class="lbl">Top gainers today</span>${a.slice(0,8).map(chip).join('')}<span class="lbl" style="margin-left:14px">Top losers</span>${a.slice(-8).reverse().map(chip).join('')}`;
+  $('#movers').onclick=e=>{const c=e.target.closest('.chip');if(c)openStock(c.dataset.s,true)}}
+function renderOverview(){
+  renderPsegs();
+  let p=S.pp.bench;
+  $('#bench-sub').textContent=`Index return over ${p}${annNote(p)} · price returns, INR · click a bar to see its stocks`;
+  const b=BENCH.filter(i=>i.ret[p]!=null).sort((x,y)=>y.ret[p]-x.ret[p]);
+  bar('#ch-bench',b.map(i=>i.label),b.map(i=>i.ret[p]),from('bench'));
+  p=S.pp.glob;
+  $('#glob-sub').textContent=`${p} return${annNote(p)} · ${S.ccy==='usd'?'converted to US dollars':'local currency'} · gold = India`;
+  const g=D.global.filter(x=>x[S.ccy][p]!=null).sort((x,y)=>y[S.ccy][p]-x[S.ccy][p]);
+  bar('#ch-glob',g.map(x=>x.name),g.map(x=>x[S.ccy][p]),n=>{if(/India/.test(n)){S.pp.drawer=S.pp.glob;openIndex(/500/.test(n)?'Nifty 500':'Nifty 50',true)}},
+    g.map(x=>/India/.test(x.name)?C.india:(x[S.ccy][p]>=0?C.pos:C.neg)));
+  // momentum rank table
+  const items=D.global.map(x=>({key:x.name,x}));const rk=ranks(items,(i,pp)=>i.x[S.ccy][pp]);
+  const sorted=items.slice().sort((a,b)=>((rk[a.key]['1M']||[99])[0])-((rk[b.key]['1M']||[99])[0]));
+  $('#tb-globrank').innerHTML=`<thead><tr><th>Index (Country)</th>${PERIODS.map(q=>`<th class="${q===p?'sel':''}" style="text-align:center">${q} Return</th>`).join('')}</tr></thead><tbody>`+
+   sorted.map(i=>`<tr class="${/India/.test(i.key)?'click':''}" data-n="${esc(i.key)}"><td>${esc(i.key)}</td>${PERIODS.map(q=>{const r=(rk[i.key]||{})[q];return r?`<td class="h" style="background:${heatColor((r[0]-1)/Math.max(r[1]-1,1))}" title="${fmt(i.x[S.ccy][q],2)}">${r[0]}</td>`:'<td class="h">–</td>'}).join('')}</tr>`).join('')+'</tbody>';
+  $('#tb-globrank').onclick=e=>{const tr=e.target.closest('tr[data-n]');if(tr&&/India/.test(tr.dataset.n)){S.pp.drawer=S.pp.glob;openIndex(/500/.test(tr.dataset.n)?'Nifty 500':'Nifty 50',true)}}}
+
+/* ---------- sectors ---------- */
+function renderSectors(){
+  renderPsegs();
+  const p=S.pp.sec;
+  $('#sec-sub').textContent=`Sector index return over ${p}${annNote(p)} · click a sector to see its stocks`;
+  const s=SECT.filter(i=>i.ret[p]!=null).sort((x,y)=>y.ret[p]-x.ret[p]);
+  bar('#ch-sec',s.map(i=>i.label),s.map(i=>i.ret[p]),from('sec'));
+  const items=SECT.map(i=>({key:i.label,i}));const rk=ranks(items,(it,pp)=>it.i.ret[pp]);
+  const sorted=items.slice().sort((a,b)=>((rk[a.key]||{})[p]||[99])[0]-((rk[b.key]||{})[p]||[99])[0]);
+  $('#tb-secrank').innerHTML=`<thead><tr><th>Sector</th>${PERIODS.map(q=>`<th class="${q===p?'sel':''}" style="text-align:center">${q}</th>`).join('')}</tr></thead><tbody>`+
+   sorted.map(i=>`<tr class="click" data-l="${esc(i.key)}"><td>${esc(i.key)}</td>${PERIODS.map(q=>{const r=(rk[i.key]||{})[q];return r?`<td class="h" style="background:${heatColor((r[0]-1)/Math.max(r[1]-1,1))}" title="${fmt(i.i.ret[q],2)}">${r[0]}</td>`:'<td class="h">–</td>'}).join('')}</tr>`).join('')+'</tbody>';
+  $('#tb-secrank').onclick=e=>{const tr=e.target.closest('tr[data-l]');if(tr){S.pp.drawer=S.pp.sec;openIndex(tr.dataset.l,true)}};
+  // % above SMA
+  const k=S.sma;const pct=l=>{const m=members(l).filter(x=>x[k]!=null);return m.length?100*m.filter(x=>x[k]).length/m.length:null};
+  const rows=SECT.map(i=>({l:i.label,v:pct(i.label)})).filter(r=>r.v!=null);
+  const base={l:'Nifty 500',v:pct('Nifty 500')};rows.push(base);rows.sort((a,b)=>b.v-a.v);
+  Plotly.react($('#ch-sma'),[{type:'bar',x:rows.map(r=>r.l),y:rows.map(r=>r.v),customdata:rows.map(r=>r.l),marker:{color:rows.map(r=>r.l==='Nifty 500'?'#7d8794':'#f08c1a')},
+    text:rows.map(r=>r.v.toFixed(0)+'%'),textposition:'outside',cliponaxis:false,hovertemplate:'%{x}<br><b>%{y:.0f}%</b> above '+(k==='a50'?'SMA 50':'SMA 200')+'<extra></extra>'}],
+    layout({yaxis:{range:[0,Math.max(...rows.map(r=>r.v))*1.15+2]}}),CFG);
+  onClick('#ch-sma',l=>{S.pp.drawer=S.pp.sec;openIndex(IDX[l]?l:'Nifty 500',true)})}
+
+/* ---------- breadth ---------- */
+const SEGS=['Nifty 50','Nifty Next 50','Nifty Midcap 150','Nifty Smallcap 250','Nifty Microcap 250','Nifty 500'];
+function renderBreadth(){
+  renderPsegs();
+  const p=S.pp.ad;
+  $('#ad-sub').textContent=`Share of stocks that rose / fell over ${p}${annNote(p)} · click a segment to see its stocks`;
+  const rows=SEGS.map(l=>{const m=members(l).filter(x=>x.r[p]!=null);const n=m.length||1;
+    return {l,a:100*m.filter(x=>x.r[p]>0).length/n,d:100*m.filter(x=>x.r[p]<0).length/n,f:100*m.filter(x=>x.r[p]===0).length/n,n:m.length}}).reverse();
+  const tr=(name,key,color)=>({type:'bar',orientation:'h',name,y:rows.map(r=>r.l),x:rows.map(r=>r[key]),customdata:rows.map(r=>r.l),marker:{color},
+    text:rows.map(r=>r[key]>=6?r[key].toFixed(0)+'%':''),textposition:'inside',insidetextanchor:'middle',hovertemplate:'%{y}<br>'+name+': <b>%{x:.1f}%</b><extra></extra>'});
+  Plotly.react($('#ch-ad'),[tr('Advances','a','#2aa88a'),tr('Declines','d','#cf3a3a'),tr('Flat','f','#556070')],
+    layout({barmode:'stack',showlegend:true,legend:{orientation:'h',y:1.1},margin:{l:140,b:30,t:30},xaxis:{ticksuffix:'%',tickangle:0,range:[0,100]},yaxis:{ticksuffix:'',automargin:true}}),CFG);
+  onClick('#ch-ad',from('ad'));
+  // strength
+  const srows=SEGS.map(l=>{const m=members(l).filter(x=>x.gc!=null);const n=m.length||1;const pc=f=>100*m.filter(f).length/n;
+    return {l,gc:pc(x=>x.gc),dc:pc(x=>!x.gc),bs:pc(x=>x.bs),bw:pc(x=>x.bw)}});
+  const cell=(v,col)=>`<td><div class="bcell"><div class="b" style="left:0;width:${Math.max(v,.5)*0.95}%;background:${col}"></div><div class="v" style="left:${Math.max(v,.5)*0.95}%;color:#cfd8e3;text-shadow:none">${v.toFixed(0)}%</div></div></td>`;
+  $('#tb-strength').innerHTML=`<thead><tr><th>Segment</th><th>Golden Cross<br><span class="hint">50 &gt; 200 DMA</span></th><th>Death Cross<br><span class="hint">50 &lt; 200 DMA</span></th><th style="color:#2ecc9a">Brutal Strength<br><span class="hint">Try to be here</span></th><th style="color:#ef5b5b">Brutal Weakness<br><span class="hint">Stay away from here</span></th></tr></thead><tbody>`+
+    srows.map(r=>`<tr class="click" data-l="${r.l}"><td>${r.l}</td>${cell(r.gc,'#19c39a')}${cell(r.dc,'#e8997a')}${cell(r.bs,'#0e8f74')}${cell(r.bw,'#cf3a3a')}</tr>`).join('')+'</tbody>';
+  $('#tb-strength').onclick=e=>{const t=e.target.closest('tr[data-l]');if(t){S.pp.drawer=S.pp.ad;openIndex(t.dataset.l,true)}};
+  // bands
+  const PB=['1W','1M','3M','6M','1Y'];const ranked=D.stocks.filter(s=>s.rk);const bands=[];
+  for(let s=1;s<=ranked.length;s+=50)bands.push([s,Math.min(s+49,ranked.length)]);
+  const avg=(b,pp)=>{const v=ranked.filter(x=>x.rk>=b[0]&&x.rk<=b[1]&&x.r[pp]!=null).map(x=>x.r[pp]);return v.length?v.reduce((a,c)=>a+c,0)/v.length:null};
+  const A=bands.map(b=>PB.map(pp=>avg(b,pp)));const ext=PB.map((_,j)=>{const col=A.map(r=>r[j]).filter(v=>v!=null);return [Math.min(0,...col),Math.max(0,...col)]});
+  $('#band-sub').textContent=`Average performance of stock bands (ranked by market cap) across ${ranked.length} stocks in Nifty 500 + Microcap 250`;
+  $('#tb-bands').innerHTML=`<thead><tr><th>Stock Band</th>${PB.map(q=>`<th style="text-align:center">Performance % ${q}</th>`).join('')}</tr></thead><tbody>`+
+   bands.map((b,i)=>`<tr class="click" data-b="${i}"><td>${b[0]} – ${b[1]}</td>${PB.map((pp,j)=>{const v=A[i][j];if(v==null)return'<td></td>';const [lo,hi]=ext[j];const w=hi-lo||1;const z=-lo/w*100;
+      const left=v>=0?z:z-(-v/w*100);const wid=Math.abs(v)/w*100;
+      return `<td><div class="bcell"><div class="b" style="left:${left}%;width:${wid}%;background:${v>=0?'#17b898':'#cf3a3a'}"></div><div class="v" style="left:${v>=0?Math.min(left+wid,82):Math.max(left,0)}%;color:#e6edf3;text-shadow:none">${v.toFixed(1)}%</div></div></td>`}).join('')}</tr>`).join('')+'</tbody>';
+  $('#tb-bands').onclick=e=>{const t=e.target.closest('tr[data-b]');if(!t)return;const b=bands[+t.dataset.b];S.pp.drawer=S.pp.ad;
+    openList(`Market-cap rank ${b[0]} – ${b[1]}`,`Stocks ranked ${b[0]}–${b[1]} by free-float market cap`,ranked.filter(x=>x.rk>=b[0]&&x.rk<=b[1]).map(x=>x.s),true)}}
+
+/* ---------- flows & valuation ---------- */
+function renderFlows(){
+  const f=D.flows.slice().sort((a,b)=>a.date<b.date?-1:1);const lab=f.map(r=>{const d=new Date(r.date);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})});
+  const sum=(k,n)=>f.slice(-n).reduce((a,r)=>a+(r[k]||0),0);
+  $('#flow-tiles').innerHTML=[['FII last day',f.at(-1).FII],['DII last day',f.at(-1).DII],['FII last 5 sessions',sum('FII',5)],['DII last 5 sessions',sum('DII',5)],[`FII since ${lab[0]}`,sum('FII',99)],[`DII since ${lab[0]}`,sum('DII',99)]]
+    .map(([k,v])=>`<div class="tile"><div class="k">${k}</div><div class="v ${cls(v)}">${num(v)}</div></div>`).join('');
+  const t=(k,col)=>({type:'bar',name:k+' Cash (Cr.)',x:lab,y:f.map(r=>r[k]),marker:{color:col},hovertemplate:'%{x}<br>'+k+' Cash: <b>%{y:,.2f}</b> Cr<extra></extra>'});
+  const tr=S.flow==='both'?[t('FII',C.fii),t('DII',C.dii)]:[t(S.flow,S.flow==='FII'?C.fii:C.dii)];
+  Plotly.react($('#ch-flow'),tr,layout({barmode:'group',showlegend:S.flow==='both',legend:{orientation:'h',y:1.1},yaxis:{ticksuffix:''},margin:{b:70}}),CFG)}
+function renderVal(){
+  const sel=$('#peIdx');if(!sel.options.length){sel.innerHTML=D.indices.filter(i=>i.pes.pe.some(v=>v!=null)).map(i=>`<option>${esc(i.label)}</option>`).join('');sel.value=S.peIdx;sel.onchange=()=>{S.peIdx=sel.value;renderVal()}}
+  const ix=IDX[S.peIdx],m=S.peMetric,name={pe:'P/E',pb:'P/B',dy:'Dividend yield'}[m];
+  const all=ix.pes.d.map((d,i)=>[d,ix.pes[m][i]]).filter(r=>r[1]!=null);
+  const vals=all.map(r=>r[1]),mean=vals.reduce((a,b)=>a+b,0)/vals.length,sd=Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0)/vals.length);
+  const cur=vals.at(-1),pctl=100*vals.filter(v=>v<=cur).length/vals.length;
+  let cut=null;if(S.peRange!=='99'){const d=new Date(all.at(-1)[0]);d.setFullYear(d.getFullYear()-(+S.peRange));cut=d.toISOString().slice(0,10)}
+  const rows=cut?all.filter(r=>r[0]>=cut):all;const x=rows.map(r=>r[0]),y=rows.map(r=>r[1]);
+  $('#val-sub').innerHTML=`${esc(S.peIdx)} ${name}: <b>${cur.toFixed(2)}</b> · average ${mean.toFixed(2)} · percentile ${pctl.toFixed(0)}% of history since ${all[0][0].slice(0,4)} · trailing (NSE) figures`;
+  const line=(v,dash,c,nm)=>({type:'scatter',mode:'lines',x:[x[0],x.at(-1)],y:[v,v],line:{color:c,dash,width:1.2},hovertemplate:nm+' %{y:.2f}<extra></extra>'});
+  Plotly.react($('#ch-pe'),[{type:'scatter',mode:'lines',x,y,line:{color:'#f5a623',width:1.8},hovertemplate:'%{x}<br>'+name+': <b>%{y:.2f}</b><extra></extra>'},
+    line(mean,'dash','#8b97a8','Average'),line(mean+sd,'dot','#ef5b5b','+1σ'),line(mean-sd,'dot','#2ecc9a','−1σ'),
+    {type:'scatter',mode:'markers+text',x:[x.at(-1)],y:[cur],marker:{color:'#ef5b5b',size:11,line:{color:'#fff',width:1.5}},text:[cur.toFixed(1)],textposition:'top left',hoverinfo:'skip'}],
+    layout({xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:''},margin:{b:50}}),CFG)}
+
+/* ---------- drawer ---------- */
+const isOpen=()=>$('#drawer').classList.contains('open');
+function openDrawer(){$('#drawer').classList.add('open');$('#scrim').style.display='block'}
+function closeDrawer(){$('#drawer').classList.remove('open','wide');$('#dwide').textContent='⤢ Expand';$('#scrim').style.display='none';S.stack=[]}
+$('#dwide').onclick=()=>{const w=$('#drawer').classList.toggle('wide');$('#dwide').textContent=w?'⤡ Shrink':'⤢ Expand';setTimeout(()=>window.dispatchEvent(new Event('resize')),260)};
+$('#dclose').onclick=closeDrawer;$('#scrim').onclick=closeDrawer;document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer()});
+$('#dback').onclick=()=>{S.stack.pop();S.stack.length?renderDrawer():closeDrawer()};
+function push(v,reset){if(reset)S.stack=[];S.stack.push(v);S.sort={k:'ret',dir:-1};openDrawer();renderDrawer()}
+const openIndex=(label,reset)=>IDX[label]&&push({t:'index',label},reset);
+const openList=(title,sub,syms,reset)=>push({t:'list',title,sub,syms},reset);
+const openStock=(sym,reset)=>push({t:'stock',sym},reset);
+
+function tiles(arr){return `<div class="tiles">${arr.map(([k,v,c])=>`<div class="tile"><div class="k">${k}</div><div class="v ${c||''}">${v}</div></div>`).join('')}</div>`}
+const csvSafe=x=>{if(typeof x!=='string')return x;const q=x.replace(/^"/,'');return /^[=+\-@\t\r]/.test(q)?"'"+x:x};   // blocks spreadsheet formula injection from text fields
+const trendBadges=s=>`${s.bs?'<span class="badge b-g">Brutal strength</span>':''}${s.bw?'<span class="badge b-r">Brutal weakness</span>':''}${s.gc==null?'':s.gc?'<span class="badge b-g">Golden</span>':'<span class="badge b-r">Death</span>'}${s.a200==null?'':s.a200?'<span class="badge b-n">&gt;200DMA</span>':'<span class="badge b-n">&lt;200DMA</span>'}`;
+const getv=(s,k)=>k==='ret'?s.r[PL()]:k==='n'||k==='i'?s[k]:k==='trend'?(s.bs?3:s.bw?-3:s.gc?1:s.gc===false?-1:0):k.startsWith('r:')?s.r[k.slice(2)]:s[k];
+
+function renderDrawer(){
+  const v=S.stack.at(-1);if(!v)return;
+  $('#dback').style.display=S.stack.length>1?'':'none';
+  const body=$('#dbody');
+  if(v.t==='stock')return renderStock(v,body);
+  let syms,title,head='';
+  if(v.t==='index'){
+    const ix=IDX[v.label];syms=D.members[v.label]||[];title=ix.nse;
+    const m=members(v.label);const a200=m.filter(x=>x.a200!=null);
+    head=tiles([['Index level',num(ix.close,2)],['1D',fmt(ix.chg,2),cls(ix.chg)],[PL()+annNote(PL()).replace(' · ',' '),fmt(ix.ret[PL()],2),cls(ix.ret[PL()])],['P/E',ix.pe??'–'],['P/B',ix.pb??'–'],['Div yield',ix.dy!=null?ix.dy+'%':'–'],
+      ['Stocks',m.length],['Above 200 DMA',a200.length?Math.round(100*a200.filter(x=>x.a200).length/a200.length)+'%':'–']])+
+      `<div id="d-idx" style="height:220px"></div>`;
+  }else{syms=v.syms;title=v.title;head=v.sub?`<div class="sub hint">${esc(v.sub)}</div>`:'';
+    const m=syms.map(s=>STK[s]).filter(Boolean);const a200=m.filter(x=>x.a200!=null);
+    head+=tiles([['Stocks',m.length],['Median '+PL(),fmt(median(m.map(x=>x.r[PL()])),2)],['Above 200 DMA',a200.length?Math.round(100*a200.filter(x=>x.a200).length/a200.length)+'%':'–'],['Golden cross',m.filter(x=>x.gc).length]])}
+  $('#dtitle').textContent=title;
+  head=`<div class="hd"><span class="hint">Period for this panel</span><div class="pseg seg" data-k="drawer"></div></div>`+head;
+  let rows=syms.map(s=>STK[s]).filter(Boolean);
+  const k=S.sort.k,dir=S.sort.dir;
+  rows.sort((a,b)=>{const x=getv(a,k),y=getv(b,k);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return (typeof x==='string'?x.localeCompare(y):x-y)*dir});
+  const p=PL();
+  const cols=[['n','Stock'],['i','Industry'],['p','Price'],['d1','1D'],['r:1W','1W'],['r:1M','1M'],['r:3M','3M'],['r:6M','6M'],['r:1Y','1Y'],['pos','52w range'],['trend','Trend'],['mc','FF Mcap ₹Cr']];
+  const sorted=rows;
+  head+=`<div class="hd" style="margin-top:8px"><div><b>Stocks by ${p} return${annNote(p)}</b> <span class="hint">${rows.length>40?'top 20 gainers / bottom 20 laggards':''}</span></div><button class="btn" id="csv">⬇ Export CSV</button></div><div id="d-bar" style="height:300px"></div>`;
+  body.innerHTML=head+`<div class="scroll" style="max-height:none"><table id="d-tbl"><thead><tr>${cols.map(([c,l])=>`<th data-k="${c}" class="${(c==='r:'+p||(c===k))?'sel':''}">${l}${c===k?(dir<0?' ▼':' ▲'):''}</th>`).join('')}</tr></thead><tbody>`+
+    rows.map(s=>`<tr class="click" data-s="${s.s}"><td title="${esc(s.n)}">${esc(s.s)}</td><td>${esc(s.i)}</td><td>${num(s.p,2)}</td><td class="${cls(s.d1)}">${fmt(s.d1,2)}</td>${['1W','1M','3M','6M','1Y'].map(q=>`<td class="${cls(s.r[q])}">${fmt(s.r[q])}</td>`).join('')}<td><span class="pbar"><i style="left:${s.pos??0}%"></i></span></td><td>${trendBadges(s)}</td><td>${num(s.mc)}</td></tr>`).join('')+'</tbody></table></div>';
+  renderPsegs();
+  $('#d-tbl').onclick=e=>{const th=e.target.closest('th');if(th){const nk=th.dataset.k;S.sort=S.sort.k===nk?{k:nk,dir:-S.sort.dir}:{k:nk,dir:nk==='n'||nk==='i'?1:-1};return renderDrawer()}
+    const tr=e.target.closest('tr[data-s]');if(tr)openStock(tr.dataset.s,false)};
+  $('#csv').onclick=()=>{const h=['Symbol','Name','Industry','Price','1D%','1W%','1M%','3M%','6M%','1Y%','3Y% ann','5Y% ann','52w pos %','SMA50','SMA200','Golden cross','FF Mcap Cr'];
+    const L=[h.join(',')].concat(rows.map(s=>[s.s,'"'+s.n.replace(/"/g,'""')+'"','"'+s.i+'"',s.p,s.d1,s.r['1W'],s.r['1M'],s.r['3M'],s.r['6M'],s.r['1Y'],s.r['3Y'],s.r['5Y'],s.pos,s.sma50,s.sma200,s.gc,s.mc].map(x=>csvSafe(x??'')).join(',')));
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([L.join('\n')],{type:'text/csv'}));a.download=title.replace(/\W+/g,'_')+'.csv';a.click()};
+  // bar chart of stocks
+  const withR=rows.filter(s=>s.r[p]!=null).sort((a,b)=>b.r[p]-a.r[p]);
+  const shown=withR.length>40?withR.slice(0,20).concat(withR.slice(-20)):withR;
+  Plotly.react($('#d-bar'),[{type:'bar',x:shown.map(s=>s.s),y:shown.map(s=>s.r[p]),customdata:shown.map(s=>s.s),marker:{color:shown.map(s=>s.r[p]>=0?C.pos:C.neg)},
+    text:shown.map(s=>s.r[p].toFixed(1)),textposition:'outside',cliponaxis:false,textfont:{size:10},hovertemplate:'%{x}<br><b>%{y:.2f}%</b><extra></extra>'}],layout({margin:{b:80,t:14}}),CFG);
+  onClick('#d-bar',s=>openStock(s,false));
+  if(v.t==='index'){const ix=IDX[v.label];Plotly.react($('#d-idx'),[{type:'scatter',mode:'lines',x:ix.wk.d,y:ix.wk.c,fill:'tozeroy',fillcolor:'rgba(76,201,240,.08)',line:{color:C.acc,width:1.6},hovertemplate:'%{x}<br>%{y:,.0f}<extra></extra>'}],
+    layout({xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:'',rangemode:'normal',autorange:true},margin:{b:30,t:6}}),CFG)}
+}
+function renderStock(v,body){
+  const s=STK[v.sym];$('#dtitle').textContent=`${s.n} (${s.s})`;
+  const r=PERIODS.map(q=>[q+(q==='3Y'||q==='5Y'?' ann.':''),fmt(s.r[q],1),cls(s.r[q])]);
+  body.innerHTML=tiles([['Price ₹',num(s.p,2)],['1D',fmt(s.d1,2),cls(s.d1)],...r,['52w high',num(s.hi,2)],['52w low',num(s.lo,2)],['SMA 50',num(s.sma50,2)],['SMA 200',num(s.sma200,2)],['FF mcap ₹Cr',num(s.mc)],['Mcap rank',s.rk??'–']])+
+    `<div>${trendBadges(s)} <span class="hint">${esc(s.i)}</span></div><div id="d-px" style="height:340px;margin-top:8px"></div>
+     <div class="sub hint" style="margin-top:6px">Member of (click to explore):</div><div class="chips">${s.x.map(l=>`<span class="chip" data-l="${esc(l)}">${esc(l)}</span>`).join('')||'<span class="hint">no tracked index</span>'}</div>
+     <div class="hint">Market cap basis: ${s.mck==='float'?'free-float (Yahoo float shares × price)':s.mck==='total'?'total market cap (float unavailable)':'n/a'}</div>`;
+  body.onclick=e=>{const c=e.target.closest('.chip[data-l]');if(c)openIndex(c.dataset.l,false)};
+  const line=(y,name,color,w)=>({type:'scatter',mode:'lines',name,x:D.dates,y,line:{color,width:w},connectgaps:false,hovertemplate:name+' %{y:,.2f}<extra></extra>'});
+  Plotly.react($('#d-px'),[line(s.ser,'Price','#e6edf3',1.8),line(s.s50,'SMA 50','#f5a623',1.2),line(s.s200,'SMA 200','#7c6cf0',1.2)],
+    layout({showlegend:true,legend:{orientation:'h',y:1.08},xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:'',autorange:true},margin:{b:30,t:10}}),CFG);
+}
+
+/* ---------- status footer ---------- */
+$('#status').innerHTML='<table>'+Object.entries(D.status).map(([k,v])=>`<tr><td>${k}</td><td class="${/^(ok|cached)/.test(v)?'':'warn'}">${/^(ok|cached)/.test(v)?'✓':'⚠'} ${esc(v)}</td></tr>`).join('')+'</table><div style="margin-top:6px">'+esc(D.mcap_note)+'</div>';
+
+/* ---------- boot ---------- */
+function renderTab(){({overview:renderOverview,sectors:renderSectors,breadth:renderBreadth,flows:()=>{renderFlows();renderVal()}})[S.tab]()}
+renderPsegs();renderMovers();renderTab();
+window.__ready=true;
+</script>
+</body>
+</html>

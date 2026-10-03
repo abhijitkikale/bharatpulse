@@ -1,0 +1,12 @@
+# local caches and outputs (rebuilt by the pipeline)
+data/*
+!data/fiidii.csv
+dashboard.html
+_site/
+__pycache__/
+.pytest_cache/
+.claude/
+# third-party reference screenshots - never publish
+Screenshot*.png
+*.log
+Bharat Pulse Finance Logo.png
