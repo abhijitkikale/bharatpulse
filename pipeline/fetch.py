@@ -185,3 +185,44 @@ def fetch_fiidii():
     except Exception as e:
         status = f"stale: using stored data ({type(e).__name__})"
     return hist, status
+
+
+# ---------- forward EPS (Yahoo analyst consensus, next fiscal year); refreshed weekly ----------
+def fetch_forward_eps(symbols):
+    import json
+    cache = DATA / "feps.json"
+    prev = json.loads(cache.read_text()) if cache.exists() else {}
+    today = dt.date.today()
+    fresh = lambda e: "e" in e and (today - dt.date.fromisoformat(e.get("t", "2000-01-01"))).days < 7
+    def one(s):
+        for attempt in range(3):
+            try:
+                eps = yf.Ticker(s).get_info().get("forwardEps")
+                return s, (float(eps) if eps is not None else 0.0)
+            except Exception:
+                time.sleep(1.5 * (attempt + 1))
+        return s, None
+    todo = [s for s in symbols if not fresh(prev.get(s, {}))]
+    done = 0
+    with ThreadPoolExecutor(4) as ex:
+        for s, eps in ex.map(one, todo):
+            if eps is not None:
+                prev[s] = {"e": eps, "t": today.isoformat()}
+            done += 1
+            if done % 100 == 0:
+                cache.write_text(json.dumps(prev))
+    cache.write_text(json.dumps(prev))
+    got = sum(1 for s in symbols if prev.get(s, {}).get("e", 0) > 0)
+    return {s: prev[s] for s in symbols if s in prev}, f"ok ({got}/{len(symbols)} with estimates)"
+
+
+def record_forward_pe(today_values):
+    """Append today's forward P/E per index to data/fwd_pe.csv (committed by CI, so history accumulates)."""
+    f = DATA / "fwd_pe.csv"
+    hist = pd.read_csv(f) if f.exists() else pd.DataFrame(columns=["date", "index", "fpe"])
+    day = dt.date.today().isoformat()
+    rows = pd.DataFrame([{"date": day, "index": k, "fpe": round(v, 2)} for k, v in today_values.items()])
+    if not rows.empty:
+        hist = pd.concat([hist[hist["date"] != day], rows]).sort_values(["index", "date"])
+        hist.to_csv(f, index=False)
+    return hist

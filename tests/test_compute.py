@@ -37,3 +37,15 @@ def test_trend_down_is_brutal_weakness():
 
 def test_too_short_for_flags():
     assert trend_flags(series(20, lambda i: i + 1)) is None
+
+
+def test_forward_pe_matches_hand_calc():
+    from compute import build_forward
+    idx = pd.date_range("2026-08-01", periods=60, freq="D")
+    px = pd.DataFrame({"A.NS": 100.0, "B.NS": 200.0, "C.NS": 50.0}, index=idx)
+    mcap = {"A.NS": {"v": 1000}, "B.NS": {"v": 3000}, "C.NS": {"v": 1000}}
+    feps = {"A.NS": {"e": 10.0}, "B.NS": {"e": 10.0}, "C.NS": {"e": 5.0}}   # P/E 10, 20, 10
+    out = build_forward({"X": ["A", "B", "C"]}, px, mcap, feps)
+    # earnings = 1000/10 + 3000/20 + 1000/10 = 350 ; mcap = 5000 ; forward P/E = 14.29
+    assert abs(out["X"]["now"] - 14.29) < 0.01 and out["X"]["cov"] == 100
+    assert abs(out["X"]["est"]["v"][-1] - 14.29) < 0.01      # latest estimate equals today's value

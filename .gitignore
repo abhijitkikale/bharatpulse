@@ -1,6 +1,7 @@
 # local caches and outputs (rebuilt by the pipeline)
 data/*
 !data/fiidii.csv
+!data/fwd_pe.csv
 dashboard.html
 _site/
 __pycache__/

@@ -152,7 +152,7 @@ footer th{background:none;position:static}
         <div class="tiles" id="flow-tiles"></div><div id="ch-flow" class="chart" style="height:340px"></div></div>
       <div class="card c12"><div class="hd"><div><h2>Index Valuation</h2><div class="sub" id="val-sub"></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><select id="peIdx"></select>
-        <div class="seg" id="peMetric"><button data-v="pe" class="on">P/E</button><button data-v="pb">P/B</button><button data-v="dy">Div Yield</button></div>
+        <div class="seg" id="peMetric"><button data-v="pe" class="on">P/E</button><button data-v="fpe" title="Forward P/E from analyst consensus">Fwd P/E</button><button data-v="pb">P/B</button><button data-v="dy">Div Yield</button></div>
         <div class="seg" id="peRange"><button data-v="1">1Y</button><button data-v="3">3Y</button><button data-v="5">5Y</button><button data-v="99" class="on">All</button></div></div></div>
         <div id="ch-pe" class="chart"></div></div>
     </div>
@@ -314,6 +314,7 @@ function renderFlows(){
 function renderVal(){
   const sel=$('#peIdx');if(!sel.options.length){sel.innerHTML=D.indices.filter(i=>i.pes.pe.some(v=>v!=null)).map(i=>`<option>${esc(i.label)}</option>`).join('');sel.value=S.peIdx;sel.onchange=()=>{S.peIdx=sel.value;renderVal()}}
   const ix=IDX[S.peIdx],m=S.peMetric,name={pe:'P/E',pb:'P/B',dy:'Dividend yield'}[m];
+  if(m==='fpe')return renderFwd(ix);
   const all=ix.pes.d.map((d,i)=>[d,ix.pes[m][i]]).filter(r=>r[1]!=null);
   const vals=all.map(r=>r[1]),mean=vals.reduce((a,b)=>a+b,0)/vals.length,sd=Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0)/vals.length);
   const cur=vals.at(-1),pctl=100*vals.filter(v=>v<=cur).length/vals.length;
@@ -325,6 +326,24 @@ function renderVal(){
     line(mean,'dash','#8b97a8','Average'),line(mean+sd,'dot','#ef5b5b','+1σ'),line(mean-sd,'dot','#2ecc9a','−1σ'),
     {type:'scatter',mode:'markers+text',x:[x.at(-1)],y:[cur],marker:{color:'#ef5b5b',size:11,line:{color:'#fff',width:1.5}},text:[cur.toFixed(1)],textposition:'top left',hoverinfo:'skip'}],
     layout({xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:''},margin:{b:50}}),CFG)}
+
+function renderFwd(ix){
+  const f=ix.fpe;
+  if(!f){$('#val-sub').textContent=`Forward P/E is not available for ${ix.label} (too few stocks with analyst estimates).`;Plotly.react($('#ch-pe'),[],layout({}),CFG);return}
+  // The estimate divides past prices by TODAY's earnings estimates, which understates older forward P/Es as earnings grew.
+  // So it is limited to the last year, and no average / percentile is drawn from it.
+  const last=f.est.d.at(-1),lim=new Date(last);lim.setFullYear(lim.getFullYear()-1);const limS=lim.toISOString().slice(0,10);
+  const est=f.est.d.map((d,i)=>[d,f.est.v[i]]).filter(r=>r[1]!=null&&r[0]>=limS);
+  let cut=limS;if(S.peRange!=='99'&&+S.peRange<1){cut=limS}
+  const tr=ix.pes.d.map((d,i)=>[d,ix.pes.pe[i]]).filter(r=>r[1]!=null&&r[0]>=cut);
+  const rec=f.rec,disc=ix.pe?(100*(1-f.now/ix.pe)).toFixed(0):null;
+  $('#val-sub').innerHTML=`${esc(ix.label)} forward P/E: <b>${f.now.toFixed(1)}</b>${ix.pe?` vs trailing ${ix.pe} (${disc}% lower, as earnings are expected to grow)`:''} · based on ${f.n} stocks covering ${f.cov}% of index market cap · analyst consensus for the next fiscal year (Yahoo Finance). <span class="hint">Showing the last 12 months. Dashed = past prices ÷ today's earnings estimates (an approximation that drifts as estimates change). Solid blue = values this dashboard records every day, so real history builds from ${rec.d[0]||'today'}.</span>`;
+  const traces=[
+    {type:'scatter',mode:'lines',x:tr.map(r=>r[0]),y:tr.map(r=>r[1]),name:'Trailing P/E (NSE)',line:{color:'#6b7a90',width:1.4},hovertemplate:'%{x}<br>Trailing P/E: <b>%{y:.2f}</b><extra></extra>'},
+    {type:'scatter',mode:'lines',x:est.map(r=>r[0]),y:est.map(r=>r[1]),name:'Fwd P/E (est. on today\'s earnings)',line:{color:'#f5a623',width:1.8,dash:'dash'},hovertemplate:'%{x}<br>Fwd P/E (est.): <b>%{y:.2f}</b><extra></extra>'},
+    {type:'scatter',mode:'lines+markers',x:rec.d,y:rec.v,name:'Fwd P/E (recorded daily)',line:{color:'#4cc9f0',width:2},marker:{size:8},hovertemplate:'%{x}<br>Fwd P/E recorded: <b>%{y:.2f}</b><extra></extra>'},
+    {type:'scatter',mode:'markers+text',x:[est.at(-1)[0]],y:[f.now],marker:{color:'#ef5b5b',size:11,line:{color:'#fff',width:1.5}},text:[f.now.toFixed(1)],textposition:'top left',hoverinfo:'skip',showlegend:false}];
+  Plotly.react($('#ch-pe'),traces,layout({showlegend:true,legend:{orientation:'h',y:1.12},xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:''},margin:{b:50}}),CFG)}
 
 /* ---------- drawer ---------- */
 const isOpen=()=>$('#drawer').classList.contains('open');

@@ -27,7 +27,21 @@ def main(cached=False):
     elif gcache.exists():
         gpx = pd.read_pickle(gcache); status["Global indices + FX"] += "; using cached"
     fii, status["FII/DII"] = fetch.fetch_fiidii()
-    payload = compute.assemble(allx, cons, px, mc, gpx, fii, status)
+    if cached:
+        feps = json.loads((DATA / "feps.json").read_text()) if (DATA / "feps.json").exists() else {}; status["Forward EPS"] = "cached"
+    else:
+        feps, status["Forward EPS"] = fetch.fetch_forward_eps(syms)
+    payload = compute.assemble(allx, cons, px, mc, gpx, fii, status, feps)
+    today_vals = {ix["label"]: ix["fpe"]["now"] for ix in payload["indices"] if "fpe" in ix}
+    fwd_file = DATA / "fwd_pe.csv"
+    if not cached and today_vals:
+        hist = fetch.record_forward_pe(today_vals)
+    else:
+        hist = pd.read_csv(fwd_file) if fwd_file.exists() else pd.DataFrame(columns=["date", "index", "fpe"])
+    for ix in payload["indices"]:
+        if "fpe" in ix:
+            g = hist[hist["index"] == ix["label"]]
+            ix["fpe"]["rec"] = {"d": list(g["date"]), "v": [round(float(v), 2) for v in g["fpe"]]}
     (DATA / "dashboard.json").write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
     out = build.render(payload)
     print("Built", out, f"({out.stat().st_size/1e6:.1f} MB)")

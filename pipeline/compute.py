@@ -148,9 +148,41 @@ def build_stocks(cons, px, mcap, indices):
     return list(stocks.values()), members, [d.strftime("%Y-%m-%d") for d in dates]
 
 
-def assemble(allx, cons, px, mcap, gpx, fii, status):
+def build_forward(members, px, mcap, feps):
+    """Forward P/E per index = sum(mcap) / sum(forward earnings), weighted by free-float market cap.
+    Also returns an estimated history: past prices over today's earnings estimates (weekly)."""
+    wk = px.resample("W-FRI").last().dropna(how="all").tail(262)
+    last = px.ffill().iloc[-1]
+    out = {}
+    for label, syms in members.items():
+        cols = [s + ".NS" for s in syms if s + ".NS" in px.columns]
+        allm = sum(mcap.get(c, {}).get("v", 0) or 0 for c in cols)
+        use = [c for c in cols if feps.get(c, {}).get("e", 0) > 0 and (mcap.get(c, {}).get("v") or 0) > 0 and last.get(c, 0) > 0]
+        if len(use) < 3 or not allm:
+            continue
+        m = pd.Series({c: mcap[c]["v"] for c in use})
+        earn = m * pd.Series({c: feps[c]["e"] for c in use}) / last[use]          # m_i * forwardEps_i / price_i
+        now = m.sum() / earn.sum()
+        rel = wk[use] / last[use]
+        mask = rel.notna()
+        series = ((rel * m).where(mask).sum(axis=1) / (mask * earn).sum(axis=1))
+        series = series[((mask * m).sum(axis=1) / m.sum()) >= 0.8].dropna()
+        out[label] = {"now": _num(now), "cov": _num(100 * m.sum() / allm, 0), "n": len(use),
+                      "est": {"d": [d.strftime("%Y-%m-%d") for d in series.index], "v": [_num(v) for v in series.values]}}
+    return out
+
+
+def assemble(allx, cons, px, mcap, gpx, fii, status, feps=None, fwd_hist=None):
     indices, asof, piv = build_indices(allx)
     stocks, members, dates = build_stocks(cons, px, mcap, indices)
+    fwd = build_forward(members, px, mcap, feps or {})
+    rec = {}
+    if fwd_hist is not None and len(fwd_hist):
+        for k, g in fwd_hist.groupby("index"):
+            rec[k] = {"d": list(g["date"]), "v": [_num(v) for v in g["fpe"]]}
+    for ix in indices.values():
+        if ix["label"] in fwd:
+            ix["fpe"] = {**fwd[ix["label"]], "rec": rec.get(ix["label"], {"d": [], "v": []})}
     return {
         "asof": asof.strftime("%d %b %Y"), "stock_asof": px.index.max().strftime("%d %b %Y"),
         "periods": PERIODS, "indices": list(indices.values()), "members": members,
