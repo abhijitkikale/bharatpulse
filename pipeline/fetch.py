@@ -193,7 +193,9 @@ def fetch_forward_eps(symbols):
     cache = DATA / "feps.json"
     prev = json.loads(cache.read_text()) if cache.exists() else {}
     today = dt.date.today()
-    fresh = lambda e: "e" in e and (today - dt.date.fromisoformat(e.get("t", "2000-01-01"))).days < 7
+    age = lambda e: (today - dt.date.fromisoformat(e.get("t", "2000-01-01"))).days
+    # estimates refresh weekly; a blank (Yahoo often returns none transiently) is retried on the next run
+    fresh = lambda e: "e" in e and ((e["e"] > 0 and age(e) < 7) or (e["e"] <= 0 and age(e) < 1))
     def one(s):
         for attempt in range(3):
             try:
