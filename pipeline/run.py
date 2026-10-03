@@ -35,7 +35,7 @@ def main(cached=False):
     today_vals = {ix["label"]: ix["fpe"]["now"] for ix in payload["indices"] if "fpe" in ix}
     fwd_file = DATA / "fwd_pe.csv"
     if not cached and today_vals:
-        hist = fetch.record_forward_pe(today_vals)
+        hist = fetch.record_forward_pe(today_vals, px.index.max().date())
     else:
         hist = pd.read_csv(fwd_file) if fwd_file.exists() else pd.DataFrame(columns=["date", "index", "fpe"])
     for ix in payload["indices"]:

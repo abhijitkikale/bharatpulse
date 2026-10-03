@@ -216,11 +216,11 @@ def fetch_forward_eps(symbols):
     return {s: prev[s] for s in symbols if s in prev}, f"ok ({got}/{len(symbols)} with estimates)"
 
 
-def record_forward_pe(today_values):
+def record_forward_pe(today_values, day=None):
     """Append today's forward P/E per index to data/fwd_pe.csv (committed by CI, so history accumulates)."""
     f = DATA / "fwd_pe.csv"
     hist = pd.read_csv(f) if f.exists() else pd.DataFrame(columns=["date", "index", "fpe"])
-    day = dt.date.today().isoformat()
+    day = (day or dt.date.today()).isoformat()      # key by market date, not run date
     rows = pd.DataFrame([{"date": day, "index": k, "fpe": round(v, 2)} for k, v in today_values.items()])
     if not rows.empty:
         hist = pd.concat([hist[hist["date"] != day], rows]).sort_values(["index", "date"])
