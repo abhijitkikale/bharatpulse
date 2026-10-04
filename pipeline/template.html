@@ -442,15 +442,21 @@ function renderRisk(){
   const dd=100*(last(nf)/Math.max(...nf)-1);
   const stale=(new Date()-new Date(c.hy_asof))/864e5>6;
   $('#rk-sub').innerHTML=`${dates[0]} to ${dates.at(-1)} · ${dates.length} Nifty trading days · HY spread as of ${c.hy_asof}${stale?' <span class="warn">(⚠ not refreshed recently)</span>':''} · MOVE as of ${c.move_asof}`;
+  const ema=(a,span=10)=>{const k=2/(span+1);const o=[a[0]];for(let i=1;i<a.length;i++)o.push(a[i]*k+o[i-1]*(1-k));return o};
   const tile=(k,v,s,cl='')=>`<div class="tile"><div class="k">${k}</div><div class="v ${cl}">${v}</div><div class="k">${s}</div></div>`;
   $('#rk-tiles').innerHTML=tile('Nifty 50',num(last(nf),0),`${dd.toFixed(1)}% from period high`,dd<0?'dn':'up')+
-    tile('MOVE',last(mo).toFixed(1),`${pctRank(mo,last(mo)).toFixed(0)}th percentile · 1M chg ${chg(mo,21).toFixed(1)}`)+
+    tile('MOVE',last(mo).toFixed(1),`10-EMA ${ema(mo).at(-1).toFixed(1)} · ${pctRank(mo,last(mo)).toFixed(0)}th pctile · 1M ${chg(mo,21)>=0?'+':''}${chg(mo,21).toFixed(1)}`,ema(mo).at(-1)>=150?'dn':'')+
     tile('HY spread',last(hy).toFixed(2)+'%',`${pctRank(hy,last(hy)).toFixed(0)}th percentile · 1M chg ${chg(hy,21).toFixed(2)}`,last(hy)>3?'dn':'')+
     tile('HY spread, 1W change',(chg(hy,5)>=0?'+':'')+chg(hy,5).toFixed(2)+' pts',chg(hy,5)>0?'credit stress rising':'credit stress easing',chg(hy,5)>0?'dn':'up');
   const line=(x,y,name,col,extra={})=>Object.assign({type:'scatter',mode:'lines',x,y,name,line:{color:col,width:1.6}},extra);
-  Plotly.react($('#rk-a'),[line(dates,nf,'Nifty 50','#4cc9f0',{yaxis:'y'}),line(dates,mo,'MOVE','#f5a623',{yaxis:'y2'}),line(dates,hy,'HY spread %','#ef5b5b',{yaxis:'y3'})],
-    layout({hovermode:'x unified',margin:{b:36,l:60,t:10},xaxis:{tickangle:0,type:'date',anchor:'y3'},
-      yaxis:{domain:[.7,1],ticksuffix:'',title:{text:'Nifty 50'}},yaxis2:{domain:[.36,.64],ticksuffix:'',gridcolor:'#263040',title:{text:'MOVE'}},yaxis3:{domain:[0,.3],ticksuffix:'',gridcolor:'#263040',title:{text:'HY OAS %'}}}),CFG);
+  // raw series faded, 10-day EMA bold on top (same colour per panel)
+  const pair=(y,name,col,ax)=>[line(dates,y,name,col,{yaxis:ax,opacity:.35,line:{color:col,width:1},hovertemplate:name+': %{y:,.2f}<extra></extra>'}),
+    line(dates,ema(y),name+' 10-EMA',col,{yaxis:ax,line:{color:col,width:2.4},hovertemplate:name+' 10-EMA: %{y:,.2f}<extra></extra>'})];
+  const tail={type:'scatter',mode:'lines+text',x:[dates[0],dates.at(-1)],y:[150,150],yaxis:'y2',line:{color:'#ef5b5b',width:1,dash:'dot'},showlegend:false,
+    text:['','MOVE 150 · tail-risk zone'],textposition:'top left',textfont:{color:'#ef5b5b',size:11},hoverinfo:'skip'};
+  Plotly.react($('#rk-a'),[...pair(nf,'Nifty 50','#4cc9f0','y'),...pair(mo,'MOVE','#f5a623','y2'),...pair(hy,'HY spread %','#ef5b5b','y3'),tail],
+    layout({hovermode:'x unified',showlegend:false,margin:{b:36,l:60,t:10},xaxis:{tickangle:0,type:'date',anchor:'y3'},
+      yaxis:{domain:[.7,1],ticksuffix:'',title:{text:'Nifty 50'}},yaxis2:{domain:[.36,.64],ticksuffix:'',gridcolor:'#263040',title:{text:'MOVE'},range:[40,160]},yaxis3:{domain:[0,.3],ticksuffix:'',gridcolor:'#263040',title:{text:'HY OAS %'}}}),CFG);
   const z=a=>{const m=mean(a),s=sdev(a);return a.map(v=>(v-m)/s)};
   Plotly.react($('#rk-b'),[line(dates,z(nf),'Nifty 50','#4cc9f0'),line(dates,z(mo),'MOVE','#f5a623',{line:{color:'#f5a623',width:1.3}}),line(dates,z(hy),'HY spread','#ef5b5b',{line:{color:'#ef5b5b',width:1.3}})],
     layout({showlegend:true,legend:{orientation:'h',y:1.1},hovermode:'x unified',xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:'',title:{text:'z-score'}},margin:{b:36,t:10}}),CFG);
