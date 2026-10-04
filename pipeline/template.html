@@ -185,6 +185,12 @@ footer th{background:none;position:static}
       <div class="card c12"><div class="hd"><div><h2>Open interest by strike</h2><div class="sub" id="op-oi-note"></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><select id="op-exp"></select><div class="seg" id="op-metric"><button data-v="oi" class="on">Open interest</button><button data-v="chg">Change in OI (1 day)</button></div></div></div>
         <div id="op-oi" class="chart" style="height:400px"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Gamma exposure (GEX) &amp; gamma flip <span class="badge b-n">model estimate</span></h2><div class="sub" id="op-gex-sub"></div></div>
+        <div class="seg" id="op-gexs"><button data-v="nearest" class="on">Nearest expiry</button><button data-v="all">Nearest 4 expiries</button></div></div>
+        <div class="tiles" id="op-gex-tiles"></div>
+        <div class="sub">GEX by strike (₹ crore of index exposure dealers would hedge per 1% move). Calls count positive, puts negative.</div><div id="op-gex-k" class="chart" style="height:360px"></div>
+        <div class="sub" style="margin-top:8px">GEX profile: total GEX if the index were at each level — where the line crosses zero is the gamma flip.</div><div id="op-gex-p" class="chart" style="height:300px"></div>
+        <div class="hint" id="op-gex-note" style="line-height:1.6"></div></div>
       <div class="card c12"><div class="hd"><div><h2>Who is positioned how (index derivatives)</h2><div class="sub" id="op-part-sub"></div></div>
         <div class="seg" id="op-who"><button data-v="FII" class="on">FII</button><button data-v="DII">DII</button><button data-v="Pro">Pro</button><button data-v="Client">Client</button></div></div>
         <div class="scroll" style="max-height:none"><table id="op-part"></table></div><div id="op-partch" class="chart" style="height:320px"></div></div>
@@ -509,11 +515,13 @@ function renderRisk(){
 const SYMNAME={NIFTY:'Nifty 50',BANKNIFTY:'Bank Nifty'};
 const ord=n=>{n=Math.round(n);const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])};
 const emaArr=(a,span=10)=>{const k=2/(span+1);const o=[a[0]];for(let i=1;i<a.length;i++)o.push(a[i]*k+o[i-1]*(1-k));return o};
-const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII'};
+const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII',gex:'nearest'};
 const sma5=a=>a.map((_,i)=>{if(i<4)return null;const w=a.slice(i-4,i+1);return w.some(x=>x==null)?null:w.reduce((x,y)=>x+y,0)/5});
 function renderOptions(){
   const O=D.options;
   if(!O){$('#opt-body').innerHTML='<div class="card c12">Options data is unavailable in this build (NSE may have blocked the download). The rest of the dashboard is unaffected.</div>';return}
+  if(!O.symbols[OS.sym])OS.sym=Object.keys(O.symbols)[0];            // a symbol can be missing if NSE data was partial
+  document.querySelectorAll('#op-sym button').forEach(b=>{b.style.display=O.symbols[b.dataset.v]?'':'none';b.classList.toggle('on',b.dataset.v===OS.sym)});
   const sym=OS.sym,blk=O.symbols[sym],h=blk.hist,ch=blk.chain,name=SYMNAME[sym];
   const avg=(a,n)=>{const v=a.slice(-n-1,-1).filter(x=>x!=null);return v.length?mean(v):null};
   const lastOf=a=>a.filter(x=>x!=null).at(-1);
@@ -544,14 +552,44 @@ function renderOptions(){
   const ex=ch.expiries[OS.exp];
   if(ex){
     const chg=OS.metric==='chg',cy=chg?ex.cchg:ex.coi,py=chg?ex.pchg:ex.poi;
-    const top=(ks,ys)=>ks[ys.indexOf(Math.max(...ys))];
+    const wall=(ks,ys,side)=>{let b=null;ks.forEach((k,i)=>{if((side==='call'?k>=ch.spot:k<=ch.spot)&&(b==null||ys[i]>ys[b]))b=i});return b==null?null:ks[b]};
+    const cw=wall(ex.k,ex.coi,'call'),pw=wall(ex.k,ex.poi,'put');
     const step=ex.k.length>1?Math.min(...ex.k.slice(1).map((k,i)=>k-ex.k[i])):50;
-    $('#op-oi-note').innerHTML=`${name} · expiry ${ex.e} · PCR ${ex.pcr??'–'} · <b>max pain ${num(ex.pain,0)}</b> · largest put OI at <b class="up">${num(top(ex.k,ex.poi),0)}</b>, largest call OI at <b class="dn">${num(top(ex.k,ex.coi),0)}</b> (within ±10% of spot)`;
+    $('#op-oi-note').innerHTML=`${name} · expiry ${ex.e} · PCR ${ex.pcr??'–'} · <b>max pain ${num(ex.pain,0)}</b> · <b>put wall</b> (largest put OI at/below spot) <b class="up">${num(pw,0)}</b> · <b>call wall</b> (largest call OI at/above spot) <b class="dn">${num(cw,0)}</b>`;
     Plotly.react($('#op-oi'),[{type:'bar',x:ex.k,y:py,name:'Puts',marker:{color:'#2ecc9a'},width:step*.42,offset:-step*.42,hovertemplate:'Strike %{x}<br>Put '+(chg?'ΔOI':'OI')+': <b>%{y:,}</b><extra></extra>'},
       {type:'bar',x:ex.k,y:cy,name:'Calls',marker:{color:'#ef5b5b'},width:step*.42,offset:0,hovertemplate:'Strike %{x}<br>Call '+(chg?'ΔOI':'OI')+': <b>%{y:,}</b><extra></extra>'}],
       layout({barmode:'overlay',showlegend:true,legend:{orientation:'h',y:1.1},hovermode:'x unified',xaxis:{tickangle:-55,type:'linear',dtick:step*2,range:[ex.k[0]-step,ex.k.at(-1)+step],automargin:true},yaxis:{ticksuffix:''},margin:{b:70,t:10},
-        shapes:[{type:'line',x0:ch.spot,x1:ch.spot,yref:'paper',y0:0,y1:1,line:{color:'#e6edf3',width:1.5,dash:'dash'}},{type:'line',x0:ex.pain,x1:ex.pain,yref:'paper',y0:0,y1:1,line:{color:'#f5a623',width:1.5,dash:'dot'}}],
-        annotations:[{x:ch.spot,yref:'paper',y:1.0,text:'spot',showarrow:false,font:{color:'#e6edf3',size:11},xanchor:'right'},{x:ex.pain,yref:'paper',y:.93,text:'max pain',showarrow:false,font:{color:'#f5a623',size:11},xanchor:'left'}]}),CFG);
+        shapes:[{type:'line',x0:ch.spot,x1:ch.spot,yref:'paper',y0:0,y1:1,line:{color:'#e6edf3',width:1.5,dash:'dash'}},{type:'line',x0:ex.pain,x1:ex.pain,yref:'paper',y0:0,y1:1,line:{color:'#f5a623',width:1.5,dash:'dot'}},{type:'line',x0:pw,x1:pw,yref:'paper',y0:0,y1:1,line:{color:'#2ecc9a',width:1.2,dash:'dashdot'}},{type:'line',x0:cw,x1:cw,yref:'paper',y0:0,y1:1,line:{color:'#ef5b5b',width:1.2,dash:'dashdot'}}],
+        annotations:[{x:ch.spot,yref:'paper',y:1.0,text:'spot',showarrow:false,font:{color:'#e6edf3',size:11},xanchor:'right'},{x:ex.pain,yref:'paper',y:.93,text:'max pain',showarrow:false,font:{color:'#f5a623',size:11},xanchor:'left'},{x:pw,yref:'paper',y:.86,text:'put wall',showarrow:false,font:{color:'#2ecc9a',size:11},xanchor:'right'},{x:cw,yref:'paper',y:.86,text:'call wall',showarrow:false,font:{color:'#ef5b5b',size:11},xanchor:'left'}]}),CFG);
+  }
+  // gamma exposure (model estimate)
+  const gx=blk.gex;
+  if(!gx||!gx[OS.gex]){
+    $('#op-gex-sub').textContent='GEX could not be computed from the latest data (too few priced options).';$('#op-gex-tiles').innerHTML='';
+    Plotly.purge($('#op-gex-k'));Plotly.purge($('#op-gex-p'));$('#op-gex-note').textContent='';
+  }else{
+    const g=gx[OS.gex],flip=g.flip,dist=flip!=null?(flip/ch.spot-1)*100:null,pos=g.total_cr>0;
+    $('#op-gex-sub').innerHTML=`${name} · ${OS.gex==='all'?'nearest 4 expiries':'expiry '+gx.nearest.expiry} · standard convention: dealers long calls, short puts · estimated from end-of-day prices`;
+    const ivs=Object.values(gx.atm_iv||{});
+    $('#op-gex-tiles').innerHTML=tile('Net GEX (₹ cr / 1% move)',num(g.total_cr,0),pos?'positive: hedging tends to dampen moves':'negative: hedging tends to amplify moves',pos?'up':'dn')+
+      tile('Gamma flip',flip!=null?num(flip,0):'none within ±10%',flip!=null?`${dist>=0?'+':''}${dist.toFixed(1)}% from spot ${num(ch.spot,0)} · spot is ${ch.spot>=flip?'above':'below'} it`:'GEX keeps one sign across ±10% of spot')+
+      tile('Call wall (GEX)',g.walls.call_gex!=null?num(g.walls.call_gex,0):'–','biggest positive-gamma strike above spot')+
+      tile('Put wall (GEX)',g.walls.put_gex!=null?num(g.walls.put_gex,0):'–','biggest negative-gamma strike below spot')+
+      tile('Model ATM implied vol',ivs.length?ivs[0].toFixed(1)+'%':'–',vix?`India VIX ${vl.toFixed(1)} for comparison`:'');
+    const stepG=g.k.length>1?Math.min(...g.k.slice(1).map((k,i)=>k-g.k[i])):50;
+    const vline=(x,col,dash)=>({type:'line',x0:x,x1:x,yref:'paper',y0:0,y1:1,line:{color:col,width:1.5,dash}});
+    const note=(x,txt,col,y,anchor)=>({x,yref:'paper',y,text:txt,showarrow:false,font:{color:col,size:11},xanchor:anchor});
+    const sh=[vline(ch.spot,'#e6edf3','dash')].concat(flip!=null?[vline(flip,'#f5a623','dot')]:[]);
+    const an=[note(ch.spot,'spot','#e6edf3',1,'right')].concat(flip!=null?[note(flip,'gamma flip','#f5a623',.93,'left')]:[]);
+    Plotly.react($('#op-gex-k'),[{type:'bar',x:g.k,y:g.call,name:'Calls (+)',marker:{color:'#2ecc9a'},hovertemplate:'Strike %{x}<br>Call GEX %{y:,.1f} cr<extra></extra>'},
+      {type:'bar',x:g.k,y:g.put,name:'Puts (−)',marker:{color:'#ef5b5b'},hovertemplate:'Strike %{x}<br>Put GEX %{y:,.1f} cr<extra></extra>'},
+      L(g.k,g.net,'Net','#e6edf3',{line:{color:'#e6edf3',width:1.6},hovertemplate:'Net %{y:,.1f} cr<extra></extra>'})],
+      layout({barmode:'relative',showlegend:true,legend:{orientation:'h',y:1.1},hovermode:'x unified',xaxis:{type:'linear',tickangle:-55,range:[g.k[0]-stepG,g.k.at(-1)+stepG],dtick:stepG*2,tickformat:',d',automargin:true},
+        yaxis:{ticksuffix:'',title:{text:'₹ cr per 1% move'}},margin:{b:70,t:10},shapes:sh,annotations:an}),CFG);
+    Plotly.react($('#op-gex-p'),[L(g.profile.s,g.profile.g,'Total GEX','#4cc9f0',{line:{color:'#4cc9f0',width:2.4},hovertemplate:'If index = %{x:,.0f}<br>Total GEX %{y:,.0f} cr<extra></extra>'})],
+      layout({showlegend:false,hovermode:'x unified',xaxis:{type:'linear',tickangle:0,tickformat:',d',title:{text:'hypothetical index level'}},yaxis:{ticksuffix:'',title:{text:'total GEX, ₹ cr per 1% move'},zeroline:true,zerolinecolor:'#8b97a8'},
+        margin:{b:50,t:10},shapes:sh,annotations:an}),CFG);
+    $('#op-gex-note').innerHTML='How it is built: implied volatility is backed out of each out-of-the-money option\'s closing price (Black-76, risk-free rate '+(gx.rate*100).toFixed(1)+'%); gamma × open interest × index² × 1%; calls positive, puts negative — the standard assumption that dealers are long calls and short puts. NSE participant data shows Indian positioning is mixed (see the table below), so the sign — and therefore the flip level — is an estimate. Thinly traded strikes make the implied volatility noisy, and this is a closing snapshot that changes every day. Not investment advice.';
   }
   // participants
   if(P){
@@ -576,6 +614,7 @@ function renderOptions(){
 }
 segBind('#op-sym','sym',()=>{OS.sym=S.sym;renderOptions()});
 segBind('#op-metric','opm',()=>{OS.metric=S.opm;renderOptions()});
+segBind('#op-gexs','opg',()=>{OS.gex=S.opg;renderOptions()});
 segBind('#op-who','opw',()=>{OS.who=S.opw;renderOptions()});
 
 /* ---------- status footer ---------- */

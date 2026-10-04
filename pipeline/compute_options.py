@@ -4,6 +4,8 @@ import math
 import numpy as np
 import pandas as pd
 
+from gex import compute_gex
+
 
 def _num(x, nd=2):
     if x is None:
@@ -65,8 +67,12 @@ def symbol_block(fo: pd.DataFrame, sym: str, max_expiries=4, band=0.10):
             "cchg": [int(ce["ChngInOpnIntrst"].get(ks[i], 0)) for i in sel],
             "pchg": [int(pe["ChngInOpnIntrst"].get(ks[i], 0)) for i in sel],
         })
+    try:                      # model estimate; never allowed to break the rest of the tab
+        gex = compute_gex(cur, last, s0)
+    except Exception:
+        gex = None
     return {"hist": {"d": hist_d, "pcr_oi": pcr_oi, "pcr_vol": pcr_vol, "und": und},
-            "chain": {"asof": last.strftime("%Y-%m-%d"), "spot": _num(s0), "expiries": out_exp}}
+            "chain": {"asof": last.strftime("%Y-%m-%d"), "spot": _num(s0), "expiries": out_exp}, "gex": gex}
 
 
 def participant_block(part: pd.DataFrame):
