@@ -73,4 +73,4 @@ GLOBAL = {
 }
 INR_FX = ("INR=X", "per_usd")
 
-PERIODS = ["1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"]
+PERIODS = ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"]

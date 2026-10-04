@@ -27,6 +27,8 @@ def period_returns(s: pd.Series, asof=None, tolerance_days=6):
     if s.empty:
         return out
     last = s.iloc[-1]
+    if len(s) >= 2:                      # 1D = change vs the previous trading day's close
+        out["1D"] = _num((last / s.iloc[-2] - 1) * 100)
     for p, off in OFFSETS.items():
         target = asof - off
         if s.index[0] > target + pd.Timedelta(days=tolerance_days):

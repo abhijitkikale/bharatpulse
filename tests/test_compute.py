@@ -49,3 +49,8 @@ def test_forward_pe_matches_hand_calc():
     # earnings = 1000/10 + 3000/20 + 1000/10 = 350 ; mcap = 5000 ; forward P/E = 14.29
     assert abs(out["X"]["now"] - 14.29) < 0.01 and out["X"]["cov"] == 100
     assert abs(out["X"]["est"]["v"][-1] - 14.29) < 0.01      # latest estimate equals today's value
+
+
+def test_one_day_return_uses_previous_close():
+    s = pd.Series([100.0, 105.0, 99.75], index=pd.to_datetime(["2026-09-29", "2026-09-30", "2026-10-01"]))
+    assert period_returns(s)["1D"] == -5.0

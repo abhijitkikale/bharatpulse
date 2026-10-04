@@ -304,7 +304,7 @@ function renderBreadth(){
     srows.map(r=>`<tr class="click" data-l="${r.l}"><td>${r.l}</td>${cell(r.gc,'#19c39a')}${cell(r.dc,'#e8997a')}${cell(r.bs,'#0e8f74')}${cell(r.bw,'#cf3a3a')}</tr>`).join('')+'</tbody>';
   $('#tb-strength').onclick=e=>{const t=e.target.closest('tr[data-l]');if(t){S.pp.drawer=S.pp.ad;openIndex(t.dataset.l,true)}};
   // bands
-  const PB=['1W','1M','3M','6M','1Y'];const ranked=D.stocks.filter(s=>s.rk);const bands=[];
+  const PB=['1D','1W','1M','3M','6M','1Y'];const ranked=D.stocks.filter(s=>s.rk);const bands=[];
   for(let s=1;s<=ranked.length;s+=50)bands.push([s,Math.min(s+49,ranked.length)]);
   const avg=(b,pp)=>{const v=ranked.filter(x=>x.rk>=b[0]&&x.rk<=b[1]&&x.r[pp]!=null).map(x=>x.r[pp]);return v.length?v.reduce((a,c)=>a+c,0)/v.length:null};
   const A=bands.map(b=>PB.map(pp=>avg(b,pp)));const ext=PB.map((_,j)=>{const col=A.map(r=>r[j]).filter(v=>v!=null);return [Math.min(0,...col),Math.max(0,...col)]});
@@ -400,7 +400,7 @@ function renderDrawer(){
   const cols=[['n','Stock'],['i','Industry'],['p','Price'],['d1','1D'],['r:1W','1W'],['r:1M','1M'],['r:3M','3M'],['r:6M','6M'],['r:1Y','1Y'],['pos','52w range'],['trend','Trend'],['mc','FF Mcap ₹Cr']];
   const sorted=rows;
   head+=`<div class="hd" style="margin-top:8px"><div><b>Stocks by ${p} return${annNote(p)}</b> <span class="hint">${rows.length>40?'top 20 gainers / bottom 20 laggards':''}</span></div><button class="btn" id="csv">⬇ Export CSV</button></div><div id="d-bar" style="height:300px"></div>`;
-  body.innerHTML=head+`<div class="scroll" style="max-height:none"><table id="d-tbl"><thead><tr>${cols.map(([c,l])=>`<th data-k="${c}" class="${(c==='r:'+p||(c===k))?'sel':''}">${l}${c===k?(dir<0?' ▼':' ▲'):''}</th>`).join('')}</tr></thead><tbody>`+
+  body.innerHTML=head+`<div class="scroll" style="max-height:none"><table id="d-tbl"><thead><tr>${cols.map(([c,l])=>`<th data-k="${c}" class="${(c==='r:'+p||(p==='1D'&&c==='d1')||(c===k))?'sel':''}">${l}${c===k?(dir<0?' ▼':' ▲'):''}</th>`).join('')}</tr></thead><tbody>`+
     rows.map(s=>`<tr class="click" data-s="${s.s}"><td title="${esc(s.n)}">${esc(s.s)}</td><td>${esc(s.i)}</td><td>${num(s.p,2)}</td><td class="${cls(s.d1)}">${fmt(s.d1,2)}</td>${['1W','1M','3M','6M','1Y'].map(q=>`<td class="${cls(s.r[q])}">${fmt(s.r[q])}</td>`).join('')}<td><span class="pbar"><i style="left:${s.pos??0}%"></i></span></td><td>${trendBadges(s)}</td><td>${num(s.mc)}</td></tr>`).join('')+'</tbody></table></div>';
   renderPsegs();
   $('#d-tbl').onclick=e=>{const th=e.target.closest('th');if(th){const nk=th.dataset.k;S.sort=S.sort.k===nk?{k:nk,dir:-S.sort.dir}:{k:nk,dir:nk==='n'||nk==='i'?1:-1};return renderDrawer()}
@@ -419,7 +419,7 @@ function renderDrawer(){
 }
 function renderStock(v,body){
   const s=STK[v.sym];$('#dtitle').textContent=`${s.n} (${s.s})`;
-  const r=PERIODS.map(q=>[q+(q==='3Y'||q==='5Y'?' ann.':''),fmt(s.r[q],1),cls(s.r[q])]);
+  const r=PERIODS.filter(q=>q!=='1D').map(q=>[q+(q==='3Y'||q==='5Y'?' ann.':''),fmt(s.r[q],1),cls(s.r[q])]);
   body.innerHTML=tiles([['Price ₹',num(s.p,2)],['1D',fmt(s.d1,2),cls(s.d1)],...r,['52w high',num(s.hi,2)],['52w low',num(s.lo,2)],['SMA 50',num(s.sma50,2)],['SMA 200',num(s.sma200,2)],['FF mcap ₹Cr',num(s.mc)],['Mcap rank',s.rk??'–']])+
     `<div>${trendBadges(s)} <span class="hint">${esc(s.i)}</span></div><div id="d-px" style="height:340px;margin-top:8px"></div>
      <div class="sub hint" style="margin-top:6px">Member of (click to explore):</div><div class="chips">${s.x.map(l=>`<span class="chip" data-l="${esc(l)}">${esc(l)}</span>`).join('')||'<span class="hint">no tracked index</span>'}</div>
