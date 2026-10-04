@@ -13,10 +13,13 @@
 html,body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.4 Inter,"Segoe UI",system-ui,sans-serif}
 header{position:sticky;top:0;z-index:20;background:rgba(11,15,22,.96);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:10px 20px;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center}
 h1{font-size:15px;margin:0;font-weight:600;color:var(--mut);letter-spacing:.2px}
-.brand{display:block;background:#fff;border-radius:12px;padding:4px 12px;line-height:0}
-.logo{height:64px;width:auto;display:block}
+.brand{display:block;line-height:0}
+.logo{height:70px;width:auto;display:block}
 .asof{color:var(--mut);font-size:12px}
 .sp{flex:1}
+.meta{display:flex;flex-direction:column;gap:2px}
+.notice{background:#2a2112;border-bottom:1px solid #7a5a1c;color:#f0c674;padding:6px 20px;font-size:12.5px;text-align:center}
+.notice b{color:#ffd98a}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .seg button{background:transparent;color:var(--mut);border:0;border-right:1px solid var(--line);padding:6px 11px;cursor:pointer;font:inherit;font-size:13px}
 .seg button:last-child{border-right:0}
@@ -78,8 +81,7 @@ select{background:var(--card2);color:var(--txt);border:1px solid var(--line);bor
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
 @media(max-width:700px){
   header{padding:8px 12px;gap:8px 12px}
-  .logo{height:46px}.brand{padding:3px 8px}
-  h1{display:none}
+  .logo{height:48px}
   input.search{width:100%;order:5;flex:1 1 100%}
   .sp{display:none}
   .seg{max-width:100%;overflow-x:auto}
@@ -103,8 +105,8 @@ footer th{background:none;position:static}
 </head>
 <body>
 <header>
-  <a class="brand" href="#" title="BharatPulse — India Markets Dashboard"><img class="logo" src="/*__LOGO__*/" alt="BharatPulse logo"></a><h1>India Markets Dashboard</h1>
-  <span class="asof" id="asof"></span>
+  <a class="brand" href="#" title="BharatPulse — India Markets Dashboard"><img class="logo" src="/*__LOGO__*/" alt="BharatPulse logo"></a>
+  <div class="meta"><span class="asof" id="asof"></span><span class="asof" id="nextup"></span></div>
   <span class="sp"></span>
   <input class="search" id="search" list="searchlist" placeholder="Search stock or index…" autocomplete="off">
   <datalist id="searchlist"></datalist>
@@ -118,6 +120,7 @@ footer th{background:none;position:static}
   <button data-tab="risk">Risk Monitor</button>
   <button data-tab="options">Options</button>
 </nav>
+<div class="notice" role="note">⚠ <b>Data under validation / testing</b> — figures and calculations are still being verified and may contain errors. For information only; not investment advice.</div>
 <main>
   <section class="tab on" id="tab-overview">
     <div class="strip" id="movers"></div>
@@ -178,7 +181,7 @@ footer th{background:none;position:static}
       <div class="card c12"><div class="hd"><div><h2>Options &amp; derivatives (end of day)</h2><div class="sub" id="op-sub"></div></div>
         <div class="seg" id="op-sym"><button data-v="NIFTY" class="on">Nifty 50</button><button data-v="BANKNIFTY">Bank Nifty</button></div></div>
         <div class="tiles" id="op-tiles"></div></div>
-      <div class="card c12"><h2>Put-call ratio</h2><div class="sub">Open-interest PCR (all expiries) and volume PCR. Above 1 = more put than call positions. The faint line is the index level (right axis).</div><div id="op-pcr" class="chart" style="height:340px"></div></div>
+      <div class="card c12"><h2>Put-call ratio</h2><div class="sub">Open-interest PCR (all expiries; bold line = 5-day average, which smooths the weekly-expiry swings) and volume PCR. Above 1 = more put than call positions. The faint line is the index level (right axis).</div><div id="op-pcr" class="chart" style="height:340px"></div></div>
       <div class="card c12"><div class="hd"><div><h2>Open interest by strike</h2><div class="sub" id="op-oi-note"></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><select id="op-exp"></select><div class="seg" id="op-metric"><button data-v="oi" class="on">Open interest</button><button data-v="chg">Change in OI (1 day)</button></div></div></div>
         <div id="op-oi" class="chart" style="height:400px"></div></div>
@@ -236,6 +239,14 @@ function median(a){a=a.filter(x=>x!=null).sort((x,y)=>x-y);return a.length?a[Mat
 
 /* ---------- header ---------- */
 $('#asof').textContent = `Index data as of ${D.asof} · Stocks as of ${D.stock_asof}`;
+(function nextUpdate(){                       // refresh runs weekdays 19:00 IST; show the next one in IST whatever the viewer's timezone
+  const ist=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
+  const t=new Date(ist);t.setHours(19,0,0,0);
+  if(ist>=t)t.setDate(t.getDate()+1);
+  while(t.getDay()===0||t.getDay()===6)t.setDate(t.getDate()+1);
+  const day=t.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+  $('#nextup').textContent=`Next update: ${day}, 7:00 PM IST (weekdays)`;
+})();
 function renderPsegs(){
   document.querySelectorAll('.pseg').forEach(el=>{const k=el.dataset.k;el.innerHTML=PERIODS.map(p=>`<button data-p="${p}" class="${p===S.pp[k]?'on':''}">${p}</button>`).join('')});
   const vals=Object.values(S.pp),same=vals.every(v=>v===vals[0]);
@@ -499,6 +510,7 @@ const SYMNAME={NIFTY:'Nifty 50',BANKNIFTY:'Bank Nifty'};
 const ord=n=>{n=Math.round(n);const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])};
 const emaArr=(a,span=10)=>{const k=2/(span+1);const o=[a[0]];for(let i=1;i<a.length;i++)o.push(a[i]*k+o[i-1]*(1-k));return o};
 const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII'};
+const sma5=a=>a.map((_,i)=>{if(i<4)return null;const w=a.slice(i-4,i+1);return w.some(x=>x==null)?null:w.reduce((x,y)=>x+y,0)/5});
 function renderOptions(){
   const O=D.options;
   if(!O){$('#opt-body').innerHTML='<div class="card c12">Options data is unavailable in this build (NSE may have blocked the download). The rest of the dashboard is unaffected.</div>';return}
@@ -519,7 +531,9 @@ function renderOptions(){
   // PCR chart
   const L=(x,y,n,col,extra={})=>Object.assign({type:'scatter',mode:'lines',x,y,name:n,line:{color:col,width:1.8}},extra);
   Plotly.react($('#op-pcr'),[L(h.d,h.und,`${name} level`,'#8b97a8',{yaxis:'y2',opacity:.35,line:{color:'#8b97a8',width:1},hovertemplate:'%{y:,.0f}<extra>level</extra>'}),
-    L(h.d,h.pcr_oi,'PCR (open interest)','#f5a623',{line:{color:'#f5a623',width:2.2}}),L(h.d,h.pcr_vol,'PCR (volume)','#b388ff',{line:{color:'#b388ff',width:1.3,dash:'dot'}})],
+    L(h.d,h.pcr_oi,'PCR (open interest)','#f5a623',{opacity:.55,line:{color:'#f5a623',width:1.2}}),
+    L(h.d,sma5(h.pcr_oi),'PCR OI, 5-day average','#f5a623',{line:{color:'#f5a623',width:3}}),
+    L(h.d,h.pcr_vol,'PCR (volume)','#b388ff',{line:{color:'#b388ff',width:1.2,dash:'dot'}})],
     layout({showlegend:true,legend:{orientation:'h',y:1.12},hovermode:'x unified',xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:'',title:{text:'PCR'}},
       yaxis2:{overlaying:'y',side:'right',showgrid:false,ticksuffix:'',title:{text:'index level'}},margin:{b:36,t:10,r:60},
       shapes:[{type:'line',xref:'paper',x0:0,x1:1,y0:1,y1:1,line:{color:'#586174',width:1,dash:'dash'}}]}),CFG);
