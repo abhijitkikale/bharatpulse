@@ -40,6 +40,8 @@ jobs:
           restore-keys: data-
       - name: Fetch data and build dashboard
         working-directory: pipeline
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}   # optional; scoped to this step only
         run: python run.py
       - name: Stage site
         run: |

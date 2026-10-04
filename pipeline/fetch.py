@@ -1,5 +1,5 @@
 """Source fetchers. Each returns (data, status) and never raises, so one failed source can't break the build."""
-import io, time, datetime as dt
+import io, os, time, datetime as dt
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd, requests, yfinance as yf
 from config import *
@@ -240,10 +240,18 @@ def fetch_credit():
     hy = pd.read_csv(f, parse_dates=["date"]).set_index("date")["hy"] if f.exists() else pd.Series(dtype=float, name="hy")
     notes = []
     try:
-        r = requests.get(FRED_HY, headers=HEADERS, timeout=(8, 25))
-        r.raise_for_status()
-        new = pd.read_csv(io.StringIO(r.text))
-        new.columns = ["date", "hy"]
+        key = os.environ.get("FRED_API_KEY")
+        if key:        # official API host (reachable from CI); the key is never logged - errors report only their type
+            r = requests.get("https://api.stlouisfed.org/fred/series/observations", timeout=(8, 25), params={
+                "series_id": "BAMLH0A0HYM2", "file_type": "json", "api_key": key,
+                "observation_start": (dt.date.today() - dt.timedelta(days=400)).isoformat()})
+            r.raise_for_status()
+            new = pd.DataFrame(r.json()["observations"])[["date", "value"]].rename(columns={"value": "hy"})
+        else:          # keyless CSV endpoint; often times out from some networks
+            r = requests.get(FRED_HY, headers=HEADERS, timeout=(8, 25))
+            r.raise_for_status()
+            new = pd.read_csv(io.StringIO(r.text))
+            new.columns = ["date", "hy"]
         new["date"] = pd.to_datetime(new["date"])
         new["hy"] = pd.to_numeric(new["hy"], errors="coerce")
         new = new.dropna().set_index("date")["hy"]
