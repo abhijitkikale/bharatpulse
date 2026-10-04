@@ -2,6 +2,8 @@
 data/*
 !data/fiidii.csv
 !data/fwd_pe.csv
+!data/hy_oas.csv
+!data/move.csv
 dashboard.html
 _site/
 __pycache__/

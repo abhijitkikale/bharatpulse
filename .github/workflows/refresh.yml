@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
-      contents: write            # only to commit data/fiidii.csv and data/fwd_pe.csv (history files)
+      contents: write            # only to commit history CSVs under data/
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4
         with:
@@ -45,12 +45,12 @@ jobs:
         run: |
           mkdir _site
           cp dashboard.html _site/index.html
-      - name: Commit FII/DII + forward P/E history
+      - name: Commit history files
         run: |
           git config user.name "bharatpulse-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/fiidii.csv data/fwd_pe.csv
-          git diff --cached --quiet || (git commit -m "Update FII/DII and forward P/E history" && git push)
+          git add data/fiidii.csv data/fwd_pe.csv data/hy_oas.csv data/move.csv
+          git diff --cached --quiet || (git commit -m "Update history files" && git push)
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa   # v3
         with:
           path: _site

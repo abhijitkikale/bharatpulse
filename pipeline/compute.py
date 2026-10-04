@@ -172,7 +172,22 @@ def build_forward(members, px, mcap, feps):
     return out
 
 
-def assemble(allx, cons, px, mcap, gpx, fii, status, feps=None, fwd_hist=None):
+def build_credit(nifty, move, hy):
+    """Nifty 50 aligned with MOVE and the HY spread on Nifty trading days (US series forward-filled)."""
+    if move is None or hy is None or len(hy) == 0:
+        return None
+    start = max(hy.index.min(), move.index.min())
+    n = nifty[nifty.index >= start].dropna()
+    df = pd.DataFrame({"nifty": n})
+    df["move"] = move.reindex(df.index.union(move.index)).ffill().reindex(df.index)
+    df["hy"] = hy.reindex(df.index.union(hy.index)).ffill().reindex(df.index)
+    df = df.dropna()
+    return {"d": [d.strftime("%Y-%m-%d") for d in df.index], "nifty": [_num(v) for v in df["nifty"]],
+            "move": [_num(v) for v in df["move"]], "hy": [_num(v) for v in df["hy"]],
+            "hy_asof": hy.index.max().strftime("%d %b %Y"), "move_asof": move.index.max().strftime("%d %b %Y")}
+
+
+def assemble(allx, cons, px, mcap, gpx, fii, status, feps=None, fwd_hist=None, credit=None):
     indices, asof, piv = build_indices(allx)
     stocks, members, dates = build_stocks(cons, px, mcap, indices)
     fwd = build_forward(members, px, mcap, feps or {})
@@ -189,6 +204,7 @@ def assemble(allx, cons, px, mcap, gpx, fii, status, feps=None, fwd_hist=None):
         "stocks": stocks, "dates": dates,
         "global": build_global(gpx, piv) if gpx is not None else [],
         "flows": fii.dropna(how="all").to_dict("records"),
+        "credit": build_credit(piv["Nifty 50"], *credit) if credit else None,
         "status": status,
         "mcap_note": "Free-float mcap (Yahoo float shares x price); total mcap where float is unavailable",
     }

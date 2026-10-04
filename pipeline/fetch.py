@@ -228,3 +228,41 @@ def record_forward_pe(today_values, day=None):
         hist = pd.concat([hist[hist["date"] != day], rows]).sort_values(["index", "date"])
         hist.to_csv(f, index=False)
     return hist
+
+
+# ---------- US bond / credit stress: MOVE (Yahoo ^MOVE) and ICE BofA US HY OAS (FRED BAMLH0A0HYM2) ----------
+FRED_HY = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAMLH0A0HYM2"
+
+
+def fetch_credit():
+    """HY spread is cached in data/hy_oas.csv and extended from FRED when reachable (FRED only keeps ~3 years)."""
+    f = DATA / "hy_oas.csv"
+    hy = pd.read_csv(f, parse_dates=["date"]).set_index("date")["hy"] if f.exists() else pd.Series(dtype=float, name="hy")
+    notes = []
+    try:
+        r = requests.get(FRED_HY, headers=HEADERS, timeout=(8, 25))
+        r.raise_for_status()
+        new = pd.read_csv(io.StringIO(r.text))
+        new.columns = ["date", "hy"]
+        new["date"] = pd.to_datetime(new["date"])
+        new["hy"] = pd.to_numeric(new["hy"], errors="coerce")
+        new = new.dropna().set_index("date")["hy"]
+        hy = pd.concat([hy[~hy.index.isin(new.index)], new]).sort_index()
+        hy.rename("hy").rename_axis("date").to_csv(f)
+        notes.append("HY spread live from FRED")
+    except Exception as e:
+        notes.append(f"HY spread from stored copy ({type(e).__name__}); last {hy.index.max():%d-%b-%Y}" if len(hy) else "HY spread unavailable")
+    move = None
+    mf = DATA / "move.csv"
+    try:
+        m = yf.download("^MOVE", period="5y", auto_adjust=True, progress=False)["Close"].squeeze().dropna()
+        if len(m):
+            m.rename("move").rename_axis("date").to_csv(mf)
+            move = m
+    except Exception:
+        pass
+    if move is None and mf.exists():
+        move = pd.read_csv(mf, parse_dates=["date"]).set_index("date")["move"]
+        notes.append("MOVE from stored copy")
+    ok = move is not None and len(hy) > 0
+    return move, hy, ("ok" if ok and notes[0].startswith("HY spread live") else "partial") + " (" + "; ".join(notes) + ")"

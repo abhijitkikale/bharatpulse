@@ -31,7 +31,14 @@ def main(cached=False):
         feps = json.loads((DATA / "feps.json").read_text()) if (DATA / "feps.json").exists() else {}; status["Forward EPS"] = "cached"
     else:
         feps, status["Forward EPS"] = fetch.fetch_forward_eps(syms)
-    payload = compute.assemble(allx, cons, px, mc, gpx, fii, status, feps)
+    if cached:
+        mf = DATA / "move.csv"; hf = DATA / "hy_oas.csv"
+        credit = (pd.read_csv(mf, parse_dates=["date"]).set_index("date")["move"], pd.read_csv(hf, parse_dates=["date"]).set_index("date")["hy"]) if mf.exists() and hf.exists() else None
+        status["MOVE + HY spread"] = "cached"
+    else:
+        move, hy, status["MOVE + HY spread"] = fetch.fetch_credit()
+        credit = (move, hy) if move is not None else None
+    payload = compute.assemble(allx, cons, px, mc, gpx, fii, status, feps, credit=credit)
     today_vals = {ix["label"]: ix["fpe"]["now"] for ix in payload["indices"] if "fpe" in ix}
     fwd_file = DATA / "fwd_pe.csv"
     if not cached and today_vals:
