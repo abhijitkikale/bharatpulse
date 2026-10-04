@@ -189,7 +189,7 @@ def build_credit(nifty, move, hy):
             "hy_asof": hy.index.max().strftime("%d %b %Y"), "move_asof": move.index.max().strftime("%d %b %Y")}
 
 
-def assemble(allx, cons, px, mcap, gpx, fii, status, feps=None, fwd_hist=None, credit=None):
+def assemble(allx, cons, px, mcap, gpx, fii, status, feps=None, fwd_hist=None, credit=None, options=None):
     indices, asof, piv = build_indices(allx)
     stocks, members, dates = build_stocks(cons, px, mcap, indices)
     fwd = build_forward(members, px, mcap, feps or {})
@@ -207,6 +207,7 @@ def assemble(allx, cons, px, mcap, gpx, fii, status, feps=None, fwd_hist=None, c
         "global": build_global(gpx, piv) if gpx is not None else [],
         "flows": fii.dropna(how="all").to_dict("records"),
         "credit": build_credit(piv["Nifty 50"], *credit) if credit else None,
+        "options": options,
         "status": status,
         "mcap_note": "Free-float mcap (Yahoo float shares x price); total mcap where float is unavailable",
     }

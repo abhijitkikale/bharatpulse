@@ -35,6 +35,8 @@ jobs:
             data/stock_prices.pkl
             data/mcap.json
             data/feps.json
+            data/fo
+            data/fo_part
             data/global.pkl
           key: data-${{ github.run_id }}
           restore-keys: data-

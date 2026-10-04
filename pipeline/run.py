@@ -4,7 +4,7 @@ import pandas as pd
 warnings.filterwarnings("ignore")
 sys.path.insert(0, ".")
 from config import *
-import fetch, compute, build
+import fetch, compute, build, fetch_fo, compute_options
 
 DATA.mkdir(exist_ok=True)
 
@@ -38,7 +38,10 @@ def main(cached=False):
     else:
         move, hy, status["MOVE + HY spread"] = fetch.fetch_credit()
         credit = (move, hy) if move is not None else None
-    payload = compute.assemble(allx, cons, px, mc, gpx, fii, status, feps, credit=credit)
+    fo, part, status["Options (F&O bhavcopy, participant OI)"] = fetch_fo.fetch_fo(download=not cached)
+    vix = allx[allx["Index Name"] == "India VIX"].set_index("date")["Closing Index Value"].sort_index() if allx is not None else None
+    options = compute_options.build_options(fo, part, vix)
+    payload = compute.assemble(allx, cons, px, mc, gpx, fii, status, feps, credit=credit, options=options)
     today_vals = {ix["label"]: ix["fpe"]["now"] for ix in payload["indices"] if "fpe" in ix}
     fwd_file = DATA / "fwd_pe.csv"
     if not cached and today_vals:

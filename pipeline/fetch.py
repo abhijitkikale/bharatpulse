@@ -59,17 +59,25 @@ def fetch_constituents():
     out, status = {}, []
     files = {v[1] for d in (BENCHMARKS, SECTORS) for v in d.values() if v[1]} | set(UNIVERSE_FILES)
     def one(fn):
+        cache = DATA / "cons" / fn
         r = _get(ARCHIVE + fn)
         if r is not None and r.status_code == 200:
-            return fn, pd.read_csv(io.StringIO(r.text))
-        return fn, None
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(r.text, encoding="utf-8")           # keep the last good copy for when NSE blocks us
+            return fn, pd.read_csv(io.StringIO(r.text)), False
+        if cache.exists():
+            return fn, pd.read_csv(cache), True
+        return fn, None, False
+    stale = 0
     with ThreadPoolExecutor(8) as ex:
-        for fn, df in ex.map(one, files):
+        for fn, df, used_cache in ex.map(one, files):
             if df is None:
                 status.append(fn)
             else:
                 out[fn] = df
-    return out, ("ok" if not status else "partial; missing " + ", ".join(status))
+                stale += used_cache
+    note = f"; {stale} lists from saved copy" if stale else ""
+    return out, ("ok" + note if not status else "partial; missing " + ", ".join(status) + note)
 
 
 # ---------- stocks via Yahoo ----------
