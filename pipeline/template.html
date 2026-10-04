@@ -584,7 +584,7 @@ function renderOptions(){
     Plotly.react($('#op-gex-k'),[{type:'bar',x:g.k,y:g.call,name:'Calls (+)',marker:{color:'#2ecc9a'},hovertemplate:'Strike %{x}<br>Call GEX %{y:,.1f} cr<extra></extra>'},
       {type:'bar',x:g.k,y:g.put,name:'Puts (−)',marker:{color:'#ef5b5b'},hovertemplate:'Strike %{x}<br>Put GEX %{y:,.1f} cr<extra></extra>'},
       L(g.k,g.net,'Net','#e6edf3',{line:{color:'#e6edf3',width:1.6},hovertemplate:'Net %{y:,.1f} cr<extra></extra>'})],
-      layout({barmode:'relative',showlegend:true,legend:{orientation:'h',y:1.1},hovermode:'x unified',xaxis:{type:'linear',tickangle:-55,range:[g.k[0]-stepG,g.k.at(-1)+stepG],dtick:stepG*2,tickformat:',d',automargin:true},
+      layout({barmode:'relative',showlegend:true,legend:{orientation:'h',y:1.1},hovermode:'x unified',xaxis:{type:'linear',tickangle:-55,range:[g.k[0]-stepG,g.k.at(-1)+stepG],nticks:14,tickformat:',d',automargin:true},
         yaxis:{ticksuffix:'',title:{text:'₹ cr per 1% move'}},margin:{b:70,t:10},shapes:sh,annotations:an}),CFG);
     Plotly.react($('#op-gex-p'),[L(g.profile.s,g.profile.g,'Total GEX','#4cc9f0',{line:{color:'#4cc9f0',width:2.4},hovertemplate:'If index = %{x:,.0f}<br>Total GEX %{y:,.0f} cr<extra></extra>'})],
       layout({showlegend:false,hovermode:'x unified',xaxis:{type:'linear',tickangle:0,tickformat:',d',title:{text:'hypothetical index level'}},yaxis:{ticksuffix:'',title:{text:'total GEX, ₹ cr per 1% move'},zeroline:true,zerolinecolor:'#8b97a8'},
