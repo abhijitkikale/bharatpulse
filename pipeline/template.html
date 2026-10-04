@@ -162,7 +162,7 @@ footer th{background:none;position:static}
   <section class="tab" id="tab-risk">
     <div class="grid" id="risk-body">
       <div class="card c12"><div class="hd"><div><h2>Bond &amp; credit stress vs Nifty 50</h2><div class="sub" id="rk-sub"></div></div></div><div class="tiles" id="rk-tiles"></div></div>
-      <div class="card c12"><h2>Side by side</h2><div class="sub">Nifty 50 level · MOVE (US bond-market volatility) · US high-yield option-adjusted spread, %. Hover is linked.</div><div id="rk-a" class="chart" style="height:620px"></div></div>
+      <div class="card c12"><h2>Side by side</h2><div class="sub">Nifty 50 level · MOVE (US bond-market volatility) · US high-yield option-adjusted spread, %. Faint line = daily, bold = 10-EMA, white dashed = 50-EMA. Hover is linked.</div><div id="rk-a" class="chart" style="height:620px"></div></div>
       <div class="card c12"><h2>On one scale</h2><div class="sub">Z-scores over the period: 0 = the period average, +1 = one standard deviation above it.</div><div id="rk-b" class="chart" style="height:360px"></div></div>
       <div class="card c12"><div class="hd"><div><h2>Does Nifty react to bond / credit stress?</h2><div class="sub" id="rk-corr"></div></div>
         <div class="seg" id="rk-win"><button data-w="30">30d</button><button data-w="63" class="on">63d</button><button data-w="126">126d</button></div></div>
@@ -451,7 +451,8 @@ function renderRisk(){
   const line=(x,y,name,col,extra={})=>Object.assign({type:'scatter',mode:'lines',x,y,name,line:{color:col,width:1.6}},extra);
   // raw series faded, 10-day EMA bold on top (same colour per panel)
   const pair=(y,name,col,ax)=>[line(dates,y,name,col,{yaxis:ax,opacity:.35,line:{color:col,width:1},hovertemplate:name+': %{y:,.2f}<extra></extra>'}),
-    line(dates,ema(y),name+' 10-EMA',col,{yaxis:ax,line:{color:col,width:2.4},hovertemplate:name+' 10-EMA: %{y:,.2f}<extra></extra>'})];
+    line(dates,ema(y),name+' 10-EMA',col,{yaxis:ax,line:{color:col,width:2.4},hovertemplate:name+' 10-EMA: %{y:,.2f}<extra></extra>'}),
+    line(dates,ema(y,50),name+' 50-EMA','#e6edf3',{yaxis:ax,line:{color:'#e6edf3',width:1.6,dash:'dash'},hovertemplate:name+' 50-EMA: %{y:,.2f}<extra></extra>'})];
   const tail={type:'scatter',mode:'lines+text',x:[dates[0],dates.at(-1)],y:[150,150],yaxis:'y2',line:{color:'#ef5b5b',width:1,dash:'dot'},showlegend:false,
     text:['','MOVE 150 · tail-risk zone'],textposition:'top left',textfont:{color:'#ef5b5b',size:11},hoverinfo:'skip'};
   Plotly.react($('#rk-a'),[...pair(nf,'Nifty 50','#4cc9f0','y'),...pair(mo,'MOVE','#f5a623','y2'),...pair(hy,'HY spread %','#ef5b5b','y3'),tail],
