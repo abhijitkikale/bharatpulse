@@ -216,7 +216,7 @@ const cls = v=> v==null?'':v>0?'up':v<0?'dn':'';
 const esc = s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const annNote = p=> (p==='3Y'||p==='5Y')?' · annualised':'';
 function merge(a,b){for(const k in b){a[k]=(b[k]&&typeof b[k]==='object'&&!Array.isArray(b[k])&&a[k]&&typeof a[k]==='object')?merge(a[k],b[k]):b[k]}return a}
-function layout(o){return merge({paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:{color:'#c9d1d9',family:'Inter,Segoe UI,system-ui,sans-serif',size:12},
+function layout(o){return merge({datarevision:Math.random(),paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',font:{color:'#c9d1d9',family:'Inter,Segoe UI,system-ui,sans-serif',size:12},
   margin:{l:50,r:16,t:16,b:100},xaxis:{tickangle:-55,gridcolor:'#1b2433',automargin:true,fixedrange:true},
   yaxis:{gridcolor:'#263040',zerolinecolor:'#586174',ticksuffix:'%',fixedrange:true},hoverlabel:{bgcolor:'#1c2330',bordercolor:'#3a475c',font:{color:'#e6edf3'}},showlegend:false},o||{})}
 function onClick(el,fn){const d=typeof el==='string'?$(el):el;d.removeAllListeners&&d.removeAllListeners('plotly_click');d.on('plotly_click',e=>{const p=e.points[0];fn(p.customdata??p.x??p.y)})}
@@ -357,7 +357,7 @@ function renderVal(){
   Plotly.react($('#ch-pe'),[{type:'scatter',mode:'lines',x,y,line:{color:'#f5a623',width:1.8},hovertemplate:'%{x}<br>'+name+': <b>%{y:.2f}</b><extra></extra>'},
     line(mean,'dash','#8b97a8','Average'),line(mean+sd,'dot','#ef5b5b','+1σ'),line(mean-sd,'dot','#2ecc9a','−1σ'),
     {type:'scatter',mode:'markers+text',x:[x.at(-1)],y:[cur],marker:{color:'#ef5b5b',size:11,line:{color:'#fff',width:1.5}},text:[cur.toFixed(1)],textposition:'top left',hoverinfo:'skip'}],
-    layout({xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:''},margin:{b:50}}),CFG)}
+    layout({xaxis:{tickangle:0,type:'date',range:[x[0],x.at(-1)]},yaxis:{ticksuffix:''},margin:{b:50}}),CFG)}
 
 function renderFwd(ix){
   const f=ix.fpe;
@@ -375,7 +375,7 @@ function renderFwd(ix){
     {type:'scatter',mode:'lines',x:est.map(r=>r[0]),y:est.map(r=>r[1]),name:'Fwd P/E (est. on today\'s earnings)',line:{color:'#f5a623',width:1.8,dash:'dash'},hovertemplate:'%{x}<br>Fwd P/E (est.): <b>%{y:.2f}</b><extra></extra>'},
     {type:'scatter',mode:'lines+markers',x:rec.d,y:rec.v,name:'Fwd P/E (recorded daily)',line:{color:'#4cc9f0',width:2},marker:{size:8},hovertemplate:'%{x}<br>Fwd P/E recorded: <b>%{y:.2f}</b><extra></extra>'},
     {type:'scatter',mode:'markers+text',x:[est.at(-1)[0]],y:[f.now],marker:{color:'#ef5b5b',size:11,line:{color:'#fff',width:1.5}},text:[f.now.toFixed(1)],textposition:'top left',hoverinfo:'skip',showlegend:false}];
-  Plotly.react($('#ch-pe'),traces,layout({showlegend:true,legend:{orientation:'h',y:1.12},xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:''},margin:{b:50}}),CFG)}
+  Plotly.react($('#ch-pe'),traces,layout({showlegend:true,legend:{orientation:'h',y:1.12},xaxis:{tickangle:0,type:'date',range:[tr.length?tr[0][0]:est[0][0],est.at(-1)[0]]},yaxis:{ticksuffix:''},margin:{b:50}}),CFG)}
 
 /* ---------- drawer ---------- */
 const isOpen=()=>$('#drawer').classList.contains('open');
@@ -474,7 +474,7 @@ function renderRisk(){
   const tail={type:'scatter',mode:'lines+text',x:[dates[0],dates.at(-1)],y:[150,150],yaxis:'y2',line:{color:'#ef5b5b',width:1,dash:'dot'},showlegend:false,
     text:['','MOVE 150 · tail-risk zone'],textposition:'top left',textfont:{color:'#ef5b5b',size:11},hoverinfo:'skip'};
   Plotly.react($('#rk-a'),[...pair(nf,'Nifty 50','#4cc9f0','y'),...pair(mo,'MOVE','#f5a623','y2'),...pair(hy,'HY spread %','#ef5b5b','y3'),tail],
-    layout({hovermode:'x unified',showlegend:false,margin:{b:36,l:60,t:10},xaxis:{tickangle:0,type:'date',anchor:'y3'},
+    layout({hovermode:'x unified',showlegend:false,margin:{b:36,l:60,t:10},xaxis:{tickangle:0,type:'date',anchor:'y3',range:[dates[0],dates.at(-1)]},
       yaxis:{domain:[.7,1],ticksuffix:'',title:{text:'Nifty 50'}},yaxis2:{domain:[.36,.64],ticksuffix:'',gridcolor:'#263040',title:{text:'MOVE'},range:[40,160]},yaxis3:{domain:[0,.3],ticksuffix:'',gridcolor:'#263040',title:{text:'HY OAS %'}}}),CFG);
   const z=a=>{const m=mean(a),s=sdev(a);return a.map(v=>(v-m)/s)};
   Plotly.react($('#rk-b'),[line(dates,z(nf),'Nifty 50','#4cc9f0'),line(dates,z(mo),'MOVE','#f5a623',{line:{color:'#f5a623',width:1.3}}),line(dates,z(hy),'HY spread','#ef5b5b',{line:{color:'#ef5b5b',width:1.3}})],
