@@ -554,9 +554,9 @@ const INFO={
   <p><b>What you can get from it.</b> Where the market's positions are stacked, which strikes may attract price near expiry, and whether new positions are being built today (rising OI) or closed (falling OI).</p>
   <p class="hint">Walls are positioning, not guarantees – price can and does break through them. All levels are index levels (add the futures basis if you chart futures). Use "Strike range" to zoom in on strikes near the index.</p>`},
  gex:{t:'Gamma exposure (GEX) and gamma flip',h:`<p><b>What it is.</b> A model of how much index exposure option dealers must buy or sell to stay hedged when the index moves 1%. It is estimated from end-of-day option prices and open interest, assuming dealers are long calls and short puts (the standard convention).</p>
-  <ul><li><b>Positive-gamma regime</b> (spot above the flip) – dealers sell rallies and buy dips. That tends to <b>dampen moves</b> and keep ranges tighter.</li><li><b>Negative-gamma regime</b> (spot below the flip) – dealers buy rallies and sell falls. That tends to <b>amplify moves</b> and raise volatility.</li><li><b>Gamma flip</b> – the index level where total GEX crosses zero, the line between the two regimes.</li><li><b>Call wall / put wall (GEX)</b> – the strikes with the largest positive / negative gamma above / below the index.</li></ul>
+  <ul><li><b>Positive-gamma regime</b> (spot above the flip) – dealers sell rallies and buy dips. That tends to <b>dampen moves</b> and keep ranges tighter.</li><li><b>Negative-gamma regime</b> (spot below the flip) – dealers buy rallies and sell falls. That tends to <b>amplify moves</b> and raise volatility.</li><li><b>Gamma flip</b> – the index level where total GEX crosses zero, the line between the two regimes. Positive gamma is on the side of the flip where the index closed.</li><li><b>Call wall / put wall (GEX)</b> – the strikes with the largest positive / negative gamma above / below the index.</li></ul>
   <p><b>What you can get from it.</b> A view on whether hedging flows are likely to calm or accelerate moves, and which levels matter most for those flows.</p>
-  <p class="hint">This is a model estimate. India's positioning is mixed, so the sign convention may not match reality, and the flip should be read as a rough zone. Near expiry, gamma concentrates close to the index. Not investment advice.</p>`},
+  <p><b>End-of-day snapshot.</b> Everything is calculated from the close, so the regime describes conditions <i>going into the next session</i>. Open interest changes every day and the nearest weekly expiry rolls off, so recheck after each update.</p><p class="hint">This is a model estimate. India's positioning is mixed, so the sign convention may not match reality, and the flip should be read as a rough zone. Near expiry, gamma concentrates close to the index. Not investment advice.</p>`},
  part:{t:'Who is positioned how',h:`<p><b>What it is.</b> NSE's end-of-day report of open positions by participant type in index futures and options:</p>
   <ul><li><b>FII</b> – foreign institutions</li><li><b>DII</b> – domestic institutions (mutual funds, insurers…)</li><li><b>Pro</b> – proprietary traders and brokers</li><li><b>Client</b> – retail and other clients</li></ul>
   <p><b>How to read it.</b> "Net" = long contracts minus short contracts. A big negative index-futures number means that group is net short. "Futures long %" is the long share of that group's futures positions.</p>
@@ -623,7 +623,8 @@ function renderOptions(){
   const L=(x,y,n,col,extra={})=>Object.assign({type:'scatter',mode:'lines',x,y,name:n,line:{color:col,width:1.8}},extra);
   const vline=(x,col,dash)=>({type:'line',x0:x,x1:x,yref:'paper',y0:0,y1:1,line:{color:col,width:1.5,dash}});
   const note=(x,txt,col,y,anchor)=>({x,yref:'paper',y,text:txt,showarrow:false,font:{color:col,size:11},xanchor:anchor,bgcolor:'rgba(11,15,22,.65)'});
-  const marks=(list)=>{const m=list.filter(q=>inV(q.x));return {sh:m.map(q=>vline(q.x,q.c,q.d)),an:m.map(q=>note(q.x,`${q.t} ${num(q.x,0)}`,q.c,q.y,q.a))}};
+  const marks=(list)=>{const m=list.filter(q=>inV(q.x)).sort((a,b)=>a.x-b.x);m.forEach((q,i)=>{q.a=i<m.length/2?'right':'left'});   // left half of the lines get labels to their left, right half to their right
+    return {sh:m.map(q=>vline(q.x,q.c,q.d)),an:m.map(q=>note(q.x,`${q.t} ${num(q.x,0)}`,q.c,q.y,q.a))}};
   // PCR chart (range buttons, 5-day average)
   const pr=OS.pcrR,pd=lastN(h.d,pr),pu=lastN(h.und,pr),po=lastN(h.pcr_oi,pr),pa=lastN(sma5(h.pcr_oi),pr),pv=lastN(h.pcr_vol,pr);
   const pl=lastOf(h.pcr_oi),pp=h.pcr_oi.filter(x=>x!=null).at(-2);
@@ -661,11 +662,17 @@ function renderOptions(){
   }else{
     const g=gx[OS.gex],flip=g.flip,dist=flip!=null?(flip/ch.spot-1)*100:null,pos=g.total_cr>0;
     $('#op-gex-sub').innerHTML=`${name} · ${OS.gex==='all'?'nearest 4 expiries':'expiry '+gx.nearest.expiry} · standard convention: dealers long calls, short puts · estimated from end-of-day prices`;
-    $('#op-gex-regime').innerHTML=`<div class="regime ${pos?'pos':'neg'}"><div class="rt">${pos?'▲ POSITIVE GAMMA REGIME':'▼ NEGATIVE GAMMA REGIME'}</div><div>${pos?
-      'Dealers are net long gamma at today\'s level. To stay hedged they <b>sell rallies and buy dips</b>, which tends to <b>dampen moves and keep ranges tighter</b>.':
-      'Dealers are net short gamma at today\'s level. To stay hedged they <b>buy rallies and sell falls</b>, which tends to <b>amplify moves and raise volatility</b>.'}
-      ${flip!=null?` The regime changes at the gamma flip <b>${num(flip,0)}</b> (${sgn(dist,1)}% from spot ${num(ch.spot,0)}): ${pos?'a fall below it would move the market into negative gamma.':'a rise above it would move the market back into positive gamma.'}`:' GEX keeps the same sign across ±10% of spot.'}
-      <span class="hint">Model estimate.</span></div></div>`;
+    const aboveFlip=flip!=null&&ch.spot>=flip,posAbove=pos?aboveFlip:!aboveFlip;            // posAbove: the positive-gamma side of the flip is the upper side
+    const dte=Math.round((new Date(gx.nearest.expiry)-new Date(ch.asof))/864e5);
+    const regTxt=pos?'Dealers are net long gamma at the close. To stay hedged they <b>sell rallies and buy dips</b>, which tends to <b>dampen moves and keep ranges tighter</b>.'
+                    :'Dealers are net short gamma at the close. To stay hedged they <b>buy rallies and sell falls</b>, which tends to <b>amplify moves and raise volatility</b>.';
+    let fwd;
+    if(flip!=null){
+      fwd=` ${name} closed at <b>${num(ch.spot,0)}</b>, <b>${aboveFlip?'above':'below'}</b> the gamma flip <b>${num(flip,0)}</b> (close is ${sgn((ch.spot/flip-1)*100,1)}% vs the flip). <b>For the next session:</b> positive gamma applies ${posAbove?'above':'below'} ${num(flip,0)} and negative gamma ${posAbove?'below':'above'} it. While the index stays ${aboveFlip?'above':'below'} ${num(flip,0)} expect the ${pos?'dampened':'amplified'} behaviour described; a move across ${num(flip,0)} would switch the regime.`;
+      if(Math.abs(dist)<0.5)fwd+=` <b>⚠ Only ${Math.abs(dist).toFixed(1)}% from the flip, so the regime is borderline and can change on a small move.</b>`;
+    }else fwd=' GEX keeps the same sign across ±10% of spot, so the regime should hold unless positions change a lot.';
+    const expNote=(OS.gex==='nearest'&&dte<=1)?` <b>Note:</b> this expiry (${gx.nearest.expiry}) is ${dte<=0?'today':'1 day away'}; once it expires this gamma disappears, so for tomorrow the "Nearest 4 expiries" view is the better guide.`:'';
+    $('#op-gex-regime').innerHTML=`<div class="regime ${pos?'pos':'neg'}"><div class="rt">${pos?'▲ POSITIVE GAMMA REGIME':'▼ NEGATIVE GAMMA REGIME'} <span class="hint">as of the ${ch.asof} close</span></div><div>${regTxt}${fwd}${expNote} <span class="hint">Model estimate from end-of-day data.</span></div></div>`;
     const ivs=Object.values(gx.atm_iv||{});
     $('#op-gex-tiles').innerHTML=tile('Net GEX (₹ cr / 1% move)',num(g.total_cr,0),pos?'positive gamma: moves tend to be dampened':'negative gamma: moves tend to be amplified',pos?'up':'dn')+
       tile('Gamma flip',flip!=null?num(flip,0):'none within ±10%',flip!=null?`${sgn(dist,1)}% from spot ${num(ch.spot,0)} · spot is ${ch.spot>=flip?'above':'below'} it`:'GEX keeps one sign across ±10% of spot')+
