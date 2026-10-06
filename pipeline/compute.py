@@ -201,6 +201,7 @@ def assemble(allx, cons, px, mcap, gpx, fii, status, feps=None, fwd_hist=None, c
         if ix["label"] in fwd:
             ix["fpe"] = {**fwd[ix["label"]], "rec": rec.get(ix["label"], {"d": [], "v": []})}
     return {
+        "built": pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%dT%H:%M:%SZ"),
         "asof": asof.strftime("%d %b %Y"), "stock_asof": px.index.max().strftime("%d %b %Y"),
         "periods": PERIODS, "indices": list(indices.values()), "members": members,
         "stocks": stocks, "dates": dates,

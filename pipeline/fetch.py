@@ -96,12 +96,20 @@ def _yf_close(symbols, period=None, start=None):
     return pd.concat(frames, axis=1) if frames else pd.DataFrame()
 
 
+def merge_prices(old, new):
+    """Fresh Yahoo rows win; cached rows Yahoo did not return are kept. Yahoo sometimes answers with a stale
+    batch (data only up to a few days ago), which must never wipe newer prices we already hold."""
+    if new is None or new.empty:
+        return old
+    return new.combine_first(old).sort_index()
+
+
 def fetch_stock_prices(symbols):
     cache = DATA / "stock_prices.pkl"
     old = pd.read_pickle(cache) if cache.exists() else None
     if old is not None and set(symbols) <= set(old.columns):
         new = _yf_close(symbols, start=(old.index.max() - pd.Timedelta(days=10)).strftime("%Y-%m-%d"))
-        px = pd.concat([old[old.index < new.index.min()], new]) if not new.empty else old
+        px = merge_prices(old, new)
     else:
         px = _yf_close(symbols, period="5y")
     px = px.dropna(how="all").sort_index()

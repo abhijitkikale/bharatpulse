@@ -2,11 +2,16 @@ name: Refresh BharatPulse
 
 on:
   schedule:
-    # 19:00 IST = 13:30 UTC. GitHub can delay or drop scheduled runs (busiest on the hour / half-hour),
-    # so two backup runs follow at quieter minutes; a repeat run is harmless (same data, ~3 minutes).
-    - cron: "30 13 * * 1-5"      # 19:00 IST (UTC+5:30), Monday-Friday
-    - cron: "47 13 * * 1-5"      # 19:17 IST backup
-    - cron: "23 14 * * 1-5"      # 19:53 IST backup
+    # Target ~19:00 IST (13:30 UTC), Mon-Fri. GitHub's scheduler is best-effort: runs can start hours late or be
+    # dropped (seen on this repo), so several attempts are spread over the evening at quiet minutes. A repeat run is
+    # harmless (same data, ~3 minutes, free on a public repo); the concurrency group below stops overlaps.
+    - cron: "17 13 * * 1-5"      # 18:47 IST
+    - cron: "47 13 * * 1-5"      # 19:17 IST
+    - cron: "23 14 * * 1-5"      # 19:53 IST
+    - cron: "53 14 * * 1-5"      # 20:23 IST
+    - cron: "41 15 * * 1-5"      # 21:11 IST
+    - cron: "37 16 * * 1-5"      # 22:07 IST
+    - cron: "11 18 * * 1-5"      # 23:41 IST
   workflow_dispatch: {}          # manual run button; no other triggers (no PR / fork input)
 
 concurrency:
