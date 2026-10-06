@@ -332,11 +332,15 @@ function renderSectors(){
   const comp=items.map(it=>{const rs=inc.map(q=>(rk[it.key]||{})[q]);const ok=rs.every(r=>r);return {key:it.key,ok,rs:ok?rs.map(r=>r[0]):null,sum:ok?rs.reduce((a,r)=>a+r[0],0):null}});
   comp.sort((a,b)=>{if(a.ok!==b.ok)return a.ok?-1:1;if(!a.ok)return a.key.localeCompare(b.key);if(a.sum!==b.sum)return a.sum-b.sum;for(let k=0;k<a.rs.length;k++)if(a.rs[k]!==b.rs[k])return a.rs[k]-b.rs[k];return 0});
   comp.forEach((c,k)=>c.rank=c.ok?k+1:null);const cr=Object.fromEntries(comp.map(c=>[c.key,c]));const nOk=comp.filter(c=>c.ok).length;
+  if(S.secSort)sorted.sort((a,b)=>{const x=cr[a.key],y=cr[b.key];if(x.ok!==y.ok)return x.ok?-1:1;return S.secSort==='asc'?x.rank-y.rank:y.rank-x.rank});
+  const arrow=S.secSort==='asc'?' ▲':S.secSort==='desc'?' ▼':' ⇅';
   $('#secH').value=H;
   const cmpCells=k=>{const c=cr[k];return c.ok?`<td style="border-left:2px solid var(--line);text-align:center" title="ranks ${inc.map((q,j)=>q+':'+c.rs[j]).join(', ')}">${c.sum}</td><td class="h" style="background:${heatColor((c.rank-1)/Math.max(nOk-1,1))};font-size:14px">${c.rank}</td>`:`<td style="border-left:2px solid var(--line);text-align:center" class="hint">n/a</td><td class="h" style="background:var(--card2);color:var(--mut)" title="history too short for one of the periods">n/a</td>`};
-  $('#tb-secrank').innerHTML=`<thead><tr><th>Sector</th>${PERIODS.map(q=>`<th class="${q===p?'sel':''}" style="text-align:center">${q}</th>`).join('')}<th style="text-align:center;border-left:2px solid var(--line)">Σ ranks<br><span class="hint">1W→${H}</span></th><th style="text-align:center">Composite<br>rank</th></tr></thead><tbody>`+
+  $('#tb-secrank').innerHTML=`<thead><tr><th>Sector</th>${PERIODS.map(q=>`<th class="${q===p?'sel':''}" style="text-align:center">${q}</th>`).join('')}<th data-sort="comp" title="Click to sort" style="text-align:center;border-left:2px solid var(--line);cursor:pointer">Σ ranks${arrow}<br><span class="hint">1W→${H}</span></th><th data-sort="comp" title="Click to sort ascending / descending" style="text-align:center;cursor:pointer">Composite${arrow}<br>rank</th></tr></thead><tbody>`+
    sorted.map(i=>`<tr class="click" data-l="${esc(i.key)}"><td>${esc(i.key)}</td>${PERIODS.map(q=>{const r=(rk[i.key]||{})[q];return r?`<td class="h" style="background:${heatColor((r[0]-1)/Math.max(r[1]-1,1))}" title="${fmt(i.i.ret[q],2)}">${r[0]}</td>`:'<td class="h">–</td>'}).join('')}${cmpCells(i.key)}</tr>`).join('')+'</tbody>';
-  $('#tb-secrank').onclick=e=>{const tr=e.target.closest('tr[data-l]');if(tr){S.pp.drawer=S.pp.sec;openIndex(tr.dataset.l,true)}};
+  $('#tb-secrank').onclick=e=>{
+    if(e.target.closest('th[data-sort]')){S.secSort=S.secSort==null?'asc':S.secSort==='asc'?'desc':null;return renderSectors()}      // asc -> desc -> default order
+    const tr=e.target.closest('tr[data-l]');if(tr){S.pp.drawer=S.pp.sec;openIndex(tr.dataset.l,true)}};
   // % above SMA
   const k=S.sma;const pct=l=>{const m=members(l).filter(x=>x[k]!=null);return m.length?100*m.filter(x=>x[k]).length/m.length:null};
   const rows=SECT.map(i=>({l:i.label,v:pct(i.label)})).filter(r=>r.v!=null);
