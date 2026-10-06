@@ -147,7 +147,7 @@ footer th{background:none;position:static}
   <section class="tab" id="tab-sectors">
     <div class="grid">
       <div class="card c12"><div class="hd"><div><h2>Sector Performance</h2><div class="sub" id="sec-sub"></div></div><div class="pseg seg" data-k="sec"></div></div><div id="ch-sec" class="chart"></div></div>
-      <div class="card c12"><div class="hd"><div><h2>Sector Momentum Rank</h2><div class="sub">Rank by return across periods (1 = best). Click a sector row.</div></div></div><div class="scroll" style="max-height:none"><table class="heat" id="tb-secrank"></table></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Sector Momentum Rank</h2><div class="sub">Rank by return in each period (1 = best). Click a sector row. The two right-hand columns combine the ranks from 1W up to the horizon you pick: lowest sum = composite rank 1.</div></div><div style="display:flex;gap:8px;align-items:center"><span class="hint">Composite horizon</span><select id="secH"><option value="1M">1M</option><option value="3M">3M</option><option value="6M" selected>6M</option><option value="1Y">1Y</option><option value="3Y">3Y</option><option value="5Y">5Y</option></select><button class="info" data-info="seccomp" title="How is the composite rank worked out?">ⓘ</button></div></div><div class="scroll" style="max-height:none"><table class="heat" id="tb-secrank"></table></div></div>
       <div class="card c12"><div class="hd"><div><h2>% of stocks above moving average (sectors)</h2><div class="sub">Share of each sector's stocks trading above their SMA. Grey bar = Nifty 500.</div></div>
         <div class="seg" id="smaSel"><button data-v="a50" class="on">SMA 50</button><button data-v="a200">SMA 200</button></div></div><div id="ch-sma" class="chart"></div></div>
     </div>
@@ -326,8 +326,16 @@ function renderSectors(){
   bar('#ch-sec',s.map(i=>i.label),s.map(i=>i.ret[p]),from('sec'));
   const items=SECT.map(i=>({key:i.label,i}));const rk=ranks(items,(it,pp)=>it.i.ret[pp]);
   const sorted=items.slice().sort((a,b)=>((rk[a.key]||{})[p]||[99])[0]-((rk[b.key]||{})[p]||[99])[0]);
-  $('#tb-secrank').innerHTML=`<thead><tr><th>Sector</th>${PERIODS.map(q=>`<th class="${q===p?'sel':''}" style="text-align:center">${q}</th>`).join('')}</tr></thead><tbody>`+
-   sorted.map(i=>`<tr class="click" data-l="${esc(i.key)}"><td>${esc(i.key)}</td>${PERIODS.map(q=>{const r=(rk[i.key]||{})[q];return r?`<td class="h" style="background:${heatColor((r[0]-1)/Math.max(r[1]-1,1))}" title="${fmt(i.i.ret[q],2)}">${r[0]}</td>`:'<td class="h">–</td>'}).join('')}</tr>`).join('')+'</tbody>';
+  // composite rank: sum of a sector's ranks from 1W up to the chosen horizon (1D ignored); lowest sum = 1,
+  // ties go to the better short-term rank, and a sector missing any of those periods is "n/a" and ranked last
+  const ORDER=PERIODS.filter(q=>q!=='1D'),H=S.secH||'6M',inc=ORDER.slice(0,ORDER.indexOf(H)+1);
+  const comp=items.map(it=>{const rs=inc.map(q=>(rk[it.key]||{})[q]);const ok=rs.every(r=>r);return {key:it.key,ok,rs:ok?rs.map(r=>r[0]):null,sum:ok?rs.reduce((a,r)=>a+r[0],0):null}});
+  comp.sort((a,b)=>{if(a.ok!==b.ok)return a.ok?-1:1;if(!a.ok)return a.key.localeCompare(b.key);if(a.sum!==b.sum)return a.sum-b.sum;for(let k=0;k<a.rs.length;k++)if(a.rs[k]!==b.rs[k])return a.rs[k]-b.rs[k];return 0});
+  comp.forEach((c,k)=>c.rank=c.ok?k+1:null);const cr=Object.fromEntries(comp.map(c=>[c.key,c]));const nOk=comp.filter(c=>c.ok).length;
+  $('#secH').value=H;
+  const cmpCells=k=>{const c=cr[k];return c.ok?`<td style="border-left:2px solid var(--line);text-align:center" title="ranks ${inc.map((q,j)=>q+':'+c.rs[j]).join(', ')}">${c.sum}</td><td class="h" style="background:${heatColor((c.rank-1)/Math.max(nOk-1,1))};font-size:14px">${c.rank}</td>`:`<td style="border-left:2px solid var(--line);text-align:center" class="hint">n/a</td><td class="h" style="background:var(--card2);color:var(--mut)" title="history too short for one of the periods">n/a</td>`};
+  $('#tb-secrank').innerHTML=`<thead><tr><th>Sector</th>${PERIODS.map(q=>`<th class="${q===p?'sel':''}" style="text-align:center">${q}</th>`).join('')}<th style="text-align:center;border-left:2px solid var(--line)">Σ ranks<br><span class="hint">1W→${H}</span></th><th style="text-align:center">Composite<br>rank</th></tr></thead><tbody>`+
+   sorted.map(i=>`<tr class="click" data-l="${esc(i.key)}"><td>${esc(i.key)}</td>${PERIODS.map(q=>{const r=(rk[i.key]||{})[q];return r?`<td class="h" style="background:${heatColor((r[0]-1)/Math.max(r[1]-1,1))}" title="${fmt(i.i.ret[q],2)}">${r[0]}</td>`:'<td class="h">–</td>'}).join('')}${cmpCells(i.key)}</tr>`).join('')+'</tbody>';
   $('#tb-secrank').onclick=e=>{const tr=e.target.closest('tr[data-l]');if(tr){S.pp.drawer=S.pp.sec;openIndex(tr.dataset.l,true)}};
   // % above SMA
   const k=S.sma;const pct=l=>{const m=members(l).filter(x=>x[k]!=null);return m.length?100*m.filter(x=>x[k]).length/m.length:null};
@@ -559,6 +567,7 @@ const INFO={
   <ul><li><b>Positive bar</b> = net buying, <b>negative bar</b> = net selling.</li><li>The tiles add up the last 5 sessions and the whole period.</li></ul>
   <p><b>What you can get from it.</b> Who is supplying or absorbing money in the market. Sustained FII selling absorbed by DII buying means domestic money is cushioning the market. Both selling together is a stronger warning.</p>
   <p class="hint">Flows are one input among many and do not predict the next day's move on their own. Provisional figures can be revised.</p>`},
+ seccomp:{t:'Composite sector rank',h:`<p><b>What it does.</b> A single rank that blends several time periods, so a sector that is consistently strong ranks above one that only had a good week.</p><ol><li>For each sector, take its separate rank (1 = best return) in every period from <b>1W</b> up to the horizon you choose. For 6M that is 1W, 1M, 3M and 6M. <b>1D is ignored.</b></li><li>Add those ranks together.</li><li>The <b>lowest sum gets composite rank 1</b>, the next lowest rank 2, and so on.</li></ol><p><b>Ties.</b> If two sectors have the same sum, the one with the better <b>short-term</b> rank wins (1W first, then 1M, and so on).</p><p><b>n/a.</b> A sector whose history is too short for one of the periods cannot be scored and is ranked last.</p><p><b>Example.</b> A sector ranked 2, 4, 3 and 1 in 1W, 1M, 3M and 6M has a sum of 10. Hover over the sum to see the individual ranks.</p><p class="hint">3Y and 5Y returns are annualised. A rank is relative to the other sectors, not a forecast. Not investment advice.</p>`},
  trend:{t:'Trend labels explained',h:`<p>These labels describe a stock's price against its <b>moving averages</b>. "DMA" = daily moving average, the simple average of the last N closing prices.</p>
   <ul><li><b>Brutal strength</b> – price is above the 25-DMA, which is above the 50-DMA, which is above the 200-DMA. Short, medium and long trends all point up, in order. The strongest alignment.</li>
   <li><b>Brutal weakness</b> – price is below the 25-DMA, which is below the 50-DMA, which is below the 200-DMA. All trends point down, in order. The weakest alignment.</li>
@@ -700,6 +709,7 @@ function renderOptions(){
       layout({showlegend:false,hovermode:'x unified',xaxis:{tickangle:0,type:'date',range:[vd2[0],vd2.at(-1)]},yaxis:{ticksuffix:''},margin:{b:36,t:10}}),CFG);
   }else{$('#op-vix-sub').textContent='India VIX unavailable.'}
 }
+$('#secH').onchange=()=>{S.secH=$('#secH').value;renderSectors()};
 segBind('#op-sym','sym',()=>{OS.sym=S.sym;renderOptions()});
 segBind('#op-metric','opm',()=>{OS.metric=S.opm;renderOptions()});
 segBind('#op-gexs','opg',()=>{OS.gex=S.opg;renderOptions()});
