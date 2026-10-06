@@ -101,6 +101,17 @@ footer{margin:30px 20px;color:var(--mut);font-size:12px}
 footer table td,footer table th{font-size:12px;padding:3px 10px;cursor:default;border:0}
 footer th{background:none;position:static}
 .warn{color:var(--fii)}
+.info{background:none;border:1px solid var(--line);color:var(--mut);border-radius:50%;width:22px;height:22px;font-size:12px;cursor:pointer;line-height:1;padding:0;margin-left:6px;vertical-align:middle}
+.info:hover{color:var(--txt);border-color:var(--acc)}
+#infoScrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:none}
+#infoBox{position:fixed;z-index:70;left:50%;top:50%;transform:translate(-50%,-50%);width:min(620px,calc(100vw - 28px));max-height:min(82vh,740px);overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:none;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+#infoBox.open{display:block}
+#infoBox .ih{display:flex;align-items:center;gap:10px;margin-bottom:6px}#infoBox h3{margin:0;font-size:17px;flex:1}
+#infoBody p{margin:8px 0}#infoBody ul{margin:6px 0 6px 18px;padding:0}#infoBody li{margin:5px 0}
+.regime{border-radius:10px;padding:10px 14px;margin:8px 0 10px;border:1px solid;line-height:1.55}
+.regime .rt{font-weight:800;letter-spacing:.4px;margin-bottom:2px}
+.regime.pos{background:#0f2a22;border-color:#1f6b52}.regime.pos .rt{color:var(--pos)}
+.regime.neg{background:#2e1416;border-color:#7a3030}.regime.neg .rt{color:var(--neg)}
 </style>
 </head>
 <body>
@@ -145,14 +156,14 @@ footer th{background:none;position:static}
   <section class="tab" id="tab-breadth">
     <div class="grid">
       <div class="card c12"><div class="hd"><div><h2>Advance / Decline</h2><div class="sub" id="ad-sub"></div></div><div class="pseg seg" data-k="ad"></div></div><div id="ch-ad" class="chart" style="height:340px"></div></div>
-      <div class="card c12"><div class="hd"><div><h2>Brutal Strength &amp; Brutal Weakness</h2><div class="sub">Golden cross: 50 &gt; 200 DMA · Brutal strength: Price &gt; 25 &gt; 50 &gt; 200 DMA · Brutal weakness: Price &lt; 25 &lt; 50 &lt; 200 DMA</div></div></div><table id="tb-strength"></table></div>
+      <div class="card c12"><div class="hd"><div><h2>Brutal Strength &amp; Brutal Weakness <button class="info" data-info="trend" title="What do these terms mean?">ⓘ</button></h2><div class="sub">Golden cross: 50 &gt; 200 DMA · Brutal strength: Price &gt; 25 &gt; 50 &gt; 200 DMA · Brutal weakness: Price &lt; 25 &lt; 50 &lt; 200 DMA</div></div></div><table id="tb-strength"></table></div>
       <div class="card c12"><div class="hd"><div><h2>Market Breadth Analysis</h2><div class="sub" id="band-sub"></div></div><span class="hint">Click a band to see its stocks</span></div><div class="scroll" style="max-height:none"><table id="tb-bands"></table></div></div>
     </div>
   </section>
 
   <section class="tab" id="tab-flows">
     <div class="grid">
-      <div class="card c12"><div class="hd"><div><h2>FII / DII Stats</h2><div class="sub">Net cash-market buying (+) / selling (–), ₹ crore, NSE provisional</div></div>
+      <div class="card c12"><div class="hd"><div><h2>FII / DII Stats <button class="info" data-info="flows" title="What is this chart?">ⓘ</button></h2><div class="sub">Net cash-market buying (+) / selling (–), ₹ crore, NSE provisional</div></div>
         <div class="seg" id="flowSel"><button data-v="FII" class="on">FII Cash (Cr.)</button><button data-v="DII">DII Cash (Cr.)</button><button data-v="both">Both</button></div></div>
         <div class="tiles" id="flow-tiles"></div><div id="ch-flow" class="chart" style="height:340px"></div></div>
       <div class="card c12"><div class="hd"><div><h2>Index Valuation</h2><div class="sub" id="val-sub"></div></div>
@@ -179,23 +190,29 @@ footer th{background:none;position:static}
   <section class="tab" id="tab-options">
     <div class="grid" id="opt-body">
       <div class="card c12"><div class="hd"><div><h2>Options &amp; derivatives (end of day)</h2><div class="sub" id="op-sub"></div></div>
-        <div class="seg" id="op-sym"><button data-v="NIFTY" class="on">Nifty 50</button><button data-v="BANKNIFTY">Bank Nifty</button></div></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="hint">Strike range</span><div class="seg rseg" id="op-range" data-key="range"><button data-v="3">±3%</button><button data-v="5" class="on">±5%</button><button data-v="10">±10%</button></div>
+        <div class="seg" id="op-sym"><button data-v="NIFTY" class="on">Nifty 50</button><button data-v="BANKNIFTY">Bank Nifty</button></div></div></div>
         <div class="tiles" id="op-tiles"></div></div>
-      <div class="card c12"><h2>Put-call ratio</h2><div class="sub">Open-interest PCR (all expiries; bold line = 5-day average, which smooths the weekly-expiry swings) and volume PCR. Above 1 = more put than call positions. The faint line is the index level (right axis).</div><div id="op-pcr" class="chart" style="height:340px"></div></div>
-      <div class="card c12"><div class="hd"><div><h2>Open interest by strike</h2><div class="sub" id="op-oi-note"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Put-call ratio <button class="info" data-info="pcr" title="What is this chart?">ⓘ</button></h2><div class="sub" id="op-pcr-sub"></div></div>
+        <div class="seg rseg" id="op-pcr-r" data-key="pcrR"><button data-v="1W">1W</button><button data-v="1M">1M</button><button data-v="3M">3M</button><button data-v="6M">6M</button><button data-v="All" class="on">All</button></div></div>
+        <div id="op-pcr" class="chart" style="height:340px"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Open interest by strike <button class="info" data-info="oi" title="What is this chart?">ⓘ</button></h2><div class="sub" id="op-oi-note"></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><select id="op-exp"></select><div class="seg" id="op-metric"><button data-v="oi" class="on">Open interest</button><button data-v="chg">Change in OI (1 day)</button></div></div></div>
         <div id="op-oi" class="chart" style="height:400px"></div></div>
-      <div class="card c12"><div class="hd"><div><h2>Gamma exposure (GEX) &amp; gamma flip <span class="badge b-n">model estimate</span></h2><div class="sub" id="op-gex-sub"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Gamma exposure (GEX) &amp; gamma flip <span class="badge b-n">model estimate</span> <button class="info" data-info="gex" title="What is this chart?">ⓘ</button></h2><div class="sub" id="op-gex-sub"></div></div>
         <div class="seg" id="op-gexs"><button data-v="nearest" class="on">Nearest expiry</button><button data-v="all">Nearest 4 expiries</button></div></div>
+        <div id="op-gex-regime"></div>
         <div class="tiles" id="op-gex-tiles"></div>
-        <div class="sub">GEX by strike (₹ crore of index exposure dealers would hedge per 1% move). Calls count positive, puts negative.</div><div id="op-gex-k" class="chart" style="height:360px"></div>
-        <div class="sub" style="margin-top:8px">GEX profile: total GEX if the index were at each level — where the line crosses zero is the gamma flip.</div><div id="op-gex-p" class="chart" style="height:300px"></div>
+        <div class="sub">GEX by strike (₹ crore of index exposure dealers would hedge per 1% move). Calls count positive, puts negative. Use "Strike range" at the top to zoom in.</div><div id="op-gex-k" class="chart" style="height:380px"></div>
+        <div class="sub" style="margin-top:8px">GEX profile: total GEX if the index were at each level — where the line crosses zero is the gamma flip. Green zone = positive gamma, red zone = negative gamma.</div><div id="op-gex-p" class="chart" style="height:320px"></div>
         <div class="hint" id="op-gex-note" style="line-height:1.6"></div></div>
-      <div class="card c12"><div class="hd"><div><h2>Who is positioned how (index derivatives)</h2><div class="sub" id="op-part-sub"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Who is positioned how (index derivatives) <button class="info" data-info="part" title="What is this chart?">ⓘ</button></h2><div class="sub" id="op-part-sub"></div></div>
         <div class="seg" id="op-who"><button data-v="FII" class="on">FII</button><button data-v="DII">DII</button><button data-v="Pro">Pro</button><button data-v="Client">Client</button></div></div>
         <div class="scroll" style="max-height:none"><table id="op-part"></table></div><div id="op-partch" class="chart" style="height:320px"></div></div>
-      <div class="card c12"><h2>India VIX</h2><div class="sub" id="op-vix-sub"></div><div id="op-vix" class="chart" style="height:320px"></div></div>
-      <div class="card c12 hint" style="line-height:1.6">Source: NSE end-of-day F&amp;O bhavcopy and participant-wise open interest; India VIX from NSE. Open interest by strike and max pain describe where positions sit — they are not forecasts. Max pain = the expiry level at which option writers' total payout is smallest. Information only, not investment advice.</div>
+      <div class="card c12"><div class="hd"><div><h2>India VIX <button class="info" data-info="vix" title="What is this chart?">ⓘ</button></h2><div class="sub" id="op-vix-sub"></div></div>
+        <div class="seg rseg" id="op-vix-r" data-key="vixR"><button data-v="1W">1W</button><button data-v="1M">1M</button><button data-v="3M">3M</button><button data-v="6M">6M</button><button data-v="1Y" class="on">1Y</button><button data-v="All">3Y</button></div></div>
+        <div id="op-vix" class="chart" style="height:320px"></div></div>
+      <div class="card c12 hint" style="line-height:1.6">Source: NSE end-of-day F&amp;O bhavcopy and participant-wise open interest; India VIX from NSE. Open interest by strike and max pain describe where positions sit — they are not forecasts. Max pain = the expiry level at which option writers' total payout is smallest. Data is end-of-day, so there is one point per day (no 1D chart). Information only, not investment advice.</div>
     </div>
   </section>
 </main>
@@ -203,6 +220,8 @@ footer th{background:none;position:static}
 
 <div id="scrim"></div>
 <aside id="drawer"><div id="dhead"><button class="btn" id="dback" style="display:none">← Back</button><h3 id="dtitle"></h3><button class="btn" id="dwide" title="Toggle full width">⤢ Expand</button><button class="btn" id="dclose">✕ Close</button></div><div id="dbody"></div></aside>
+<div id="infoScrim"></div>
+<div id="infoBox" role="dialog" aria-modal="true" aria-labelledby="infoTitle"><div class="ih"><h3 id="infoTitle"></h3><button class="btn" id="infoClose">✕ Close</button></div><div id="infoBody"></div></div>
 
 <script>/*__PLOTLY__*/</script>
 <script>
@@ -435,7 +454,7 @@ function renderDrawer(){
   const p=PL();
   const cols=[['n','Stock'],['i','Industry'],['p','Price'],['d1','1D'],['r:1W','1W'],['r:1M','1M'],['r:3M','3M'],['r:6M','6M'],['r:1Y','1Y'],['pos','52w range'],['trend','Trend'],['mc','FF Mcap ₹Cr']];
   const sorted=rows;
-  head+=`<div class="hd" style="margin-top:8px"><div><b>Stocks by ${p} return${annNote(p)}</b> <span class="hint">${rows.length>40?'top 20 gainers / bottom 20 laggards':''}</span></div><button class="btn" id="csv">⬇ Export CSV</button></div><div id="d-bar" style="height:300px"></div>`;
+  head+=`<div class="hint" style="margin-top:6px"><button class="info" data-info="trend" title="What do the Trend labels mean?">ⓘ</button> What do the Trend labels (Brutal strength, Golden, Death…) mean?</div><div class="hd" style="margin-top:8px"><div><b>Stocks by ${p} return${annNote(p)}</b> <span class="hint">${rows.length>40?'top 20 gainers / bottom 20 laggards':''}</span></div><button class="btn" id="csv">⬇ Export CSV</button></div><div id="d-bar" style="height:300px"></div>`;
   body.innerHTML=head+`<div class="scroll" style="max-height:none"><table id="d-tbl"><thead><tr>${cols.map(([c,l])=>`<th data-k="${c}" class="${(c==='r:'+p||(p==='1D'&&c==='d1')||(c===k))?'sel':''}">${l}${c===k?(dir<0?' ▼':' ▲'):''}</th>`).join('')}</tr></thead><tbody>`+
     rows.map(s=>`<tr class="click" data-s="${s.s}"><td title="${esc(s.n)}">${esc(s.s)}</td><td>${esc(s.i)}</td><td>${num(s.p,2)}</td><td class="${cls(s.d1)}">${fmt(s.d1,2)}</td>${['1W','1M','3M','6M','1Y'].map(q=>`<td class="${cls(s.r[q])}">${fmt(s.r[q])}</td>`).join('')}<td><span class="pbar"><i style="left:${s.pos??0}%"></i></span></td><td>${trendBadges(s)}</td><td>${num(s.mc)}</td></tr>`).join('')+'</tbody></table></div>';
   renderPsegs();
@@ -457,7 +476,7 @@ function renderStock(v,body){
   const s=STK[v.sym];$('#dtitle').textContent=`${s.n} (${s.s})`;
   const r=PERIODS.filter(q=>q!=='1D').map(q=>[q+(q==='3Y'||q==='5Y'?' ann.':''),fmt(s.r[q],1),cls(s.r[q])]);
   body.innerHTML=tiles([['Price ₹',num(s.p,2)],['1D',fmt(s.d1,2),cls(s.d1)],...r,['52w high',num(s.hi,2)],['52w low',num(s.lo,2)],['SMA 50',num(s.sma50,2)],['SMA 200',num(s.sma200,2)],['FF mcap ₹Cr',num(s.mc)],['Mcap rank',s.rk??'–']])+
-    `<div>${trendBadges(s)} <span class="hint">${esc(s.i)}</span></div><div id="d-px" style="height:340px;margin-top:8px"></div>
+    `<div>${trendBadges(s)} <button class="info" data-info="trend" title="What do these labels mean?">ⓘ</button> <span class="hint">${esc(s.i)}</span></div><div id="d-px" style="height:340px;margin-top:8px"></div>
      <div class="sub hint" style="margin-top:6px">Member of (click to explore):</div><div class="chips">${s.x.map(l=>`<span class="chip" data-l="${esc(l)}">${esc(l)}</span>`).join('')||'<span class="hint">no tracked index</span>'}</div>
      <div class="hint">Market cap basis: ${s.mck==='float'?'free-float (Yahoo float shares × price)':s.mck==='total'?'total market cap (float unavailable)':'n/a'}</div>`;
   body.onclick=e=>{const c=e.target.closest('.chip[data-l]');if(c)openIndex(c.dataset.l,false)};
@@ -512,38 +531,95 @@ function renderRisk(){
 }
 
 
+/* ---------- info pop-outs (the small "i" buttons) ---------- */
+const INFO={
+ pcr:{t:'Put-call ratio (PCR)',h:`<p><b>What it is.</b> Open interest in put options divided by open interest in call options, across all expiries. The dotted line uses traded volume instead. The bold line is a 5-day average, which smooths the jumps that happen around weekly expiries.</p>
+  <p><b>How to read it.</b></p><ul><li><b>Above 1</b> – more puts than calls: traders are hedging or positioned for a fall.</li><li><b>Below 1</b> – more calls than puts: positioning is leaning bullish.</li><li>Nifty's open-interest PCR usually moves between about 0.7 and 1.3.</li></ul>
+  <p><b>What you can get from it.</b> A quick read of crowd positioning and sentiment. Extreme readings are often watched as contrarian warnings (very low = complacency, very high = fear), but this dashboard has not tested that.</p>
+  <p class="hint">PCR is a positioning gauge, not a forecast. Use the buttons above the chart to change the time range. End-of-day data has one point per day, so there is no 1D chart; the 1D change is shown in the subtitle.</p>`},
+ oi:{t:'Open interest by strike',h:`<p><b>What it is.</b> For one expiry, how many call contracts (red) and put contracts (green) are open at each strike price. "Change in OI" shows how many were added or removed today.</p>
+  <ul><li><b>Put wall</b> – the strike with the most put open interest at or below the index. Often watched as possible support.</li><li><b>Call wall</b> – the strike with the most call open interest at or above the index. Often watched as possible resistance.</li><li><b>Max pain</b> – the expiry level at which option writers pay out the least.</li></ul>
+  <p><b>What you can get from it.</b> Where the market's positions are stacked, which strikes may attract price near expiry, and whether new positions are being built today (rising OI) or closed (falling OI).</p>
+  <p class="hint">Walls are positioning, not guarantees – price can and does break through them. All levels are index levels (add the futures basis if you chart futures). Use "Strike range" to zoom in on strikes near the index.</p>`},
+ gex:{t:'Gamma exposure (GEX) and gamma flip',h:`<p><b>What it is.</b> A model of how much index exposure option dealers must buy or sell to stay hedged when the index moves 1%. It is estimated from end-of-day option prices and open interest, assuming dealers are long calls and short puts (the standard convention).</p>
+  <ul><li><b>Positive-gamma regime</b> (spot above the flip) – dealers sell rallies and buy dips. That tends to <b>dampen moves</b> and keep ranges tighter.</li><li><b>Negative-gamma regime</b> (spot below the flip) – dealers buy rallies and sell falls. That tends to <b>amplify moves</b> and raise volatility.</li><li><b>Gamma flip</b> – the index level where total GEX crosses zero, the line between the two regimes.</li><li><b>Call wall / put wall (GEX)</b> – the strikes with the largest positive / negative gamma above / below the index.</li></ul>
+  <p><b>What you can get from it.</b> A view on whether hedging flows are likely to calm or accelerate moves, and which levels matter most for those flows.</p>
+  <p class="hint">This is a model estimate. India's positioning is mixed, so the sign convention may not match reality, and the flip should be read as a rough zone. Near expiry, gamma concentrates close to the index. Not investment advice.</p>`},
+ part:{t:'Who is positioned how',h:`<p><b>What it is.</b> NSE's end-of-day report of open positions by participant type in index futures and options:</p>
+  <ul><li><b>FII</b> – foreign institutions</li><li><b>DII</b> – domestic institutions (mutual funds, insurers…)</li><li><b>Pro</b> – proprietary traders and brokers</li><li><b>Client</b> – retail and other clients</li></ul>
+  <p><b>How to read it.</b> "Net" = long contracts minus short contracts. A big negative index-futures number means that group is net short. "Futures long %" is the long share of that group's futures positions.</p>
+  <p><b>What you can get from it.</b> Who is leaning which way, and how that changes day by day. For example, FIIs heavily net short index futures while retail is net long shows a split between the two groups.</p>
+  <p class="hint">Net figures include hedges and arbitrage positions, so they do not always mean a directional view. They are positions, not forecasts.</p>`},
+ vix:{t:'India VIX',h:`<p><b>What it is.</b> NSE's measure of the volatility the options market expects for Nifty over the next 30 days, as an annualised percentage. It rises when traders pay more for protection.</p>
+  <ul><li><b>Low (about 10–13)</b> – calm, complacent market.</li><li><b>Middle (about 14–18)</b> – normal.</li><li><b>High (20 and above)</b> – fear or stress.</li></ul>
+  <p><b>Rule of thumb.</b> Divide VIX by about 16 to get the expected typical daily move. A VIX of 14.5 implies roughly a 0.9% daily move for Nifty.</p>
+  <p><b>The lines.</b> Faint = daily value, bold = 60-day EMA (the trend), white dashed = 10-day EMA (the recent move). When the dashed line is above the bold one, volatility is trending up.</p>
+  <p class="hint">VIX shows expected movement, not direction. It often spikes when the market falls, but a rising VIX does not by itself predict a fall.</p>`},
+ flows:{t:'FII / DII cash flows',h:`<p><b>What it is.</b> The net amount foreign (FII/FPI) and domestic (DII) institutions bought or sold in the cash equity market each day, in ₹ crore. These are NSE provisional figures.</p>
+  <ul><li><b>Positive bar</b> = net buying, <b>negative bar</b> = net selling.</li><li>The tiles add up the last 5 sessions and the whole period.</li></ul>
+  <p><b>What you can get from it.</b> Who is supplying or absorbing money in the market. Sustained FII selling absorbed by DII buying means domestic money is cushioning the market. Both selling together is a stronger warning.</p>
+  <p class="hint">Flows are one input among many and do not predict the next day's move on their own. Provisional figures can be revised.</p>`},
+ trend:{t:'Trend labels explained',h:`<p>These labels describe a stock's price against its <b>moving averages</b>. "DMA" = daily moving average, the simple average of the last N closing prices.</p>
+  <ul><li><b>Brutal strength</b> – price is above the 25-DMA, which is above the 50-DMA, which is above the 200-DMA. Short, medium and long trends all point up, in order. The strongest alignment.</li>
+  <li><b>Brutal weakness</b> – price is below the 25-DMA, which is below the 50-DMA, which is below the 200-DMA. All trends point down, in order. The weakest alignment.</li>
+  <li><b>Golden</b> – the 50-DMA is above the 200-DMA (medium-term trend above long-term: an uptrend). The "golden cross" is the day it first moves above.</li>
+  <li><b>Death</b> – the 50-DMA is below the 200-DMA (a downtrend). The "death cross" is the day it first moves below.</li>
+  <li><b>&gt;200DMA / &lt;200DMA</b> – the price is above or below its long-term (200-day) average.</li></ul>
+  <p><b>In the Strength &amp; Weakness table</b> each percentage is the share of the index's stocks in that state, so a high "brutal strength" share means broad, strong participation.</p>
+  <p class="hint">These are descriptions of the current trend, not buy or sell signals. Not investment advice.</p>`}
+};
+function openInfo(k){const i=INFO[k];if(!i)return;$('#infoTitle').textContent=i.t;$('#infoBody').innerHTML=i.h;$('#infoBox').classList.add('open');$('#infoScrim').style.display='block'}
+function closeInfo(){$('#infoBox').classList.remove('open');$('#infoScrim').style.display='none'}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-info]');if(b){e.preventDefault();e.stopPropagation();openInfo(b.dataset.info)}});
+$('#infoClose').onclick=closeInfo;$('#infoScrim').onclick=closeInfo;
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeInfo()});
+
 /* ---------- options tab ---------- */
 const SYMNAME={NIFTY:'Nifty 50',BANKNIFTY:'Bank Nifty'};
 const ord=n=>{n=Math.round(n);const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])};
 const emaArr=(a,span=10)=>{const k=2/(span+1);const o=[a[0]];for(let i=1;i<a.length;i++)o.push(a[i]*k+o[i-1]*(1-k));return o};
-const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII',gex:'nearest'};
+const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII',gex:'nearest',range:5,pcrR:'All',vixR:'1Y'};
 const sma5=a=>a.map((_,i)=>{if(i<4)return null;const w=a.slice(i-4,i+1);return w.some(x=>x==null)?null:w.reduce((x,y)=>x+y,0)/5});
+const RNG={'1W':5,'1M':21,'3M':63,'6M':126,'1Y':252,'3Y':756,'All':1e9};
+const lastN=(a,k)=>a.slice(Math.max(a.length-(RNG[k]||1e9),0));
+const sgn=(v,d=2)=>(v>=0?'+':'')+v.toFixed(d);
+document.addEventListener('click',e=>{const b=e.target.closest('.rseg button');if(!b)return;const k=b.parentElement.dataset.key;OS[k]=isNaN(b.dataset.v)?b.dataset.v:+b.dataset.v;renderOptions()});
 function renderOptions(){
   const O=D.options;
   if(!O){$('#opt-body').innerHTML='<div class="card c12">Options data is unavailable in this build (NSE may have blocked the download). The rest of the dashboard is unaffected.</div>';return}
   if(!O.symbols[OS.sym])OS.sym=Object.keys(O.symbols)[0];            // a symbol can be missing if NSE data was partial
   document.querySelectorAll('#op-sym button').forEach(b=>{b.style.display=O.symbols[b.dataset.v]?'':'none';b.classList.toggle('on',b.dataset.v===OS.sym)});
+  document.querySelectorAll('.rseg').forEach(el=>[...el.children].forEach(b=>b.classList.toggle('on',String(OS[el.dataset.key])===b.dataset.v)));
   const sym=OS.sym,blk=O.symbols[sym],h=blk.hist,ch=blk.chain,name=SYMNAME[sym];
+  const rng=OS.range/100,lo=ch.spot*(1-rng),hi=ch.spot*(1+rng),inV=x=>x!=null&&x>=lo&&x<=hi;
   const avg=(a,n)=>{const v=a.slice(-n-1,-1).filter(x=>x!=null);return v.length?mean(v):null};
   const lastOf=a=>a.filter(x=>x!=null).at(-1);
-  $('#op-sub').innerHTML=`F&O data as of ${ch.asof} · ${name} spot ${num(ch.spot,0)}`;
+  $('#op-sub').innerHTML=`F&O data as of ${ch.asof} · ${name} spot ${num(ch.spot,0)} · charts show strikes within ±${OS.range}% of spot`;
   // tiles
   const tile=(k,v,s,cl='')=>`<div class="tile"><div class="k">${k}</div><div class="v ${cl}">${v}</div><div class="k">${s}</div></div>`;
-  const pc=(s)=>{const b=O.symbols[s];if(!b)return '';const p=lastOf(b.hist.pcr_oi),a=avg(b.hist.pcr_oi,20);return tile(`${SYMNAME[s]} PCR (OI)`,p==null?'–':p.toFixed(2),a!=null?`20-day avg ${a.toFixed(2)}`:'')};
+  const pc=(s)=>{const b=O.symbols[s];if(!b)return '';const a=b.hist.pcr_oi,p=lastOf(a),pv=a.filter(x=>x!=null).at(-2),av=avg(a,20);
+    return tile(`${SYMNAME[s]} PCR (OI)`,p==null?'–':p.toFixed(2),`${pv!=null?'1D '+sgn(p-pv)+' · ':''}${av!=null?'20-day avg '+av.toFixed(2):''}`)};
   const e0=ch.expiries[0];
   const vix=O.vix,vl=vix?lastOf(vix.v):null,vp=vix?pctRank(vix.v.filter(x=>x!=null),vl):null,vd=vix&&vix.v.length>1?vl-vix.v.at(-2):null;
   const P=O.part,fii=P&&P.FII,fl=fii?lastOf(fii.fut_net):null,fp=fii&&fii.fut_net.length>1?fii.fut_net.at(-2):null;
   $('#op-tiles').innerHTML=pc('NIFTY')+pc('BANKNIFTY')+
-    (vix?tile('India VIX',vl.toFixed(2),`${ord(vp)} percentile · 1D ${vd>=0?'+':''}${vd.toFixed(2)}`,vd>0?'dn':'up'):'')+
-    (e0?tile(`${name} max pain`,num(e0.pain,0),`expiry ${e0.e} · ${((e0.pain/ch.spot-1)*100>=0?'+':'')}${((e0.pain/ch.spot-1)*100).toFixed(1)}% vs spot`):'')+
+    (vix?tile('India VIX',vl.toFixed(2),`${ord(vp)} percentile · 1D ${sgn(vd)}`,vd>0?'dn':'up'):'')+
+    (e0?tile(`${name} max pain`,num(e0.pain,0),`expiry ${e0.e} · ${sgn((e0.pain/ch.spot-1)*100,1)}% vs spot`):'')+
     (fii?tile('FII net index futures',num(fl,0),fp!=null?`1D change ${fl-fp>=0?'+':''}${num(fl-fp,0)} contracts`:'contracts',fl<0?'dn':'up'):'');
-  // PCR chart
+  // shared chart helpers
   const L=(x,y,n,col,extra={})=>Object.assign({type:'scatter',mode:'lines',x,y,name:n,line:{color:col,width:1.8}},extra);
-  Plotly.react($('#op-pcr'),[L(h.d,h.und,`${name} level`,'#8b97a8',{yaxis:'y2',opacity:.35,line:{color:'#8b97a8',width:1},hovertemplate:'%{y:,.0f}<extra>level</extra>'}),
-    L(h.d,h.pcr_oi,'PCR (open interest)','#f5a623',{opacity:.55,line:{color:'#f5a623',width:1.2}}),
-    L(h.d,sma5(h.pcr_oi),'PCR OI, 5-day average','#f5a623',{line:{color:'#f5a623',width:3}}),
-    L(h.d,h.pcr_vol,'PCR (volume)','#b388ff',{line:{color:'#b388ff',width:1.2,dash:'dot'}})],
-    layout({showlegend:true,legend:{orientation:'h',y:1.12},hovermode:'x unified',xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:'',title:{text:'PCR'}},
+  const vline=(x,col,dash)=>({type:'line',x0:x,x1:x,yref:'paper',y0:0,y1:1,line:{color:col,width:1.5,dash}});
+  const note=(x,txt,col,y,anchor)=>({x,yref:'paper',y,text:txt,showarrow:false,font:{color:col,size:11},xanchor:anchor,bgcolor:'rgba(11,15,22,.65)'});
+  const marks=(list)=>{const m=list.filter(q=>inV(q.x));return {sh:m.map(q=>vline(q.x,q.c,q.d)),an:m.map(q=>note(q.x,`${q.t} ${num(q.x,0)}`,q.c,q.y,q.a))}};
+  // PCR chart (range buttons, 5-day average)
+  const pr=OS.pcrR,pd=lastN(h.d,pr),pu=lastN(h.und,pr),po=lastN(h.pcr_oi,pr),pa=lastN(sma5(h.pcr_oi),pr),pv=lastN(h.pcr_vol,pr);
+  const pl=lastOf(h.pcr_oi),pp=h.pcr_oi.filter(x=>x!=null).at(-2);
+  $('#op-pcr-sub').innerHTML=`${name} · open-interest PCR <b>${pl==null?'–':pl.toFixed(2)}</b>${pp!=null?` (1D ${sgn(pl-pp)})`:''} · 5-day average ${lastOf(sma5(h.pcr_oi))!=null?lastOf(sma5(h.pcr_oi)).toFixed(2):'–'} · above 1 = more puts than calls. Faint grey = index level (right axis).`;
+  Plotly.react($('#op-pcr'),[L(pd,pu,`${name} level`,'#8b97a8',{yaxis:'y2',opacity:.35,line:{color:'#8b97a8',width:1},hovertemplate:'%{y:,.0f}<extra>level</extra>'}),
+    L(pd,po,'PCR (open interest)','#f5a623',{opacity:.55,line:{color:'#f5a623',width:1.2}}),
+    L(pd,pa,'PCR OI, 5-day average','#f5a623',{line:{color:'#f5a623',width:3}}),
+    L(pd,pv,'PCR (volume)','#b388ff',{line:{color:'#b388ff',width:1.2,dash:'dot'}})],
+    layout({showlegend:true,legend:{orientation:'h',y:1.12},hovermode:'x unified',xaxis:{tickangle:0,type:'date',range:[pd[0],pd.at(-1)]},yaxis:{ticksuffix:'',title:{text:'PCR'}},
       yaxis2:{overlaying:'y',side:'right',showgrid:false,ticksuffix:'',title:{text:'index level'}},margin:{b:36,t:10,r:60},
       shapes:[{type:'line',xref:'paper',x0:0,x1:1,y0:1,y1:1,line:{color:'#586174',width:1,dash:'dash'}}]}),CFG);
   // OI by strike
@@ -552,44 +628,54 @@ function renderOptions(){
   if(OS.exp>=ch.expiries.length)OS.exp=0;sel.value=OS.exp;sel.onchange=()=>{OS.exp=+sel.value;renderOptions()};
   const ex=ch.expiries[OS.exp];
   if(ex){
-    const chg=OS.metric==='chg',cy=chg?ex.cchg:ex.coi,py=chg?ex.pchg:ex.poi;
+    const chg=OS.metric==='chg';
     const wall=(ks,ys,side)=>{let b=null;ks.forEach((k,i)=>{if((side==='call'?k>=ch.spot:k<=ch.spot)&&(b==null||ys[i]>ys[b]))b=i});return b==null?null:ks[b]};
     const cw=wall(ex.k,ex.coi,'call'),pw=wall(ex.k,ex.poi,'put');
-    const step=ex.k.length>1?Math.min(...ex.k.slice(1).map((k,i)=>k-ex.k[i])):50;
+    const vi=ex.k.map((k,i)=>i).filter(i=>inV(ex.k[i]));                       // strikes inside the chosen range
+    const K=vi.map(i=>ex.k[i]),cy=vi.map(i=>chg?ex.cchg[i]:ex.coi[i]),py=vi.map(i=>chg?ex.pchg[i]:ex.poi[i]);
+    const step=K.length>1?Math.min(...K.slice(1).map((k,i)=>k-K[i])):50;
     $('#op-oi-note').innerHTML=`${name} · expiry ${ex.e} · PCR ${ex.pcr??'–'} · <b>max pain ${num(ex.pain,0)}</b> · <b>put wall</b> (largest put OI at/below spot) <b class="up">${num(pw,0)}</b> · <b>call wall</b> (largest call OI at/above spot) <b class="dn">${num(cw,0)}</b>`;
-    Plotly.react($('#op-oi'),[{type:'bar',x:ex.k,y:py,name:'Puts',marker:{color:'#2ecc9a'},width:step*.42,offset:-step*.42,hovertemplate:'Strike %{x}<br>Put '+(chg?'ΔOI':'OI')+': <b>%{y:,}</b><extra></extra>'},
-      {type:'bar',x:ex.k,y:cy,name:'Calls',marker:{color:'#ef5b5b'},width:step*.42,offset:0,hovertemplate:'Strike %{x}<br>Call '+(chg?'ΔOI':'OI')+': <b>%{y:,}</b><extra></extra>'}],
-      layout({barmode:'overlay',showlegend:true,legend:{orientation:'h',y:1.1},hovermode:'x unified',xaxis:{tickangle:-55,type:'linear',dtick:step*2,range:[ex.k[0]-step,ex.k.at(-1)+step],automargin:true},yaxis:{ticksuffix:''},margin:{b:70,t:10},
-        shapes:[{type:'line',x0:ch.spot,x1:ch.spot,yref:'paper',y0:0,y1:1,line:{color:'#e6edf3',width:1.5,dash:'dash'}},{type:'line',x0:ex.pain,x1:ex.pain,yref:'paper',y0:0,y1:1,line:{color:'#f5a623',width:1.5,dash:'dot'}},{type:'line',x0:pw,x1:pw,yref:'paper',y0:0,y1:1,line:{color:'#2ecc9a',width:1.2,dash:'dashdot'}},{type:'line',x0:cw,x1:cw,yref:'paper',y0:0,y1:1,line:{color:'#ef5b5b',width:1.2,dash:'dashdot'}}],
-        annotations:[{x:ch.spot,yref:'paper',y:1.0,text:'spot',showarrow:false,font:{color:'#e6edf3',size:11},xanchor:'right'},{x:ex.pain,yref:'paper',y:.93,text:'max pain',showarrow:false,font:{color:'#f5a623',size:11},xanchor:'left'},{x:pw,yref:'paper',y:.86,text:'put wall',showarrow:false,font:{color:'#2ecc9a',size:11},xanchor:'right'},{x:cw,yref:'paper',y:.86,text:'call wall',showarrow:false,font:{color:'#ef5b5b',size:11},xanchor:'left'}]}),CFG);
+    const mk=marks([{x:ch.spot,t:'Spot',c:'#e6edf3',d:'dash',y:1.0,a:'right'},{x:ex.pain,t:'Max pain',c:'#f5a623',d:'dot',y:.93,a:'left'},{x:pw,t:'Put wall',c:'#2ecc9a',d:'dashdot',y:.86,a:'right'},{x:cw,t:'Call wall',c:'#ef5b5b',d:'dashdot',y:.86,a:'left'}]);
+    Plotly.react($('#op-oi'),[{type:'bar',x:K,y:py,name:'Puts',marker:{color:'#2ecc9a'},width:step*.42,offset:-step*.42,hovertemplate:'Strike %{x}<br>Put '+(chg?'ΔOI':'OI')+': <b>%{y:,}</b><extra></extra>'},
+      {type:'bar',x:K,y:cy,name:'Calls',marker:{color:'#ef5b5b'},width:step*.42,offset:0,hovertemplate:'Strike %{x}<br>Call '+(chg?'ΔOI':'OI')+': <b>%{y:,}</b><extra></extra>'}],
+      layout({barmode:'overlay',showlegend:true,legend:{orientation:'h',y:1.1},hovermode:'x unified',xaxis:{tickangle:-55,type:'linear',tickformat:',d',nticks:16,range:[lo,hi],automargin:true},yaxis:{ticksuffix:''},margin:{b:70,t:10},shapes:mk.sh,annotations:mk.an}),CFG);
   }
   // gamma exposure (model estimate)
   const gx=blk.gex;
   if(!gx||!gx[OS.gex]){
-    $('#op-gex-sub').textContent='GEX could not be computed from the latest data (too few priced options).';$('#op-gex-tiles').innerHTML='';
+    $('#op-gex-sub').textContent='GEX could not be computed from the latest data (too few priced options).';$('#op-gex-tiles').innerHTML='';$('#op-gex-regime').innerHTML='';
     Plotly.purge($('#op-gex-k'));Plotly.purge($('#op-gex-p'));$('#op-gex-note').textContent='';
   }else{
     const g=gx[OS.gex],flip=g.flip,dist=flip!=null?(flip/ch.spot-1)*100:null,pos=g.total_cr>0;
     $('#op-gex-sub').innerHTML=`${name} · ${OS.gex==='all'?'nearest 4 expiries':'expiry '+gx.nearest.expiry} · standard convention: dealers long calls, short puts · estimated from end-of-day prices`;
+    $('#op-gex-regime').innerHTML=`<div class="regime ${pos?'pos':'neg'}"><div class="rt">${pos?'▲ POSITIVE GAMMA REGIME':'▼ NEGATIVE GAMMA REGIME'}</div><div>${pos?
+      'Dealers are net long gamma at today\'s level. To stay hedged they <b>sell rallies and buy dips</b>, which tends to <b>dampen moves and keep ranges tighter</b>.':
+      'Dealers are net short gamma at today\'s level. To stay hedged they <b>buy rallies and sell falls</b>, which tends to <b>amplify moves and raise volatility</b>.'}
+      ${flip!=null?` The regime changes at the gamma flip <b>${num(flip,0)}</b> (${sgn(dist,1)}% from spot ${num(ch.spot,0)}): ${pos?'a fall below it would move the market into negative gamma.':'a rise above it would move the market back into positive gamma.'}`:' GEX keeps the same sign across ±10% of spot.'}
+      <span class="hint">Model estimate.</span></div></div>`;
     const ivs=Object.values(gx.atm_iv||{});
-    $('#op-gex-tiles').innerHTML=tile('Net GEX (₹ cr / 1% move)',num(g.total_cr,0),pos?'positive: hedging tends to dampen moves':'negative: hedging tends to amplify moves',pos?'up':'dn')+
-      tile('Gamma flip',flip!=null?num(flip,0):'none within ±10%',flip!=null?`${dist>=0?'+':''}${dist.toFixed(1)}% from spot ${num(ch.spot,0)} · spot is ${ch.spot>=flip?'above':'below'} it`:'GEX keeps one sign across ±10% of spot')+
+    $('#op-gex-tiles').innerHTML=tile('Net GEX (₹ cr / 1% move)',num(g.total_cr,0),pos?'positive gamma: moves tend to be dampened':'negative gamma: moves tend to be amplified',pos?'up':'dn')+
+      tile('Gamma flip',flip!=null?num(flip,0):'none within ±10%',flip!=null?`${sgn(dist,1)}% from spot ${num(ch.spot,0)} · spot is ${ch.spot>=flip?'above':'below'} it`:'GEX keeps one sign across ±10% of spot')+
       tile('Call wall (GEX)',g.walls.call_gex!=null?num(g.walls.call_gex,0):'–','biggest positive-gamma strike above spot')+
       tile('Put wall (GEX)',g.walls.put_gex!=null?num(g.walls.put_gex,0):'–','biggest negative-gamma strike below spot')+
       tile('Model ATM implied vol',ivs.length?ivs[0].toFixed(1)+'%':'–',vix?`India VIX ${vl.toFixed(1)} for comparison`:'');
-    const stepG=g.k.length>1?Math.min(...g.k.slice(1).map((k,i)=>k-g.k[i])):50;
-    const vline=(x,col,dash)=>({type:'line',x0:x,x1:x,yref:'paper',y0:0,y1:1,line:{color:col,width:1.5,dash}});
-    const note=(x,txt,col,y,anchor)=>({x,yref:'paper',y,text:txt,showarrow:false,font:{color:col,size:11},xanchor:anchor});
-    const sh=[vline(ch.spot,'#e6edf3','dash')].concat(flip!=null?[vline(flip,'#f5a623','dot')]:[]);
-    const an=[note(ch.spot,'spot','#e6edf3',1,'right')].concat(flip!=null?[note(flip,'gamma flip','#f5a623',.93,'left')]:[]);
-    Plotly.react($('#op-gex-k'),[{type:'bar',x:g.k,y:g.call,name:'Calls (+)',marker:{color:'#2ecc9a'},hovertemplate:'Strike %{x}<br>Call GEX %{y:,.1f} cr<extra></extra>'},
-      {type:'bar',x:g.k,y:g.put,name:'Puts (−)',marker:{color:'#ef5b5b'},hovertemplate:'Strike %{x}<br>Put GEX %{y:,.1f} cr<extra></extra>'},
-      L(g.k,g.net,'Net','#e6edf3',{line:{color:'#e6edf3',width:1.6},hovertemplate:'Net %{y:,.1f} cr<extra></extra>'})],
-      layout({barmode:'relative',showlegend:true,legend:{orientation:'h',y:1.1},hovermode:'x unified',xaxis:{type:'linear',tickangle:-55,range:[g.k[0]-stepG,g.k.at(-1)+stepG],nticks:14,tickformat:',d',automargin:true},
-        yaxis:{ticksuffix:'',title:{text:'₹ cr per 1% move'}},margin:{b:70,t:10},shapes:sh,annotations:an}),CFG);
+    const vk=g.k.map((k,i)=>i).filter(i=>inV(g.k[i]));
+    const GK=vk.map(i=>g.k[i]),GC=vk.map(i=>g.call[i]),GP=vk.map(i=>g.put[i]),GN=vk.map(i=>g.net[i]);
+    const mk=marks([{x:ch.spot,t:'Spot',c:'#e6edf3',d:'dash',y:1.0,a:'right'},{x:flip,t:'Gamma flip',c:'#f5a623',d:'dot',y:.93,a:'left'},
+      {x:g.walls.call_gex,t:'Call wall',c:'#ff9f6b',d:'dashdot',y:.86,a:'left'},{x:g.walls.put_gex,t:'Put wall',c:'#66c2ff',d:'dashdot',y:.86,a:'right'}]);
+    Plotly.react($('#op-gex-k'),[{type:'bar',x:GK,y:GC,name:'Calls (+)',marker:{color:'#2ecc9a'},hovertemplate:'Strike %{x}<br>Call GEX %{y:,.1f} cr<extra></extra>'},
+      {type:'bar',x:GK,y:GP,name:'Puts (−)',marker:{color:'#ef5b5b'},hovertemplate:'Strike %{x}<br>Put GEX %{y:,.1f} cr<extra></extra>'},
+      L(GK,GN,'Net','#e6edf3',{line:{color:'#e6edf3',width:1.6},hovertemplate:'Net %{y:,.1f} cr<extra></extra>'})],
+      layout({barmode:'relative',showlegend:true,legend:{orientation:'h',y:1.1},hovermode:'x unified',xaxis:{type:'linear',tickangle:-55,range:[lo,hi],nticks:16,tickformat:',d',automargin:true},
+        yaxis:{ticksuffix:'',title:{text:'₹ cr per 1% move'}},margin:{b:70,t:10},shapes:mk.sh,annotations:mk.an}),CFG);
+    // profile: view limited to the strike range, y fitted to what is visible, positive / negative zones shaded
+    const pi=g.profile.s.map((s,i)=>i).filter(i=>inV(g.profile.s[i])),pg=pi.map(i=>g.profile.g[i]),ymin=Math.min(...pg),ymax=Math.max(...pg),pad=(ymax-ymin)*.12||1;
+    const zonePos=(flip!=null)?{type:'rect',x0:flip,x1:hi,yref:'paper',y0:0,y1:1,fillcolor:'rgba(46,204,154,.07)',line:{width:0},layer:'below'}:(pos?{type:'rect',x0:lo,x1:hi,yref:'paper',y0:0,y1:1,fillcolor:'rgba(46,204,154,.07)',line:{width:0},layer:'below'}:null);
+    const zoneNeg=(flip!=null)?{type:'rect',x0:lo,x1:flip,yref:'paper',y0:0,y1:1,fillcolor:'rgba(239,91,91,.07)',line:{width:0},layer:'below'}:(!pos?{type:'rect',x0:lo,x1:hi,yref:'paper',y0:0,y1:1,fillcolor:'rgba(239,91,91,.07)',line:{width:0},layer:'below'}:null);
+    const zl=[];if(zonePos)zl.push(note(hi,'positive-gamma zone ▸ moves dampened','#2ecc9a',.05,'right'));if(zoneNeg)zl.push(note(lo,'◂ negative-gamma zone · moves amplified','#ef5b5b',.05,'left'));
     Plotly.react($('#op-gex-p'),[L(g.profile.s,g.profile.g,'Total GEX','#4cc9f0',{line:{color:'#4cc9f0',width:2.4},hovertemplate:'If index = %{x:,.0f}<br>Total GEX %{y:,.0f} cr<extra></extra>'})],
-      layout({showlegend:false,hovermode:'x unified',xaxis:{type:'linear',tickangle:0,tickformat:',d',title:{text:'hypothetical index level'}},yaxis:{ticksuffix:'',title:{text:'total GEX, ₹ cr per 1% move'},zeroline:true,zerolinecolor:'#8b97a8'},
-        margin:{b:50,t:10},shapes:sh,annotations:an}),CFG);
+      layout({showlegend:false,hovermode:'x unified',xaxis:{type:'linear',tickangle:0,tickformat:',d',range:[lo,hi],title:{text:'hypothetical index level'}},yaxis:{ticksuffix:'',range:[ymin-pad,ymax+pad],title:{text:'total GEX, ₹ cr per 1% move'},zeroline:true,zerolinecolor:'#8b97a8'},
+        margin:{b:50,t:10},shapes:[zoneNeg,zonePos].filter(Boolean).concat(mk.sh),annotations:mk.an.concat(zl)}),CFG);
     $('#op-gex-note').innerHTML='How it is built: implied volatility is backed out of each out-of-the-money option\'s closing price (Black-76, risk-free rate '+(gx.rate*100).toFixed(1)+'%); gamma × open interest × index² × 1%; calls positive, puts negative — the standard assumption that dealers are long calls and short puts. NSE participant data shows Indian positioning is mixed (see the table below), so the sign — and therefore the flip level — is an estimate. Thinly traded strikes make the implied volatility noisy, and this is a closing snapshot that changes every day. Not investment advice.';
   }
   // participants
@@ -598,19 +684,20 @@ function renderOptions(){
     $('#op-part-sub').textContent=`Net = long minus short contracts, index derivatives, as of ${D1.at(-1)}. Negative futures = net short.`;
     const row=w=>{const x=P[w],n=x.fut_net.length;const dl=(a)=>a[n-1]!=null&&a[n-2]!=null?a[n-1]-a[n-2]:null;
       const cell=(a)=>`<td class="${cls(a[n-1])}">${num(a[n-1],0)}</td><td class="${cls(dl(a))}">${dl(a)==null?'–':(dl(a)>=0?'+':'')+num(dl(a),0)}</td>`;
-      return `<tr class="${w===who?'':''}"><td><b>${w}</b></td>${cell(x.fut_net)}${cell(x.call_net)}${cell(x.put_net)}<td>${x.fut_long_pct[n-1]==null?'–':x.fut_long_pct[n-1]+'%'}</td></tr>`};
+      return `<tr><td><b>${w}</b></td>${cell(x.fut_net)}${cell(x.call_net)}${cell(x.put_net)}<td>${x.fut_long_pct[n-1]==null?'–':x.fut_long_pct[n-1]+'%'}</td></tr>`};
     $('#op-part').innerHTML='<thead><tr><th>Participant</th><th>Index futures net</th><th>1D chg</th><th>Index calls net</th><th>1D chg</th><th>Index puts net</th><th>1D chg</th><th>Futures long %</th></tr></thead><tbody>'+['FII','DII','Pro','Client'].map(row).join('')+'</tbody>';
     const x=P[who];
     Plotly.react($('#op-partch'),[L(D1,x.fut_net,'Index futures net','#4cc9f0',{line:{color:'#4cc9f0',width:2.2}}),L(D1,x.call_net,'Index calls net','#ef5b5b',{line:{color:'#ef5b5b',width:1.4}}),L(D1,x.put_net,'Index puts net','#2ecc9a',{line:{color:'#2ecc9a',width:1.4}})],
-      layout({showlegend:true,legend:{orientation:'h',y:1.12},hovermode:'x unified',xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:'',title:{text:who+' net contracts'}},margin:{b:36,t:10},
+      layout({showlegend:true,legend:{orientation:'h',y:1.12},hovermode:'x unified',xaxis:{tickangle:0,type:'date',range:[D1[0],D1.at(-1)]},yaxis:{ticksuffix:'',title:{text:who+' net contracts'}},margin:{b:36,t:10},
         shapes:[{type:'line',xref:'paper',x0:0,x1:1,y0:0,y1:0,line:{color:'#586174',width:1}}]}),CFG);
   }else{$('#op-part').innerHTML='<tbody><tr><td>Participant data unavailable</td></tr></tbody>'}
-  // VIX
+  // VIX (range buttons)
   if(vix){
-    const v=vix.v,d=vix.d,e10=emaArr(v,10),e60=emaArr(v,60),yr=v.slice(-252);
-    $('#op-vix-sub').innerHTML=`India VIX ${vl.toFixed(2)} · ${ord(vp)} percentile of ${d.length} days · 1-year range ${Math.min(...yr).toFixed(1)}–${Math.max(...yr).toFixed(1)} · 10-EMA ${e10.at(-1).toFixed(1)} is ${e10.at(-1)>e60.at(-1)?'<b class="dn">above</b>':'<b class="up">below</b>'} the 60-EMA ${e60.at(-1).toFixed(1)} (${e10.at(-1)>e60.at(-1)?'volatility trend rising':'volatility trend easing'}). Faint = daily, bold = 60-EMA, white dashed = 10-EMA.`;
-    Plotly.react($('#op-vix'),[L(d,v,'India VIX','#b388ff',{opacity:.35,line:{color:'#b388ff',width:1}}),L(d,e10,'10-EMA','#e6edf3',{line:{color:'#e6edf3',width:1.6,dash:'dash'}}),L(d,e60,'60-EMA','#b388ff',{line:{color:'#b388ff',width:2.6}})],
-      layout({showlegend:false,hovermode:'x unified',xaxis:{tickangle:0,type:'date'},yaxis:{ticksuffix:''},margin:{b:36,t:10}}),CFG);
+    const vr=OS.vixR,v=vix.v,d=vix.d,e10f=emaArr(v,10),e60f=emaArr(v,60),yr=v.slice(-252);
+    const vd2=lastN(d,vr),vv=lastN(v,vr),ve10=lastN(e10f,vr),ve60=lastN(e60f,vr);
+    $('#op-vix-sub').innerHTML=`India VIX <b>${vl.toFixed(2)}</b> (1D ${sgn(vd)}) · ${ord(vp)} percentile of ${d.length} days · 1-year range ${Math.min(...yr).toFixed(1)}–${Math.max(...yr).toFixed(1)} · 10-EMA ${e10f.at(-1).toFixed(1)} is ${e10f.at(-1)>e60f.at(-1)?'<b class="dn">above</b>':'<b class="up">below</b>'} the 60-EMA ${e60f.at(-1).toFixed(1)} (${e10f.at(-1)>e60f.at(-1)?'volatility trend rising':'volatility trend easing'}). Faint = daily, bold = 60-EMA, white dashed = 10-EMA.`;
+    Plotly.react($('#op-vix'),[L(vd2,vv,'India VIX','#b388ff',{opacity:.35,line:{color:'#b388ff',width:1}}),L(vd2,ve10,'10-EMA','#e6edf3',{line:{color:'#e6edf3',width:1.6,dash:'dash'}}),L(vd2,ve60,'60-EMA','#b388ff',{line:{color:'#b388ff',width:2.6}})],
+      layout({showlegend:false,hovermode:'x unified',xaxis:{tickangle:0,type:'date',range:[vd2[0],vd2.at(-1)]},yaxis:{ticksuffix:''},margin:{b:36,t:10}}),CFG);
   }else{$('#op-vix-sub').textContent='India VIX unavailable.'}
 }
 segBind('#op-sym','sym',()=>{OS.sym=S.sym;renderOptions()});
