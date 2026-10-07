@@ -290,3 +290,48 @@ def fetch_credit():
         notes.append("MOVE from stored copy")
     ok = move is not None and len(hy) > 0
     return move, hy, ("ok" if ok and notes[0].startswith("HY spread live") else "partial") + " (" + "; ".join(notes) + ")"
+
+
+# ---------- NSE end-of-day price file: fills trading days Yahoo has not published yet ----------
+BHAV_URL = "https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{:%d%m%Y}.csv"
+
+
+def apply_bhav_returns(px, bhav, day):
+    """Add a row for `day`: each stock's last known (adjusted) price x NSE's close / NSE's previous close.
+    Using NSE's own daily return keeps the series on Yahoo's adjusted scale and is correct on corporate-action days."""
+    b = bhav.copy()
+    b.columns = [c.strip() for c in b.columns]
+    b["SERIES"] = b["SERIES"].astype(str).str.strip()
+    b["SYMBOL"] = b["SYMBOL"].astype(str).str.strip()
+    for c in ("PREV_CLOSE", "CLOSE_PRICE"):
+        b[c] = pd.to_numeric(b[c], errors="coerce")
+    b = b[(b["PREV_CLOSE"] > 0) & (b["CLOSE_PRICE"] > 0)]
+    b = b.sort_values("SERIES", key=lambda s: (s != "EQ")).drop_duplicates("SYMBOL")   # prefer the EQ series
+    ratio = (b.set_index("SYMBOL")["CLOSE_PRICE"] / b.set_index("SYMBOL")["PREV_CLOSE"])
+    day = pd.Timestamp(day)
+    last = px[px.index < day].ffill().iloc[-1]
+    new = pd.Series({col: last[col] * ratio[col[:-3]] for col in px.columns if col.endswith(".NS") and col[:-3] in ratio.index and pd.notna(last[col])})
+    if day in px.index:
+        px.loc[day] = px.loc[day].combine_first(new)
+    else:
+        px.loc[day] = new
+        px = px.sort_index()
+    return px, int(len(new))
+
+
+def patch_prices_with_nse(px, trading_dates):
+    """For each NSE trading day newer than the last Yahoo price, fill prices from NSE's official file."""
+    notes = []
+    if px is None or px.empty:
+        return px, notes
+    have = px.dropna(how="all").index.max()
+    for d in sorted(pd.Timestamp(x) for x in trading_dates if pd.Timestamp(x) > have):
+        r = _get(BHAV_URL.format(d))
+        if r is None or r.status_code != 200:
+            continue
+        try:
+            px, n = apply_bhav_returns(px, pd.read_csv(io.StringIO(r.text)), d)
+            notes.append(f"{d:%d-%b} from NSE price file ({n} stocks)")
+        except Exception:
+            continue
+    return px, notes

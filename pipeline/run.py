@@ -19,6 +19,12 @@ def main(cached=False):
         mc = json.loads((DATA / "mcap.json").read_text()); status["Market caps"] = "cached"
     else:
         px, status["Stock prices"] = fetch.fetch_stock_prices(syms)
+        idx_dates = sorted(allx["date"].dt.normalize().unique()) if allx is not None else []
+        px, notes = fetch.patch_prices_with_nse(px, idx_dates)          # Yahoo publishes NSE closes late; NSE's own file does not
+        if notes:
+            status["Stock prices"] += "; " + ", ".join(notes)
+        elif idx_dates and px is not None and px.dropna(how="all").index.max() < pd.Timestamp(idx_dates[-1]):
+            status["Stock prices"] = "stale: prices end " + f"{px.dropna(how='all').index.max():%d-%b-%Y}" + " but NSE index data is newer"
         mc, status["Market caps"] = fetch.fetch_float_mcap(syms, px)
     gcache = DATA / "global.pkl"
     gpx, status["Global indices + FX"] = (pd.read_pickle(gcache), "cached") if cached and gcache.exists() else fetch.fetch_global()
