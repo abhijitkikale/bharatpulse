@@ -46,6 +46,7 @@ jobs:
             data/feps.json
             data/fo
             data/fo_part
+            data/bhav
             data/global.pkl
           key: data-${{ github.run_id }}
           restore-keys: data-

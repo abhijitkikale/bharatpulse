@@ -127,6 +127,7 @@ footer th{background:none;position:static}
   <button data-tab="overview" class="on">Overview</button>
   <button data-tab="sectors">Sectors</button>
   <button data-tab="breadth">Breadth &amp; Trend</button>
+  <button data-tab="activity">Market Activity</button>
   <button data-tab="flows">Flows &amp; Valuation</button>
   <button data-tab="risk">Risk Monitor</button>
   <button data-tab="options">Options</button>
@@ -161,6 +162,20 @@ footer th{background:none;position:static}
     </div>
   </section>
 
+  <section class="tab" id="tab-activity">
+    <div class="grid" id="act-body">
+      <div class="card c12"><div class="hd"><div><h2>Whole-market breadth <button class="info" data-info="breadth" title="What is this chart?">ⓘ</button></h2><div class="sub" id="act-b-sub"></div></div>
+        <div class="seg aseg" data-key="range"><button data-v="1W">1W</button><button data-v="1M">1M</button><button data-v="3M">3M</button><button data-v="All" class="on">All</button></div></div>
+        <div class="tiles" id="act-b-tiles"></div><div id="act-b" class="chart" style="height:340px"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Volume leaders <button class="info" data-info="volume" title="What is this table?">ⓘ</button></h2><div class="sub" id="act-l-sub"></div></div>
+        <div class="seg aseg" data-key="lead"><button data-v="turnover" class="on">By turnover</button><button data-v="volume">By volume</button></div></div>
+        <div class="scroll" style="max-height:none"><table id="act-l"></table></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Volume spikes <button class="info" data-info="volume" title="What is this table?">ⓘ</button></h2><div class="sub" id="act-s-sub"></div></div>
+        <div class="seg aseg" data-key="spk"><button data-v="all" class="on">All</button><button data-v="up">Up days</button><button data-v="down">Down days</button></div></div>
+        <div class="scroll" style="max-height:none"><table id="act-s"></table></div></div>
+      <div class="card c12 hint" style="line-height:1.6">Source: NSE end-of-day price and volume file for every main-board stock (SME, bonds and call-auction series are excluded). Stocks in this dashboard's 750-stock list open their detail view when clicked. Volume describes activity, not direction or intent. Information only, not investment advice.</div>
+    </div>
+  </section>
   <section class="tab" id="tab-flows">
     <div class="grid">
       <div class="card c12"><div class="hd"><div><h2>FII / DII Stats <button class="info" data-info="flows" title="What is this chart?">ⓘ</button></h2><div class="sub">Net cash-market buying (+) / selling (–), ₹ crore, NSE provisional</div></div>
@@ -170,7 +185,7 @@ footer th{background:none;position:static}
         <div style="display:flex;gap:8px;flex-wrap:wrap"><select id="peIdx"></select>
         <div class="seg" id="peMetric"><button data-v="pe" class="on">P/E</button><button data-v="fpe" title="Forward P/E from analyst consensus">Fwd P/E</button><button data-v="pb">P/B</button><button data-v="dy">Div Yield</button></div>
         <div class="seg" id="peRange"><button data-v="1">1Y</button><button data-v="3">3Y</button><button data-v="5">5Y</button><button data-v="99" class="on">All</button></div></div></div>
-        <div id="ch-pe" class="chart"></div></div>
+        <div class="tiles" id="val-tiles" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))"></div><div id="ch-pe" class="chart"></div></div>
     </div>
   </section>
 
@@ -395,6 +410,7 @@ function renderFlows(){
 function renderVal(){
   const sel=$('#peIdx');if(!sel.options.length){sel.innerHTML=D.indices.filter(i=>i.pes.pe.some(v=>v!=null)).map(i=>`<option>${esc(i.label)}</option>`).join('');sel.value=S.peIdx;sel.onchange=()=>{S.peIdx=sel.value;renderVal()}}
   const ix=IDX[S.peIdx],m=S.peMetric,name={pe:'P/E',pb:'P/B',dy:'Dividend yield'}[m];
+  renderValTiles(ix);
   if(m==='fpe')return renderFwd(ix);
   const all=ix.pes.d.map((d,i)=>[d,ix.pes[m][i]]).filter(r=>r[1]!=null);
   const vals=all.map(r=>r[1]),mean=vals.reduce((a,b)=>a+b,0)/vals.length,sd=Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0)/vals.length);
@@ -408,6 +424,18 @@ function renderVal(){
     {type:'scatter',mode:'markers+text',x:[x.at(-1)],y:[cur],marker:{color:'#ef5b5b',size:11,line:{color:'#fff',width:1.5}},text:[cur.toFixed(1)],textposition:'top left',hoverinfo:'skip'}],
     layout({xaxis:{tickangle:0,type:'date',range:[x[0],x.at(-1)]},yaxis:{ticksuffix:''},margin:{b:50}}),CFG)}
 
+function renderValTiles(ix){
+  const host=$('#val-tiles');if(!host)return;
+  let cut=null;const lastD=ix.pes.d.at(-1);
+  if(S.peRange!=='99'){const d=new Date(lastD);d.setFullYear(d.getFullYear()-(+S.peRange));cut=d.toISOString().slice(0,10)}
+  const dt=d=>new Date(d).toLocaleDateString('en-GB',{month:'short',year:'numeric'});
+  const mk=(key,label,unit)=>{const pts=ix.pes.d.map((d,i)=>[d,ix.pes[key][i]]).filter(r=>r[1]!=null&&(!cut||r[0]>=cut));
+    if(pts.length<5)return '';
+    const v=pts.map(r=>r[1]),cur=v.at(-1),pct=100*v.filter(x=>x<cur).length/v.length,srt=v.slice().sort((a,b)=>a-b),med=srt[Math.floor(srt.length/2)];
+    const mn=pts.reduce((a,b)=>b[1]<a[1]?b:a),mx=pts.reduce((a,b)=>b[1]>a[1]?b:a),f=x=>x.toFixed(2)+unit;
+    return `<div class="tile"><div class="k">${label} · ${dt(pts[0][0])} → ${dt(pts.at(-1)[0])}</div><div class="v">${f(cur)}</div><div class="k">${ord(pct)} percentile · median ${f(med)}</div><div class="k">low ${f(mn[1])} (${dt(mn[0])}) · high ${f(mx[1])} (${dt(mx[0])})</div></div>`};
+  host.innerHTML=mk('pe','P/E','')+mk('pb','P/B','')+mk('dy','Dividend yield','%')+`<div class="tile" style="display:flex;align-items:center"><button class="info" data-info="valstats" title="What is the percentile?">ⓘ</button><span class="hint" style="margin-left:6px">What does the percentile mean?</span></div>`;
+}
 function renderFwd(ix){
   const f=ix.fpe;
   if(!f){$('#val-sub').textContent=`Forward P/E is not available for ${ix.label} (too few stocks with analyst estimates).`;Plotly.react($('#ch-pe'),[],layout({}),CFG);return}
@@ -464,16 +492,16 @@ function renderDrawer(){
   const k=S.sort.k,dir=S.sort.dir;
   rows.sort((a,b)=>{const x=getv(a,k),y=getv(b,k);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return -1;return (typeof x==='string'?x.localeCompare(y):x-y)*dir});
   const p=PL();
-  const cols=[['n','Stock'],['i','Industry'],['p','Price'],['d1','1D'],['r:1W','1W'],['r:1M','1M'],['r:3M','3M'],['r:6M','6M'],['r:1Y','1Y'],['pos','52w range'],['trend','Trend'],['mc','FF Mcap ₹Cr']];
+  const cols=[['n','Stock'],['i','Industry'],['p','Price'],['d1','1D'],['r:1W','1W'],['r:1M','1M'],['r:3M','3M'],['r:6M','6M'],['r:1Y','1Y'],['pos','52w range'],['trend','Trend'],['beta','Beta (1Y)'],['mc','FF Mcap ₹Cr']];
   const sorted=rows;
   head+=`<div class="hint" style="margin-top:6px"><button class="info" data-info="trend" title="What do the Trend labels mean?">ⓘ</button> What do the Trend labels (Brutal strength, Golden, Death…) mean?</div><div class="hd" style="margin-top:8px"><div><b>Stocks by ${p} return${annNote(p)}</b> <span class="hint">${rows.length>40?'top 20 gainers / bottom 20 laggards':''}</span></div><button class="btn" id="csv">⬇ Export CSV</button></div><div id="d-bar" style="height:300px"></div>`;
   body.innerHTML=head+`<div class="scroll" style="max-height:none"><table id="d-tbl"><thead><tr>${cols.map(([c,l])=>`<th data-k="${c}" class="${(c==='r:'+p||(p==='1D'&&c==='d1')||(c===k))?'sel':''}">${l}${c===k?(dir<0?' ▼':' ▲'):''}</th>`).join('')}</tr></thead><tbody>`+
-    rows.map(s=>`<tr class="click" data-s="${s.s}"><td title="${esc(s.n)}">${esc(s.s)}</td><td>${esc(s.i)}</td><td>${num(s.p,2)}</td><td class="${cls(s.d1)}">${fmt(s.d1,2)}</td>${['1W','1M','3M','6M','1Y'].map(q=>`<td class="${cls(s.r[q])}">${fmt(s.r[q])}</td>`).join('')}<td><span class="pbar"><i style="left:${s.pos??0}%"></i></span></td><td>${trendBadges(s)}</td><td>${num(s.mc)}</td></tr>`).join('')+'</tbody></table></div>';
+    rows.map(s=>`<tr class="click" data-s="${s.s}"><td title="${esc(s.n)}">${esc(s.s)}</td><td>${esc(s.i)}</td><td>${num(s.p,2)}</td><td class="${cls(s.d1)}">${fmt(s.d1,2)}</td>${['1W','1M','3M','6M','1Y'].map(q=>`<td class="${cls(s.r[q])}">${fmt(s.r[q])}</td>`).join('')}<td><span class="pbar"><i style="left:${s.pos??0}%"></i></span></td><td>${trendBadges(s)}</td><td>${s.beta??'–'}</td><td>${num(s.mc)}</td></tr>`).join('')+'</tbody></table></div>';
   renderPsegs();
   $('#d-tbl').onclick=e=>{const th=e.target.closest('th');if(th){const nk=th.dataset.k;S.sort=S.sort.k===nk?{k:nk,dir:-S.sort.dir}:{k:nk,dir:nk==='n'||nk==='i'?1:-1};return renderDrawer()}
     const tr=e.target.closest('tr[data-s]');if(tr)openStock(tr.dataset.s,false)};
-  $('#csv').onclick=()=>{const h=['Symbol','Name','Industry','Price','1D%','1W%','1M%','3M%','6M%','1Y%','3Y% ann','5Y% ann','52w pos %','SMA50','SMA200','Golden cross','FF Mcap Cr'];
-    const L=[h.join(',')].concat(rows.map(s=>[s.s,'"'+s.n.replace(/"/g,'""')+'"','"'+s.i+'"',s.p,s.d1,s.r['1W'],s.r['1M'],s.r['3M'],s.r['6M'],s.r['1Y'],s.r['3Y'],s.r['5Y'],s.pos,s.sma50,s.sma200,s.gc,s.mc].map(x=>csvSafe(x??'')).join(',')));
+  $('#csv').onclick=()=>{const h=['Symbol','Name','Industry','Price','1D%','1W%','1M%','3M%','6M%','1Y%','3Y% ann','5Y% ann','52w pos %','SMA50','SMA200','Golden cross','Beta 1Y','Corr 1Y','FF Mcap Cr'];
+    const L=[h.join(',')].concat(rows.map(s=>[s.s,'"'+s.n.replace(/"/g,'""')+'"','"'+s.i+'"',s.p,s.d1,s.r['1W'],s.r['1M'],s.r['3M'],s.r['6M'],s.r['1Y'],s.r['3Y'],s.r['5Y'],s.pos,s.sma50,s.sma200,s.gc,s.beta,s.corr,s.mc].map(x=>csvSafe(x??'')).join(',')));
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([L.join('\n')],{type:'text/csv'}));a.download=title.replace(/\W+/g,'_')+'.csv';a.click()};
   // bar chart of stocks
   const withR=rows.filter(s=>s.r[p]!=null).sort((a,b)=>b.r[p]-a.r[p]);
@@ -487,7 +515,7 @@ function renderDrawer(){
 function renderStock(v,body){
   const s=STK[v.sym];$('#dtitle').textContent=`${s.n} (${s.s})`;
   const r=PERIODS.filter(q=>q!=='1D').map(q=>[q+(q==='3Y'||q==='5Y'?' ann.':''),fmt(s.r[q],1),cls(s.r[q])]);
-  body.innerHTML=tiles([['Price ₹',num(s.p,2)],['1D',fmt(s.d1,2),cls(s.d1)],...r,['52w high',num(s.hi,2)],['52w low',num(s.lo,2)],['SMA 50',num(s.sma50,2)],['SMA 200',num(s.sma200,2)],['FF mcap ₹Cr',num(s.mc)],['Mcap rank',s.rk??'–']])+
+  body.innerHTML=tiles([['Price ₹',num(s.p,2)],['1D',fmt(s.d1,2),cls(s.d1)],...r,['52w high',num(s.hi,2)],['52w low',num(s.lo,2)],['SMA 50',num(s.sma50,2)],['SMA 200',num(s.sma200,2)],['FF mcap ₹Cr',num(s.mc)],['Mcap rank',s.rk??'–'],['Beta (1Y)',s.beta??'–'],['Correlation (1Y)',s.corr??'–'],['Volatility (1Y)',s.vol!=null?s.vol+'%':'–'],['Max drawdown (1Y)',s.mdd!=null?s.mdd+'%':'–',s.mdd!=null?'dn':''],['vs Nifty 50 (1Y)',(s.r['1Y']!=null&&IDX['Nifty 50']&&IDX['Nifty 50'].ret['1Y']!=null)?fmt(s.r['1Y']-IDX['Nifty 50'].ret['1Y'],1).replace('%',' pts'):'–']])+`<div class="hint" style="margin:-2px 0 8px"><button class="info" data-info="beta" title="What do these mean?">ⓘ</button> Beta, correlation, volatility and drawdown are measured against the Nifty 50 over the last year.</div>`+
     `<div>${trendBadges(s)} <button class="info" data-info="trend" title="What do these labels mean?">ⓘ</button> <span class="hint">${esc(s.i)}</span></div><div id="d-px" style="height:340px;margin-top:8px"></div>
      <div class="sub hint" style="margin-top:6px">Member of (click to explore):</div><div class="chips">${s.x.map(l=>`<span class="chip" data-l="${esc(l)}">${esc(l)}</span>`).join('')||'<span class="hint">no tracked index</span>'}</div>
      <div class="hint">Market cap basis: ${s.mck==='float'?'free-float (Yahoo float shares × price)':s.mck==='total'?'total market cap (float unavailable)':'n/a'}</div>`;
@@ -572,6 +600,24 @@ const INFO={
   <p><b>What you can get from it.</b> Who is supplying or absorbing money in the market. Sustained FII selling absorbed by DII buying means domestic money is cushioning the market. Both selling together is a stronger warning.</p>
   <p class="hint">Flows are one input among many and do not predict the next day's move on their own. Provisional figures can be revised.</p>`},
  seccomp:{t:'Composite sector rank',h:`<p><b>What it does.</b> A single rank that blends several time periods, so a sector that is consistently strong ranks above one that only had a good week.</p><ol><li>For each sector, take its separate rank (1 = best return) in every period from <b>1W</b> up to the horizon you choose. For 6M that is 1W, 1M, 3M and 6M. <b>1D is ignored.</b></li><li>Add those ranks together.</li><li>The <b>lowest sum gets composite rank 1</b>, the next lowest rank 2, and so on.</li></ol><p><b>Ties.</b> If two sectors have the same sum, the one with the better <b>short-term</b> rank wins (1W first, then 1M, and so on).</p><p><b>n/a.</b> A sector whose history is too short for one of the periods cannot be scored and is ranked last.</p><p><b>Example.</b> A sector ranked 2, 4, 3 and 1 in 1W, 1M, 3M and 6M has a sum of 10. Hover over the sum to see the individual ranks.</p><p class="hint">3Y and 5Y returns are annualised. A rank is relative to the other sectors, not a forecast. Not investment advice.</p>`},
+ breadth:{t:'Whole-market breadth',h:`<p><b>What it is.</b> Every main-board stock listed on NSE (about 2,000 or more; SME, bonds and call-auction series are excluded) is compared with its previous close and counted as an advance, a decline or unchanged.</p>
+  <ul><li><b>Advance / decline ratio</b> = advances ÷ declines. Above about 1.5 is a broad rally, below about 0.67 a broad sell-off, and near 1 a mixed day.</li><li><b>Turnover</b> is the total rupee value traded, shown against its 20-day average to gauge participation.</li></ul>
+  <p><b>What you can get from it.</b> Whether an index move is broad or narrow. A rising Nifty with more decliners than advancers means a few large stocks are carrying the index. Broad advances on rising turnover show wider participation.</p>
+  <p class="hint">Every stock counts equally, including thinly traded small caps. One day is a description, not a forecast. Not investment advice.</p>`},
+ volume:{t:'Volume leaders and volume spikes',h:`<p><b>Volume leaders.</b> The most actively traded stocks of the day.</p>
+  <ul><li><b>By turnover</b> – rupee value traded (price × shares). Shows where the money is.</li><li><b>By volume</b> – number of shares traded. This favours low-priced stocks.</li></ul>
+  <p><b>Volume spikes.</b> Stocks whose volume today is at least 2× their previous 20-day average and whose turnover is ₹5 crore or more (this filters out illiquid noise). The "× avg" column is that multiple.</p>
+  <p><b>Delivery %.</b> The share of traded quantity that was actually delivered rather than squared off the same day. A higher figure points to investment-type buying or selling.</p>
+  <p><b>What you can get from it.</b> Unusual volume often goes with news, results, block deals or institutional activity. A big price move on a volume spike carries more weight than the same move on thin volume.</p>
+  <p class="hint">Volume does not say who traded or why, so check the news. Splits and bonus issues can distort volume comparisons. Not investment advice.</p>`},
+ beta:{t:'Beta, correlation, volatility and drawdown',h:`<p>All four are measured over the last year using daily returns, against the <b>Nifty 50</b>.</p>
+  <ul><li><b>Beta</b> – how much the stock tends to move when the Nifty moves 1%. Beta 1.0 moves with the index, 1.5 moves about one and a half times as much, and below 1 moves less.</li><li><b>Correlation</b> – from −1 to +1: how closely it follows the index. Close to 1 means it tracks the market; low means it moves on its own news.</li><li><b>Volatility</b> – how much its daily returns vary, annualised. The Nifty itself is typically 12–15%.</li><li><b>Max drawdown</b> – the worst peak-to-trough fall in the last year.</li><li><b>vs Nifty 50 (1Y)</b> – the stock's 1-year return minus the Nifty's, in percentage points.</li></ul>
+  <p><b>What you can get from it.</b> A quick read of how risky a stock is relative to the market, and whether it is a market-driven or a stock-specific story.</p>
+  <p class="hint">Beta changes over time and is unreliable when correlation is low. Past behaviour does not predict the future. Not investment advice.</p>`},
+ valstats:{t:'Valuation percentile',h:`<p><b>Percentile.</b> The share of days in the chosen window when the ratio was <i>lower</i> than today's. The 50th percentile is the median; the 90th means the ratio was lower on 90% of days.</p>
+  <ul><li>The window follows the range buttons above the chart (1Y, 3Y, 5Y, All). NSE history here starts in September 2020, so "All" is about six years, not a long-term average.</li><li>For <b>P/E and P/B</b>, a high percentile means expensive compared with its own recent history.</li><li>For <b>dividend yield</b>, a high percentile means a higher-than-usual yield, which usually goes with cheaper prices.</li></ul>
+  <p><b>What you can get from it.</b> Where today's valuation sits against its own history, with the low, high and median for the same window.</p>
+  <p class="hint">Valuation can stay high or low for years, and these are trailing figures. Sector indices are sampled weekly. Not investment advice.</p>`},
  trend:{t:'Trend labels explained',h:`<p>These labels describe a stock's price against its <b>moving averages</b>. "DMA" = daily moving average, the simple average of the last N closing prices.</p>
   <ul><li><b>Brutal strength</b> – price is above the 25-DMA, which is above the 50-DMA, which is above the 200-DMA. Short, medium and long trends all point up, in order. The strongest alignment.</li>
   <li><b>Brutal weakness</b> – price is below the 25-DMA, which is below the 50-DMA, which is below the 200-DMA. All trends point down, in order. The weakest alignment.</li>
@@ -726,11 +772,46 @@ segBind('#op-metric','opm',()=>{OS.metric=S.opm;renderOptions()});
 segBind('#op-gexs','opg',()=>{OS.gex=S.opg;renderOptions()});
 segBind('#op-who','opw',()=>{OS.who=S.opw;renderOptions()});
 
+/* ---------- market activity: whole-market breadth, volume leaders, volume spikes ---------- */
+const AS={range:'All',lead:'turnover',spk:'all'};
+document.addEventListener('click',e=>{const b=e.target.closest('.aseg button');if(!b)return;AS[b.parentElement.dataset.key]=b.dataset.v;renderActivity()});
+const lakh=v=>v==null?'–':(v/1e5).toFixed(v>=1e7?0:1)+' L';
+function actTable(rows){
+  return '<thead><tr><th>#</th><th>Stock</th><th>Price ₹</th><th>Change</th><th>Volume</th><th>20-day avg</th><th>× avg</th><th>Turnover ₹cr</th><th>Delivery</th></tr></thead><tbody>'+
+    rows.map((r,i)=>{const k=STK[r.s];
+      return `<tr class="${k?'click':''}" ${k?`data-s="${esc(r.s)}"`:''}><td>${i+1}</td><td><b>${esc(r.s)}</b>${k?` <span class="hint">${esc(k.n)}</span>`:''}</td><td>${num(r.p,2)}</td><td class="${cls(r.chg)}">${fmt(r.chg,2)}</td><td>${lakh(r.vol)}</td><td>${lakh(r.avg)}</td><td class="${r.x>=2?'up':''}">${r.x==null?'–':r.x.toFixed(1)+'×'}</td><td>${num(r.tcr,1)}</td><td>${r.dp==null?'–':r.dp+'%'}</td></tr>`}).join('')+'</tbody>'}
+function renderActivity(){
+  const A=D.activity;
+  if(!A){$('#act-body').innerHTML='<div class="card c12">Market activity data is unavailable in this build (the NSE price file could not be downloaded). The rest of the dashboard is unaffected.</div>';return}
+  document.querySelectorAll('.aseg').forEach(el=>[...el.children].forEach(b=>b.classList.toggle('on',AS[el.dataset.key]===b.dataset.v)));
+  const B=A.breadth,n=B.d.length,adv=B.adv[n-1],dec=B.dec[n-1],unch=B.unch[n-1],ratio=dec?adv/dec:null;
+  const prevT=B.turn.slice(Math.max(0,n-21),n-1).filter(x=>x!=null),avgT=prevT.length?mean(prevT):null,tdy=B.turn[n-1];
+  const reading=ratio==null?'':ratio>=1.5?'broad advance':ratio<=0.67?'broad decline':'mixed day';
+  const tile=(k,v,s,cl='')=>`<div class="tile"><div class="k">${k}</div><div class="v ${cl}">${v}</div><div class="k">${s}</div></div>`;
+  $('#act-b-sub').innerHTML=`${A.asof} · ${A.n_stocks.toLocaleString('en-IN')} main-board stocks · compared with the previous close · ${n} trading days of history`;
+  $('#act-b-tiles').innerHTML=tile('Advances',num(adv,0),`${(100*adv/A.n_stocks).toFixed(0)}% of stocks`,'up')+tile('Declines',num(dec,0),`${(100*dec/A.n_stocks).toFixed(0)}% of stocks`,'dn')+tile('Unchanged',num(unch,0),'')+
+    tile('Advance / decline ratio',ratio==null?'–':ratio.toFixed(2),reading,ratio>=1.5?'up':ratio<=0.67?'dn':'')+tile('Market turnover',`₹${num(tdy,0)} cr`,avgT?`${(100*(tdy/avgT-1)>=0?'+':'')}${(100*(tdy/avgT-1)).toFixed(0)}% vs 20-day average`:'');
+  const dd=lastN(B.d,AS.range),ad=lastN(B.adv,AS.range),de=lastN(B.dec,AS.range),un=lastN(B.unch,AS.range),rt=ad.map((a,i)=>de[i]?+(a/de[i]).toFixed(2):null);
+  Plotly.react($('#act-b'),[{type:'bar',x:dd,y:ad,name:'Advances',marker:{color:'#2aa88a'},hovertemplate:'%{y:,} advances<extra></extra>'},{type:'bar',x:dd,y:de,name:'Declines',marker:{color:'#cf3a3a'},hovertemplate:'%{y:,} declines<extra></extra>'},
+    {type:'bar',x:dd,y:un,name:'Unchanged',marker:{color:'#556070'},hovertemplate:'%{y:,} unchanged<extra></extra>'},
+    {type:'scatter',mode:'lines',x:dd,y:rt,name:'A/D ratio (right)',yaxis:'y2',line:{color:'#f5a623',width:2},hovertemplate:'A/D ratio %{y:.2f}<extra></extra>'}],
+    layout({barmode:'stack',showlegend:true,legend:{orientation:'h',y:1.12},hovermode:'x unified',xaxis:{type:'date',tickangle:0},yaxis:{ticksuffix:'',title:{text:'stocks'}},
+      yaxis2:{overlaying:'y',side:'right',showgrid:false,ticksuffix:'',title:{text:'advance / decline ratio'}},margin:{b:36,t:10,r:60},
+      shapes:[{type:'line',xref:'paper',yref:'y2',x0:0,x1:1,y0:1,y1:1,line:{color:'#586174',width:1,dash:'dash'}}]}),CFG);
+  const rows=A.leaders[AS.lead];
+  $('#act-l-sub').innerHTML=`${A.asof} · top ${rows.length} main-board stocks by ${AS.lead==='turnover'?'turnover (₹ crore traded)':'shares traded'} · "× avg" is today's volume against the previous ${A.params.avg_days}-day average`;
+  $('#act-l').innerHTML=actTable(rows);
+  const sp=A.spikes.filter(r=>AS.spk==='all'||(AS.spk==='up'?r.chg>0:r.chg<0));
+  $('#act-s-sub').innerHTML=`${A.asof} · volume at least ${A.params.spike_x}× the previous ${A.params.avg_days}-day average and turnover of ₹${A.params.min_turnover_cr} crore or more · ${sp.length} stocks, strongest first`;
+  $('#act-s').innerHTML=sp.length?actTable(sp):'<tbody><tr><td>No stocks meet the spike rule on this view.</td></tr></tbody>';
+  const go=e=>{const tr=e.target.closest('tr[data-s]');if(tr)openStock(tr.dataset.s,true)};$('#act-l').onclick=go;$('#act-s').onclick=go;
+}
+
 /* ---------- status footer ---------- */
 $('#status').innerHTML='<table>'+Object.entries(D.status).map(([k,v])=>`<tr><td>${k}</td><td class="${/^(ok|cached)/.test(v)?'':'warn'}">${/^(ok|cached)/.test(v)?'✓':'⚠'} ${esc(v)}</td></tr>`).join('')+'</table><div style="margin-top:6px">'+esc(D.mcap_note)+'</div>';
 
 /* ---------- boot ---------- */
-function renderTab(){({overview:renderOverview,sectors:renderSectors,breadth:renderBreadth,flows:()=>{renderFlows();renderVal()},risk:renderRisk,options:renderOptions})[S.tab]()}
+function renderTab(){({overview:renderOverview,sectors:renderSectors,breadth:renderBreadth,flows:()=>{renderFlows();renderVal()},risk:renderRisk,options:renderOptions,activity:renderActivity})[S.tab]()}
 renderPsegs();renderMovers();renderTab();
 window.__ready=true;
 </script>

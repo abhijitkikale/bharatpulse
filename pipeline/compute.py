@@ -105,7 +105,24 @@ def build_global(gpx, piv):
     return out
 
 
-def build_stocks(cons, px, mcap, indices):
+def risk_stats(c, bench, min_obs=120):
+    """Beta, correlation, annualised volatility and max drawdown over ~1 year; daily returns on the benchmark's own trading days."""
+    out = {"beta": None, "corr": None, "vol": None, "mdd": None}
+    c = c.dropna()
+    yr = c.tail(252)
+    if len(yr) >= 60:
+        out["mdd"] = _num(((yr / yr.cummax()) - 1).min() * 100, 1)
+    if bench is not None:
+        df = pd.concat([c.rename("s"), bench.rename("b")], axis=1).dropna().tail(253)
+        r = df.pct_change().dropna()
+        if len(r) >= min_obs and r["b"].var() > 0:
+            out["beta"] = _num(r["s"].cov(r["b"]) / r["b"].var(), 2)
+            out["corr"] = _num(r["s"].corr(r["b"]), 2)
+            out["vol"] = _num(r["s"].std() * (252 ** 0.5) * 100, 1)
+    return out
+
+
+def build_stocks(cons, px, mcap, indices, bench=None):
     """Per-stock facts + membership. Universe = Nifty 500 + Microcap 250."""
     uni = pd.concat([cons[f] for f in UNIVERSE_FILES]).drop_duplicates("Symbol").set_index("Symbol")
     members = {}
@@ -128,7 +145,7 @@ def build_stocks(cons, px, mcap, indices):
         hi, lo = c.tail(252).max(), c.tail(252).min()
         stocks[sym] = {
             "s": sym, "n": row["Company Name"], "i": row["Industry"], "p": _num(c.iloc[-1]),
-            "d1": _num((c.iloc[-1] / c.iloc[-2] - 1) * 100), "r": period_returns(c, asof), **flags,
+            "d1": _num((c.iloc[-1] / c.iloc[-2] - 1) * 100), "r": period_returns(c, asof), **flags, **risk_stats(c, bench),
             "pos": _num((c.iloc[-1] - lo) / (hi - lo) * 100, 0) if hi > lo else None,
             "hi": _num(hi), "lo": _num(lo),
             "mc": _num(mcap.get(col, {}).get("v", 0) / 1e7, 0) or None,           # Rs crore
@@ -189,9 +206,9 @@ def build_credit(nifty, move, hy):
             "hy_asof": hy.index.max().strftime("%d %b %Y"), "move_asof": move.index.max().strftime("%d %b %Y")}
 
 
-def assemble(allx, cons, px, mcap, gpx, fii, status, feps=None, fwd_hist=None, credit=None, options=None):
+def assemble(allx, cons, px, mcap, gpx, fii, status, feps=None, fwd_hist=None, credit=None, options=None, activity=None):
     indices, asof, piv = build_indices(allx)
-    stocks, members, dates = build_stocks(cons, px, mcap, indices)
+    stocks, members, dates = build_stocks(cons, px, mcap, indices, bench=piv["Nifty 50"] if "Nifty 50" in piv.columns else None)
     fwd = build_forward(members, px, mcap, feps or {})
     rec = {}
     if fwd_hist is not None and len(fwd_hist):
@@ -209,6 +226,7 @@ def assemble(allx, cons, px, mcap, gpx, fii, status, feps=None, fwd_hist=None, c
         "flows": fii.dropna(how="all").to_dict("records"),
         "credit": build_credit(piv["Nifty 50"], *credit) if credit else None,
         "options": options,
+        "activity": activity,
         "status": status,
         "mcap_note": "Free-float mcap (Yahoo float shares x price); total mcap where float is unavailable",
     }
