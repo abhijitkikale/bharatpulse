@@ -131,6 +131,7 @@ footer th{background:none;position:static}
   <button data-tab="flows">Flows &amp; Valuation</button>
   <button data-tab="risk">Risk Monitor</button>
   <button data-tab="options">Options</button>
+  <button data-tab="vprofile">Volume Profile</button>
 </nav>
 <div class="notice" role="note">⚠ <b>Data under validation / testing</b> — figures and calculations are still being verified and may contain errors. For information only; not investment advice.</div>
 <main>
@@ -225,10 +226,6 @@ footer th{background:none;position:static}
         <div class="hint" id="op-oi-note" style="margin-bottom:6px"></div>
         <div style="overflow-x:auto"><div id="op-ladder" class="chart" style="height:740px;min-width:860px"></div></div>
         <div class="hint" id="op-gex-note" style="line-height:1.6"></div></div>
-      <div class="card c12"><div class="hd"><div><h2>Session chart: price · volume · profile · VWAP <button class="info" data-info="vp" title="About POC, VAH and VAL">ⓘ</button></h2><div class="sub" id="op-ses-sub"></div></div>
-        <div style="display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center"><span class="hint">Session</span><select id="op-ses"></select></div></div>
-        <div style="overflow-x:auto"><div id="op-sesch" class="chart" style="height:560px;min-width:760px"></div></div>
-        <div class="hint" id="op-ses-note" style="line-height:1.6"></div></div>
       <div class="card c12"><div class="hd"><div><h2>Who is positioned how (index derivatives) <button class="info" data-info="part" title="What is this chart?">ⓘ</button></h2><div class="sub" id="op-part-sub"></div></div>
         <div class="seg" id="op-who"><button data-v="FII" class="on">FII</button><button data-v="DII">DII</button><button data-v="Pro">Pro</button><button data-v="Client">Client</button></div></div>
         <div class="scroll" style="max-height:none"><table id="op-part"></table></div><div id="op-partch" class="chart" style="height:320px"></div></div>
@@ -236,6 +233,16 @@ footer th{background:none;position:static}
         <div class="seg rseg" id="op-vix-r" data-key="vixR"><button data-v="1W">1W</button><button data-v="1M">1M</button><button data-v="3M">3M</button><button data-v="6M">6M</button><button data-v="1Y" class="on">1Y</button><button data-v="All">3Y</button></div></div>
         <div id="op-vix" class="chart" style="height:320px"></div></div>
       <div class="card c12 hint" style="line-height:1.6">Source: NSE end-of-day F&amp;O bhavcopy and participant-wise open interest; India VIX from NSE. Open interest by strike and max pain describe where positions sit — they are not forecasts. Max pain = the expiry level at which option writers' total payout is smallest. Data is end-of-day, so there is one point per day (no 1D chart). Information only, not investment advice.</div>
+    </div>
+  </section>
+  <section class="tab" id="tab-vprofile">
+    <div class="grid" id="vp-body">
+      <div class="card c12"><div class="hd"><div><h2>Volume profile: price · volume · POC / VAH / VAL · VWAP <button class="info" data-info="vp" title="About POC, VAH and VAL">ⓘ</button></h2><div class="sub" id="op-ses-sub"></div></div>
+        <div style="display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center"><div class="seg" id="vp-sym"><button data-v="NIFTY" class="on">Nifty 50</button><button data-v="BANKNIFTY">Bank Nifty</button></div>
+        <span class="hint">Session</span><select id="op-ses"></select></div></div>
+        <div class="tiles" id="vp-tiles"></div>
+        <div style="overflow-x:auto"><div id="op-sesch" class="chart" style="height:620px;min-width:760px"></div></div>
+        <div class="hint" id="op-ses-note" style="line-height:1.6"></div></div>
     </div>
   </section>
 </main>
@@ -658,11 +665,18 @@ const RNG={'1W':5,'1M':21,'3M':63,'6M':126,'1Y':252,'3Y':756,'All':1e9};
 const lastN=(a,k)=>a.slice(Math.max(a.length-(RNG[k]||1e9),0));
 const sgn=(v,d=2)=>(v>=0?'+':'')+v.toFixed(d);
 document.addEventListener('click',e=>{const b=e.target.closest('.rseg button');if(!b)return;const k=b.parentElement.dataset.key;OS[k]=isNaN(b.dataset.v)?b.dataset.v:+b.dataset.v;renderOptions()});
-function renderSession(blk,name){
+function renderVProfile(){
+  const O=D.options;
+  if(!O){$('#vp-body').innerHTML='<div class="card c12">Options data is unavailable in this build, so there is no volume profile.</div>';return}
+  if(!O.symbols[OS.sym])OS.sym=Object.keys(O.symbols)[0];
+  document.querySelectorAll('#vp-sym button').forEach(b=>{b.style.display=O.symbols[b.dataset.v]?'':'none';b.classList.toggle('on',b.dataset.v===OS.sym)});
+  const tile=(k,v,s)=>`<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="k">${s}</div></div>`;
+  const blk=O.symbols[OS.sym],name=SYMNAME[OS.sym],V=blk.vp||{};
+  $('#vp-tiles').innerHTML=['1','5'].filter(k=>V[k]).map(k=>{const v=V[k];return tile(k==='1'?'1 day · '+v.to:'5 sessions · '+v.from+' → '+v.to,'POC '+num(v.poc,0),`VAH ${num(v.vah,0)} · VAL ${num(v.val,0)} · ${v.share}% of volume in the value area`)}).join('');
   const S=blk.intraday||[],el=$('#op-sesch'),sel=$('#op-ses');
   if(!S.length){sel.innerHTML='';$('#op-ses-sub').textContent='5-minute candles are unavailable in this build.';$('#op-ses-note').textContent='';Plotly.purge(el);return}
   sel.innerHTML=S.map((s,i)=>`<option value="${i}">${s.date}${i===S.length-1?' (latest)':''}</option>`).join('');
-  if(OS.ses>=S.length||OS.ses<0)OS.ses=S.length-1;sel.value=OS.ses;sel.onchange=()=>{OS.ses=+sel.value;renderOptions()};
+  if(OS.ses>=S.length||OS.ses<0)OS.ses=S.length-1;sel.value=OS.ses;sel.onchange=()=>{OS.ses=+sel.value;renderVProfile()};
   const s=S[OS.ses],pr=s.prof,X=s.t.map(h=>s.date+' '+h);
   const up=s.c.map((c,i)=>c>=s.o[i]);
   const lo=Math.min(...s.l),hi=Math.max(...s.h),pad=(hi-lo)*.06||pr.bin*2;
@@ -678,8 +692,8 @@ function renderSession(blk,name){
   Plotly.react(el,tr,layout({showlegend:true,legend:{orientation:'h',y:1.08},hovermode:'x unified',margin:{l:70,r:110,t:30,b:40},bargap:.15,
     xaxis:{domain:[0,.80],anchor:'y2',type:'date',rangeslider:{visible:false},tickformat:'%H:%M',tickangle:0},
     xaxis2:{domain:[.82,1],anchor:'y3',showticklabels:false,gridcolor:'#1b2433',fixedrange:true},
-    yaxis:{domain:[.26,1],range:[lo-pad,hi+pad],tickformat:',d',title:{text:'index level'}},
-    yaxis2:{domain:[0,.22],tickformat:'.2s',title:{text:'volume'}},
+    yaxis:{domain:[.26,1],range:[lo-pad,hi+pad],tickformat:',d',ticksuffix:'',title:{text:'index level'}},
+    yaxis2:{domain:[0,.22],tickformat:'.2s',ticksuffix:'',title:{text:'volume (shares)'}},
     yaxis3:{domain:[.26,1],matches:'y',showticklabels:false,gridcolor:'#1b2433',fixedrange:true},
     shapes:[line(pr.poc,'#e8c547','solid',2),line(pr.vah,'#b388ff','dash'),line(pr.val,'#b388ff','dash'),
       {type:'rect',xref:'paper',yref:'y',x0:0,x1:1,y0:pr.val,y1:pr.vah,fillcolor:'rgba(179,136,255,.07)',line:{width:0},layer:'below'}],
@@ -812,7 +826,6 @@ function renderOptions(){
     yaxis:{range:[lo,hi],tickformat:',d',ticksuffix:'',title:{text:'strike / index level'}},
     yaxis2:{anchor:'x2',matches:'y',showticklabels:false,gridcolor:'#1b2433',fixedrange:true},yaxis3:{anchor:'x3',matches:'y',showticklabels:false,gridcolor:'#1b2433',fixedrange:true},
     shapes,annotations:labels.concat(titles)}),CFG);
-  renderSession(blk,name);
   // participants
   if(P){
     const who=OS.who,D1=P.d;
@@ -837,6 +850,7 @@ function renderOptions(){
 }
 $('#secH').onchange=()=>{S.secH=$('#secH').value;renderSectors()};
 segBind('#op-sym','sym',()=>{OS.sym=S.sym;renderOptions()});
+$('#vp-sym').onclick=e=>{const v=e.target.dataset.v;if(v==null)return;OS.sym=v;OS.ses=-1;renderVProfile()};
 segBind('#op-metric','opm',()=>{OS.metric=S.opm;renderOptions()});
 segBind('#op-gexs','opg',()=>{OS.gex=S.opg;renderOptions()});
 segBind('#op-who','opw',()=>{OS.who=S.opw;renderOptions()});
@@ -880,7 +894,7 @@ function renderActivity(){
 $('#status').innerHTML='<table>'+Object.entries(D.status).map(([k,v])=>`<tr><td>${k}</td><td class="${/^(ok|cached)/.test(v)?'':'warn'}">${/^(ok|cached)/.test(v)?'✓':'⚠'} ${esc(v)}</td></tr>`).join('')+'</table><div style="margin-top:6px">'+esc(D.mcap_note)+'</div>';
 
 /* ---------- boot ---------- */
-function renderTab(){({overview:renderOverview,sectors:renderSectors,breadth:renderBreadth,flows:()=>{renderFlows();renderVal()},risk:renderRisk,options:renderOptions,activity:renderActivity})[S.tab]()}
+function renderTab(){({overview:renderOverview,sectors:renderSectors,breadth:renderBreadth,flows:()=>{renderFlows();renderVal()},risk:renderRisk,options:renderOptions,vprofile:renderVProfile,activity:renderActivity})[S.tab]()}
 renderPsegs();renderMovers();renderTab();
 window.__ready=true;
 </script>
