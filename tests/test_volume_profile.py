@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "pipeline"))
 import pandas as pd
 
-from compute_options import intraday_profiles, volume_profile
+from compute_options import time_profile, volume_profile
 
 
 def _bars(rows):
@@ -32,34 +32,25 @@ def test_flat_day_and_too_little_data():
     assert volume_profile(_bars([(110, 100, 1000)]), 5, 1) is None
 
 
-def _intraday():
-    """Two sessions of 5-minute bars. Day 1 trades around 100-110; day 2 (the latest) trades 120-130 with most volume near 125."""
+def _candles():
+    """Two sessions of 5-minute index candles: day 1 around 100-110; day 2 (latest) mostly around 125, one excursion to 135."""
     rows = []
-    for day, base in (("2026-10-15", 100), ("2026-10-16", 120)):
-        ts = pd.date_range(f"{day} 09:15", periods=12, freq="5min", tz="Asia/Kolkata")
-        for i, t in enumerate(ts):
-            lo = base + (i % 6) * 1.5
-            rows.append((t, lo + 2, lo, 5000 if (day == "2026-10-16" and 3 <= i <= 6) else 1000))
-    df = pd.DataFrame(rows, columns=["t", "h", "l", "v"]).set_index("t")
-    return df[["h", "l"]], df["v"]
+    for day, centre in (("2026-10-15", 105), ("2026-10-16", 125)):
+        for i, t in enumerate(pd.date_range(f"{day} 09:15", periods=20, freq="5min", tz="Asia/Kolkata")):
+            c = 135 if (day == "2026-10-16" and i == 19) else centre + (i % 3)
+            rows.append((t, c + 1, c - 1))
+    df = pd.DataFrame(rows, columns=["t", "h", "l"]).set_index("t")
+    return df
 
 
-def test_one_day_profile_uses_only_the_latest_session():
-    idx, vol = _intraday()
-    out = intraday_profiles(idx, vol, 1)
-    one = out["1"]
-    assert one["days"] == 1 and one["from"] == one["to"] == "2026-10-16" and one["src"] == "intraday"
-    assert 120 <= one["val"] <= one["poc"] <= one["vah"] <= 130           # nothing from the 100-110 session leaks in
+def test_time_profile_poc_is_where_the_index_spent_its_time():
+    p = time_profile(_candles(), 1, sessions=1)
+    assert p["days"] == 1 and p["from"] == p["to"] == "2026-10-16" and p["src"] == "time"
+    assert 124 <= p["poc"] <= 128                                         # the long stay near 125, not the one-candle excursion to 135
+    assert p["val"] <= p["poc"] <= p["vah"] and p["vah"] < 133            # a single candle at 135 stays outside the value area
+    assert p["val"] > 110                                                  # yesterday's 100-110 range does not leak in
 
 
-def test_multi_session_profile_spans_sessions_and_missing_sessions_give_none():
-    rows = []
-    for day, base in (("2026-10-15", 100), ("2026-10-16", 120)):                 # equal volume, disjoint price ranges
-        for i, t in enumerate(pd.date_range(f"{day} 09:15", periods=12, freq="5min", tz="Asia/Kolkata")):
-            lo = base + (i % 6) * 1.5
-            rows.append((t, lo + 2, lo, 1000))
-    df = pd.DataFrame(rows, columns=["t", "h", "l", "v"]).set_index("t")
-    out = intraday_profiles(df[["h", "l"]], df["v"], 1, windows=(1, 2, 5))
-    assert out["2"]["days"] == 2 and out["2"]["val"] < 110 and out["2"]["vah"] > 120    # the 70% area must reach both sessions
-    assert out["1"]["val"] >= 120                                                       # one session alone stays in its own range
-    assert out["5"] is None                                                             # only two sessions exist
+def test_time_profile_needs_enough_sessions():
+    assert time_profile(_candles(), 1, sessions=2)["days"] == 2
+    assert time_profile(_candles(), 1, sessions=3) is None

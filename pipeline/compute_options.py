@@ -76,31 +76,28 @@ def volume_profile(df, window, bin_size, value_pct=0.70):
     return None if p is None else {**p, "w": window, "src": "daily"}
 
 
-def intraday_profiles(idx5, vol5, bin_size, windows=(1, 5)):
-    """Profile from 5-minute bars: index high/low give WHERE each bar traded, the ETF's volume gives HOW MUCH.
-    idx5: DataFrame (h, l) and vol5: Series, both indexed by timestamp."""
-    d = idx5[["h", "l"]].join(vol5.rename("v"), how="inner").dropna()
-    d = d[d["v"] > 0]
+def time_profile(idx5, bin_size, sessions=1):
+    """Classic time-at-price profile (Market Profile): every 5-minute index candle counts equally and is spread across its
+    high-low range, so no volume is needed. idx5: DataFrame with h and l columns indexed by timestamp."""
+    d = idx5[["h", "l"]].dropna().copy()
     if d.empty:
-        return {}
-    sess = pd.Index(d.index.date)
-    days = sorted(set(sess))
-    out = {}
-    for w in windows:
-        if len(days) < w:
-            out[str(w)] = None
-            continue
-        keep = set(days[-w:])
-        p = _profile(d[[x in keep for x in sess]], bin_size, sessions=len(keep))
-        out[str(w)] = None if p is None else {**p, "from": str(days[-w]), "to": str(days[-1]), "w": w, "src": "intraday"}
-    return out
+        return None
+    d["v"] = 1.0
+    days = sorted(set(d.index.date))
+    if len(days) < sessions:
+        return None
+    keep = set(days[-sessions:])
+    p = _profile(d[[x in keep for x in d.index.date]], bin_size, sessions=len(keep))
+    return None if p is None else {**p, "from": str(days[-sessions]), "to": str(days[-1]), "w": sessions, "src": "time"}
 
 
 def _vp(sym, ohlcv, intraday):
-    """1-day and 5-session profiles: intraday (ETF-volume proxy) when available, daily bars as the 5-session fallback."""
+    """1 day: time at price from 5-minute index candles. 5 sessions: NSE index volume spread over each day's range."""
     bin_size = 25 if sym == "NIFTY" else 50
-    vp = intraday_profiles(intraday[0], intraday[1], bin_size) if intraday is not None else {}
-    if not vp.get("5") and ohlcv is not None:
+    vp = {}
+    if intraday is not None:
+        vp["1"] = time_profile(intraday, bin_size, 1)
+    if ohlcv is not None:
         vp["5"] = volume_profile(ohlcv, 5, bin_size)
     return vp if any(vp.values()) else None
 

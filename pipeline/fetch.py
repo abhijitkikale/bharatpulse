@@ -337,26 +337,26 @@ def patch_prices_with_nse(px, trading_dates):
     return px, notes
 
 
-# ---------- 5-minute candles: index price levels + ETF volume, for the intraday volume profile ----------
-INTRADAY = {"NIFTY": ("^NSEI", "NIFTYBEES.NS"), "BANKNIFTY": ("^NSEBANK", "BANKBEES.NS")}
+# ---------- 5-minute index candles: for the 1-day time-at-price profile ----------
+INTRADAY = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK"}
 
 
 def fetch_intraday():
-    """{sym: (DataFrame h/l of the index, Series volume of its ETF)} from Yahoo 5-minute data; empty on failure (never raises)."""
+    """{sym: DataFrame(h, l) of 5-minute index candles in IST} from Yahoo; failures are reported, never raised."""
     out, bad = {}, []
-    for sym, (ix, etf) in INTRADAY.items():
+    for sym, ix in INTRADAY.items():
         try:
-            d = yf.download([ix, etf], period="10d", interval="5m", auto_adjust=False, progress=False)
-            idx = pd.DataFrame({"h": d["High"][ix], "l": d["Low"][ix]}).dropna()
-            vol = d["Volume"][etf].dropna()
-            if idx.empty or vol.empty:
+            d = yf.download(ix, period="10d", interval="5m", auto_adjust=False, progress=False)
+            if isinstance(d.columns, pd.MultiIndex):
+                d.columns = d.columns.get_level_values(0)
+            idx = d[["High", "Low"]].rename(columns={"High": "h", "Low": "l"}).dropna()
+            if idx.empty:
                 raise ValueError("no bars")
             idx.index = idx.index.tz_convert("Asia/Kolkata")
-            vol.index = vol.index.tz_convert("Asia/Kolkata")
-            out[sym] = (idx, vol)
+            out[sym] = idx
         except Exception as e:
             bad.append(f"{sym} ({type(e).__name__})")
     if out:
-        last = max(v[0].index.max() for v in out.values())
+        last = max(v.index.max() for v in out.values())
         return out, f"ok ({last:%d-%b-%Y %H:%M} IST)" + ("; missing " + ", ".join(bad) if bad else "")
     return out, "failed: " + ", ".join(bad)
