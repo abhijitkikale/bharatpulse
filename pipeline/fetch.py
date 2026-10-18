@@ -337,23 +337,29 @@ def patch_prices_with_nse(px, trading_dates):
     return px, notes
 
 
-# ---------- 5-minute index candles: for the 1-day time-at-price profile ----------
-INTRADAY = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK"}
+# ---------- 5-minute index candles WITH index volume (sum of the index stocks' traded shares, as NSE defines it) ----------
+INTRADAY = {"NIFTY": ("^NSEI", "ind_nifty50list.csv"), "BANKNIFTY": ("^NSEBANK", "ind_niftybanklist.csv")}
 
 
-def fetch_intraday():
-    """{sym: DataFrame(h, l) of 5-minute index candles in IST} from Yahoo; failures are reported, never raised."""
+def fetch_intraday(cons):
+    """{sym: DataFrame(o, h, l, c, v)} from Yahoo 5-minute data, IST index. Bars where under 60% of the stocks reported volume
+    are dropped; with fewer missing, the sum is scaled up. Failures are reported, never raised."""
     out, bad = {}, []
-    for sym, ix in INTRADAY.items():
+    for sym, (ix, csvname) in INTRADAY.items():
         try:
+            names = [s + ".NS" for s in cons[csvname]["Symbol"] if not str(s).startswith("DUMMY")]
+            vol = yf.download(names, period="10d", interval="5m", auto_adjust=False, progress=False)["Volume"]
+            n, cnt = vol.shape[1], vol.notna().sum(axis=1)
+            total = vol.sum(axis=1, min_count=1) * (n / cnt.clip(lower=1))
             d = yf.download(ix, period="10d", interval="5m", auto_adjust=False, progress=False)
             if isinstance(d.columns, pd.MultiIndex):
                 d.columns = d.columns.get_level_values(0)
-            idx = d[["High", "Low"]].rename(columns={"High": "h", "Low": "l"}).dropna()
-            if idx.empty:
+            df = pd.DataFrame({"o": d["Open"], "h": d["High"], "l": d["Low"], "c": d["Close"], "v": total}).dropna()
+            df = df[(cnt.reindex(df.index).fillna(0) >= 0.6 * n)]
+            if df.empty:
                 raise ValueError("no bars")
-            idx.index = idx.index.tz_convert("Asia/Kolkata")
-            out[sym] = idx
+            df.index = df.index.tz_convert("Asia/Kolkata")
+            out[sym] = df
         except Exception as e:
             bad.append(f"{sym} ({type(e).__name__})")
     if out:

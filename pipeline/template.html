@@ -225,6 +225,10 @@ footer th{background:none;position:static}
         <div class="hint" id="op-oi-note" style="margin-bottom:6px"></div>
         <div style="overflow-x:auto"><div id="op-ladder" class="chart" style="height:740px;min-width:860px"></div></div>
         <div class="hint" id="op-gex-note" style="line-height:1.6"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Session chart: price · volume · profile · VWAP <button class="info" data-info="vp" title="About POC, VAH and VAL">ⓘ</button></h2><div class="sub" id="op-ses-sub"></div></div>
+        <div style="display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center"><span class="hint">Session</span><select id="op-ses"></select></div></div>
+        <div style="overflow-x:auto"><div id="op-sesch" class="chart" style="height:560px;min-width:760px"></div></div>
+        <div class="hint" id="op-ses-note" style="line-height:1.6"></div></div>
       <div class="card c12"><div class="hd"><div><h2>Who is positioned how (index derivatives) <button class="info" data-info="part" title="What is this chart?">ⓘ</button></h2><div class="sub" id="op-part-sub"></div></div>
         <div class="seg" id="op-who"><button data-v="FII" class="on">FII</button><button data-v="DII">DII</button><button data-v="Pro">Pro</button><button data-v="Client">Client</button></div></div>
         <div class="scroll" style="max-height:none"><table id="op-part"></table></div><div id="op-partch" class="chart" style="height:320px"></div></div>
@@ -607,9 +611,9 @@ const INFO={
  vp:{t:'POC, VAH and VAL (value area)',h:`<p>A profile shows <i>where</i> the market spent its activity, not when. It spreads that activity across price levels.</p>
   <ul><li><b>POC (point of control)</b> – the price level with the most activity. Often seen as the "fairest" price, and a level price tends to gravitate back to.</li><li><b>Value area</b> – the band around the POC holding about 70% of the activity. <b>VAH</b> is its top and <b>VAL</b> its bottom.</li></ul>
   <p><b>How to read it.</b> Price above VAH means the market is accepting higher prices, below VAL lower prices, and inside the value area a balanced, rotating market. The shaded violet band on the chart is the value area.</p>
-  <p><b>The two windows are calculated differently.</b></p>
-  <ul><li><b>1 day</b> – <i>time at price</i>, the classic Market Profile. Every 5-minute index candle of the latest session counts equally and is spread across its high–low range, so the levels show where the index <i>spent its time</i>. It needs no volume and uses only the index's own prices.</li><li><b>5 sessions</b> – <i>volume at price</i>. NSE gives the index's daily high, low and volume (the total shares traded in its stocks). Each day's volume is spread evenly across that day's range and summed over five sessions.</li></ul>
-  <p>Bins are 25 points for Nifty and 50 points for Bank Nifty. If 5-minute data is unavailable the 1-day profile is not shown.</p>
+  <p><b>Both windows use volume.</b> Volume is the index's own volume as NSE and TradingView define it: the sum of shares traded in its stocks, taken from 5-minute candles. Each candle's volume is spread evenly across its high–low range. <b>1 day</b> uses the latest session, <b>5 sessions</b> the last five.</p>
+  <p><b>Value area rule.</b> Start at the POC, compare the next price row above and below, add the larger one, and stop before the total would pass 70% of all volume. This follows TradingView's documented method, so a small difference to TradingView's own numbers can remain (it uses 1-minute bars and its own row size).</p>
+  <p>Rows are 5 points for Nifty and 10 points for Bank Nifty. If 5-minute data is unavailable the 5-session profile falls back to daily bars (rows of 25 / 50 points) and the 1-day profile is not shown.</p>
   <p class="hint">These levels will differ somewhat from a trading platform's profile built on futures volume. They sit on the same price axis as the open-interest and GEX panels so you can see where positioning and market activity line up. Not investment advice.</p>`},
  breadth:{t:'Whole-market breadth',h:`<p><b>What it is.</b> Every main-board stock listed on NSE (about 2,000 or more; SME, bonds and call-auction series are excluded) is compared with its previous close and counted as an advance, a decline or unchanged.</p>
   <ul><li><b>Advance / decline ratio</b> = advances ÷ declines. Above about 1.5 is a broad rally, below about 0.67 a broad sell-off, and near 1 a mixed day.</li><li><b>Turnover</b> is the total rupee value traded, shown against its 20-day average to gauge participation.</li></ul>
@@ -648,12 +652,41 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeInfo()});
 const SYMNAME={NIFTY:'Nifty 50',BANKNIFTY:'Bank Nifty'};
 const ord=n=>{n=Math.round(n);const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])};
 const emaArr=(a,span=10)=>{const k=2/(span+1);const o=[a[0]];for(let i=1;i<a.length;i++)o.push(a[i]*k+o[i-1]*(1-k));return o};
-const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII',gex:'nearest',range:5,pcrR:'All',vixR:'1Y',vpw:1};
+const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII',gex:'nearest',range:5,pcrR:'All',vixR:'1Y',vpw:1,ses:-1};
 const sma5=a=>a.map((_,i)=>{if(i<4)return null;const w=a.slice(i-4,i+1);return w.some(x=>x==null)?null:w.reduce((x,y)=>x+y,0)/5});
 const RNG={'1W':5,'1M':21,'3M':63,'6M':126,'1Y':252,'3Y':756,'All':1e9};
 const lastN=(a,k)=>a.slice(Math.max(a.length-(RNG[k]||1e9),0));
 const sgn=(v,d=2)=>(v>=0?'+':'')+v.toFixed(d);
 document.addEventListener('click',e=>{const b=e.target.closest('.rseg button');if(!b)return;const k=b.parentElement.dataset.key;OS[k]=isNaN(b.dataset.v)?b.dataset.v:+b.dataset.v;renderOptions()});
+function renderSession(blk,name){
+  const S=blk.intraday||[],el=$('#op-sesch'),sel=$('#op-ses');
+  if(!S.length){sel.innerHTML='';$('#op-ses-sub').textContent='5-minute candles are unavailable in this build.';$('#op-ses-note').textContent='';Plotly.purge(el);return}
+  sel.innerHTML=S.map((s,i)=>`<option value="${i}">${s.date}${i===S.length-1?' (latest)':''}</option>`).join('');
+  if(OS.ses>=S.length||OS.ses<0)OS.ses=S.length-1;sel.value=OS.ses;sel.onchange=()=>{OS.ses=+sel.value;renderOptions()};
+  const s=S[OS.ses],pr=s.prof,X=s.t.map(h=>s.date+' '+h);
+  const up=s.c.map((c,i)=>c>=s.o[i]);
+  const lo=Math.min(...s.l),hi=Math.max(...s.h),pad=(hi-lo)*.06||pr.bin*2;
+  const tot=s.v.reduce((a,b)=>a+b,0),day=((s.c.at(-1)/s.o[0])-1)*100;
+  $('#op-ses-sub').innerHTML=`${name} · ${s.date} · 5-minute candles · volume = shares traded in the index's stocks · close ${num(s.c.at(-1),0)} (${sgn(day,2)}% vs open) · total volume ${(tot/1e6).toFixed(1)} M · VWAP ${num(s.vwap.at(-1),0)}`;
+  const line=(y,c,d,w)=>({type:'line',xref:'paper',yref:'y',x0:0,x1:1,y0:y,y1:y,line:{color:c,width:w||1.2,dash:d}});
+  const ann=(y,t,c)=>({xref:'paper',yref:'y',x:1,y,xanchor:'left',showarrow:false,text:`${t} ${num(y,0)}`,font:{color:c,size:11}});
+  const tr=[
+    {type:'candlestick',x:X,open:s.o,high:s.h,low:s.l,close:s.c,xaxis:'x',yaxis:'y',name:name,increasing:{line:{color:'#2ecc9a'},fillcolor:'#2ecc9a'},decreasing:{line:{color:'#ef5b5b'},fillcolor:'#ef5b5b'},showlegend:false},
+    {type:'scatter',mode:'lines',x:X,y:s.vwap,xaxis:'x',yaxis:'y',name:'VWAP',line:{color:'#4cc9f0',width:2},hovertemplate:'VWAP %{y:,.1f}<extra></extra>'},
+    {type:'bar',x:X,y:s.v,xaxis:'x',yaxis:'y2',name:'Volume',marker:{color:up.map(u=>u?'rgba(46,204,154,.7)':'rgba(239,91,91,.7)')},hovertemplate:'%{x}<br>Volume %{y:,.0f}<extra></extra>',showlegend:false},
+    {type:'bar',orientation:'h',x:pr.v,y:pr.p,xaxis:'x2',yaxis:'y3',name:'Volume at price',width:pr.bin*.9,marker:{color:pr.p.map(q=>q>=pr.val&&q<=pr.vah?'rgba(179,136,255,.65)':'rgba(139,151,168,.35)')},hovertemplate:'%{y}<br>Volume %{x:,.0f}<extra></extra>',showlegend:false}];
+  Plotly.react(el,tr,layout({showlegend:true,legend:{orientation:'h',y:1.08},hovermode:'x unified',margin:{l:70,r:110,t:30,b:40},bargap:.15,
+    xaxis:{domain:[0,.80],anchor:'y2',type:'date',rangeslider:{visible:false},tickformat:'%H:%M',tickangle:0},
+    xaxis2:{domain:[.82,1],anchor:'y3',showticklabels:false,gridcolor:'#1b2433',fixedrange:true},
+    yaxis:{domain:[.26,1],range:[lo-pad,hi+pad],tickformat:',d',title:{text:'index level'}},
+    yaxis2:{domain:[0,.22],tickformat:'.2s',title:{text:'volume'}},
+    yaxis3:{domain:[.26,1],matches:'y',showticklabels:false,gridcolor:'#1b2433',fixedrange:true},
+    shapes:[line(pr.poc,'#e8c547','solid',2),line(pr.vah,'#b388ff','dash'),line(pr.val,'#b388ff','dash'),
+      {type:'rect',xref:'paper',yref:'y',x0:0,x1:1,y0:pr.val,y1:pr.vah,fillcolor:'rgba(179,136,255,.07)',line:{width:0},layer:'below'}],
+    annotations:[ann(pr.poc,'POC','#e8c547'),ann(pr.vah,'VAH','#b388ff'),ann(pr.val,'VAL','#b388ff')]}),CFG);
+  $('#op-ses-note').innerHTML=`POC <b>${num(pr.poc,0)}</b> · VAH <b>${num(pr.vah,0)}</b> · VAL <b>${num(pr.val,0)}</b> (${pr.share}% of the session's volume sits inside the value area; rows are ${pr.bin} points). The shaded histogram on the right is volume at each price. VWAP is the volume-weighted average price from the open to each candle, using each candle's typical price (high + low + close) ÷ 3. Volume comes from Yahoo 5-minute candles of the index stocks, which can differ slightly from TradingView's 1-minute data.`;
+}
+
 function renderOptions(){
   const O=D.options;
   if(!O){$('#opt-body').innerHTML='<div class="card c12">Options data is unavailable in this build (NSE may have blocked the download). The rest of the dashboard is unaffected.</div>';return}
@@ -762,7 +795,7 @@ function renderOptions(){
   if(vpw){
     if(inV(vpw.val)&&inV(vpw.vah)||inV(vpw.poc))shapes.unshift({type:'rect',xref:'paper',yref:'y',x0:0,x1:1,y0:Math.max(vpw.val,lo),y1:Math.min(vpw.vah,hi),fillcolor:'rgba(179,136,255,.07)',line:{width:0},layer:'below'});
     addLine(vpw.poc,'POC','#e8c547','solid','all',2.4);addLine(vpw.vah,'VAH','#b388ff','dash','all');addLine(vpw.val,'VAL','#b388ff','dash','all');
-    $('#op-gex-sub').innerHTML+=` · <b>volume profile</b> (${vpw.days} ${vpw.days===1?'session':'sessions'}: ${vpw.from===vpw.to?vpw.to:vpw.from+' → '+vpw.to}) · POC ${num(vpw.poc,0)} · VAH ${num(vpw.vah,0)} · VAL ${num(vpw.val,0)} (${vpw.share}% of ${vpw.src==='time'?'time':'volume'} in the value area) <span class="hint">${vpw.src==='time'?'time spent at each price, from 5-minute index candles':'NSE index volume spread over each day\'s range; approximate'}</span>${!vpAsked?' <b class="warn">(the '+OS.vpw+'-session profile is unavailable, showing '+vpw.days+')</b>':''}${vpw.to<ch.asof?' <b class="warn">(⚠ latest session available: '+vpw.to+')</b>':''}`;
+    $('#op-gex-sub').innerHTML+=` · <b>volume profile</b> (${vpw.days} ${vpw.days===1?'session':'sessions'}: ${vpw.from===vpw.to?vpw.to:vpw.from+' → '+vpw.to}) · POC ${num(vpw.poc,0)} · VAH ${num(vpw.vah,0)} · VAL ${num(vpw.val,0)} (${vpw.share}% of volume in the value area) <span class="hint">${vpw.src==='volume'?'index volume from 5-minute candles':'NSE index volume spread over each day\'s range; approximate'}</span>${!vpAsked?' <b class="warn">(the '+OS.vpw+'-session profile is unavailable, showing '+vpw.days+')</b>':''}${vpw.to<ch.asof?' <b class="warn">(⚠ latest session available: '+vpw.to+')</b>':''}`;
   }
   addLine(ch.spot,'Spot','#e6edf3','dash','all');
   // right-hand labels with simple collision avoidance so close levels stay readable
@@ -779,6 +812,7 @@ function renderOptions(){
     yaxis:{range:[lo,hi],tickformat:',d',ticksuffix:'',title:{text:'strike / index level'}},
     yaxis2:{anchor:'x2',matches:'y',showticklabels:false,gridcolor:'#1b2433',fixedrange:true},yaxis3:{anchor:'x3',matches:'y',showticklabels:false,gridcolor:'#1b2433',fixedrange:true},
     shapes,annotations:labels.concat(titles)}),CFG);
+  renderSession(blk,name);
   // participants
   if(P){
     const who=OS.who,D1=P.d;

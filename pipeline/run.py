@@ -53,7 +53,7 @@ def main(cached=False):
         num = lambda c: pd.to_numeric(d[c], errors="coerce")
         return pd.DataFrame({"o": num("Open Index Value"), "h": num("High Index Value"), "l": num("Low Index Value"),
                              "c": num("Closing Index Value"), "v": num("Volume")}) if len(d) else None
-    intraday, status["Index 5-min candles (1-day profile)"] = fetch.fetch_intraday()
+    intraday, status["Index 5-min candles + volume (session profile)"] = fetch.fetch_intraday(cons)
     options = compute_options.build_options(fo, part, vix, ohlcv={"NIFTY": idx_ohlcv("Nifty 50"), "BANKNIFTY": idx_ohlcv("Nifty Bank")}, intraday=intraday)
     idx_dates_all = sorted(allx["date"].dt.normalize().unique()) if allx is not None else []
     bhav, status["Market activity (NSE price/volume file)"] = fetch_bhav.fetch_bhav(idx_dates_all, download=not cached)

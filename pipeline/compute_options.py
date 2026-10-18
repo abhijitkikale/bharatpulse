@@ -27,10 +27,33 @@ def _pcr(put, call):
     return _num(put / call, 3) if call else None
 
 
-def _profile(d, bin_size, value_pct=0.70, sessions=None):
+def _value_area(vol, poc, pct):
+    """TradingView's documented rule: start at the POC row, compare the next row above and below, add the larger one, and stop
+    before the total would exceed pct of all volume. Ties go to the row closer to the POC, then to the row above."""
+    n = len(vol)
+    target = pct * vol.sum()
+    lo = hi = poc
+    acc = vol[poc]
+    while True:
+        up = vol[hi + 1] if hi + 1 < n else None
+        dn = vol[lo - 1] if lo - 1 >= 0 else None
+        if up is None and dn is None:
+            break
+        take_up = dn is None or (up is not None and up >= dn)          # equal volumes: both rows are the same distance away, so above wins
+        cand = up if take_up else dn
+        if acc + cand > target:
+            break
+        acc += cand
+        if take_up:
+            hi += 1
+        else:
+            lo -= 1
+    return lo, hi, acc
+
+
+def _profile(d, bin_size, value_pct=0.70, sessions=None, hist=False):
     """Volume profile from bars with columns h (high), l (low), v (volume): each bar's volume is spread evenly across its
-    high-low range. POC = price bin with the most volume; the value area is the smallest band around it holding `value_pct`
-    of the volume (VAH / VAL = its upper / lower edge)."""
+    high-low range. POC = price bin with the most volume; VAH / VAL = upper / lower edge of the value area."""
     lo = np.floor(d["l"].min() / bin_size) * bin_size
     hi = max(np.ceil(d["h"].max() / bin_size) * bin_size, lo + bin_size)       # at least one bin even if every bar is flat
     edges = np.arange(lo, hi + bin_size, bin_size)
@@ -51,19 +74,12 @@ def _profile(d, bin_size, value_pct=0.70, sessions=None):
     if tot <= 0:
         return None
     poc = int(vol.argmax())
-    inc, acc, up, dn = {poc}, vol[poc], poc + 1, poc - 1
-    while acc < value_pct * tot:
-        vu = vol[up] if up < n else -1.0
-        vd = vol[dn] if dn >= 0 else -1.0
-        if vu < 0 and vd < 0:
-            break
-        if vu >= vd:
-            inc.add(up); acc += vu; up += 1
-        else:
-            inc.add(dn); acc += vd; dn -= 1
-    return {"days": int(sessions if sessions is not None else len(d)), "from": d.index[0].strftime("%Y-%m-%d"), "to": d.index[-1].strftime("%Y-%m-%d"),
-            "poc": _num((edges[poc] + edges[poc + 1]) / 2, 0), "vah": _num(edges[max(inc) + 1], 0), "val": _num(edges[min(inc)], 0),
-            "share": round(100 * acc / tot)}
+    vlo, vhi, acc = _value_area(vol, poc, value_pct)
+    out = {"days": int(sessions if sessions is not None else len(d)), "from": d.index[0].strftime("%Y-%m-%d"), "to": d.index[-1].strftime("%Y-%m-%d"),
+           "poc": _num((edges[poc] + edges[poc + 1]) / 2, 2), "vah": _num(edges[vhi + 1], 2), "val": _num(edges[vlo], 2), "share": round(100 * acc / tot)}
+    if hist:
+        out["hist"] = {"p": [_num((edges[i] + edges[i + 1]) / 2, 2) for i in range(n)], "v": [int(v) for v in vol]}
+    return out
 
 
 def volume_profile(df, window, bin_size, value_pct=0.70):
@@ -76,30 +92,47 @@ def volume_profile(df, window, bin_size, value_pct=0.70):
     return None if p is None else {**p, "w": window, "src": "daily"}
 
 
-def time_profile(idx5, bin_size, sessions=1):
-    """Classic time-at-price profile (Market Profile): every 5-minute index candle counts equally and is spread across its
-    high-low range, so no volume is needed. idx5: DataFrame with h and l columns indexed by timestamp."""
-    d = idx5[["h", "l"]].dropna().copy()
-    if d.empty:
-        return None
-    d["v"] = 1.0
+def intraday_block(df, bin_size, n_sessions=5):
+    """From 5-minute index candles (o, h, l, c) whose volume v is the summed traded shares of the index's stocks:
+    the 1-day and 5-session profiles, plus per-session bars, VWAP and histogram for the session chart."""
+    d = df.dropna(subset=["o", "h", "l", "c", "v"])
+    d = d[d["v"] > 0]
     days = sorted(set(d.index.date))
-    if len(days) < sessions:
-        return None
-    keep = set(days[-sessions:])
-    p = _profile(d[[x in keep for x in d.index.date]], bin_size, sessions=len(keep))
-    return None if p is None else {**p, "from": str(days[-sessions]), "to": str(days[-1]), "w": sessions, "src": "time"}
+    if not days:
+        return {}, []
+    vp = {}
+    last = d[[x == days[-1] for x in d.index.date]]
+    p = _profile(last, bin_size, sessions=1)
+    if p:
+        vp["1"] = {**p, "from": str(days[-1]), "to": str(days[-1]), "w": 1, "src": "volume"}
+    if len(days) >= 5:
+        keep = set(days[-5:])
+        p = _profile(d[[x in keep for x in d.index.date]], bin_size, sessions=5)
+        if p:
+            vp["5"] = {**p, "from": str(days[-5]), "to": str(days[-1]), "w": 5, "src": "volume"}
+    sessions = []
+    for day in days[-n_sessions:]:
+        s = d[[x == day for x in d.index.date]]
+        pr = _profile(s, bin_size, sessions=1, hist=True)
+        if pr is None:
+            continue
+        typical = (s["h"] + s["l"] + s["c"]) / 3
+        vwap = (typical * s["v"]).cumsum() / s["v"].cumsum()
+        sessions.append({"date": str(day), "t": [x.strftime("%H:%M") for x in s.index], "o": [_num(v) for v in s["o"]], "h": [_num(v) for v in s["h"]],
+                         "l": [_num(v) for v in s["l"]], "c": [_num(v) for v in s["c"]], "v": [int(v) for v in s["v"]], "vwap": [_num(v) for v in vwap],
+                         "prof": {"bin": bin_size, "poc": pr["poc"], "vah": pr["vah"], "val": pr["val"], "share": pr["share"], **pr["hist"]}})
+    return vp, sessions
 
 
 def _vp(sym, ohlcv, intraday):
-    """1 day: time at price from 5-minute index candles. 5 sessions: NSE index volume spread over each day's range."""
-    bin_size = 25 if sym == "NIFTY" else 50
-    vp = {}
+    """(profiles, sessions). 1 day and 5 sessions from 5-minute candles with index volume; 5 sessions falls back to daily bars."""
+    bin_size = 5 if sym == "NIFTY" else 10
+    vp, sessions = ({}, [])
     if intraday is not None:
-        vp["1"] = time_profile(intraday, bin_size, 1)
-    if ohlcv is not None:
-        vp["5"] = volume_profile(ohlcv, 5, bin_size)
-    return vp if any(vp.values()) else None
+        vp, sessions = intraday_block(intraday, bin_size)
+    if not vp.get("5") and ohlcv is not None:
+        vp["5"] = volume_profile(ohlcv, 5, 25 if sym == "NIFTY" else 50)
+    return (vp if any(vp.values()) else None), sessions
 
 
 def symbol_block(fo: pd.DataFrame, sym: str, max_expiries=4, band=0.10, ohlcv=None, intraday=None):
@@ -146,9 +179,10 @@ def symbol_block(fo: pd.DataFrame, sym: str, max_expiries=4, band=0.10, ohlcv=No
         gex = compute_gex(cur, last, s0)
     except Exception:
         gex = None
+    vp_ses = _vp(sym, ohlcv, intraday)
     return {"hist": {"d": hist_d, "pcr_oi": pcr_oi, "pcr_vol": pcr_vol, "und": und},
             "chain": {"asof": last.strftime("%Y-%m-%d"), "spot": _num(s0), "expiries": out_exp}, "gex": gex,
-            "vp": _vp(sym, ohlcv, intraday)}
+            "vp": vp_ses[0], "intraday": vp_ses[1]}
 
 
 def participant_block(part: pd.DataFrame):
