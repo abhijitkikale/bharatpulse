@@ -27,7 +27,50 @@ def _pcr(put, call):
     return _num(put / call, 3) if call else None
 
 
-def symbol_block(fo: pd.DataFrame, sym: str, max_expiries=4, band=0.10):
+def volume_profile(df, window, bin_size, value_pct=0.70):
+    """Composite volume profile from DAILY bars (not intraday): each day's volume is spread evenly over its high-low range.
+    POC = price bin with the most volume; the value area is the smallest band around it holding `value_pct` of the volume
+    (VAH / VAL = its upper / lower edge). df columns: h (high), l (low), v (volume), indexed by date."""
+    d = df.dropna(subset=["h", "l", "v"]).tail(window)
+    d = d[d["v"] > 0]
+    if len(d) < min(window, 3):
+        return None
+    lo = np.floor(d["l"].min() / bin_size) * bin_size
+    hi = max(np.ceil(d["h"].max() / bin_size) * bin_size, lo + bin_size)       # at least one bin even if every day is flat
+    edges = np.arange(lo, hi + bin_size, bin_size)
+    n = len(edges) - 1
+    if n < 1:
+        return None
+    vol = np.zeros(n)
+    for r in d.itertuples():
+        a, b = float(r.l), float(r.h)
+        if b - a < 1e-9:
+            vol[min(max(int((a - lo) // bin_size), 0), n - 1)] += r.v
+            continue
+        for i in range(max(int((a - lo) // bin_size), 0), min(int((b - lo) // bin_size), n - 1) + 1):
+            ov = min(b, edges[i + 1]) - max(a, edges[i])
+            if ov > 0:
+                vol[i] += r.v * ov / (b - a)
+    tot = vol.sum()
+    if tot <= 0:
+        return None
+    poc = int(vol.argmax())
+    inc, acc, up, dn = {poc}, vol[poc], poc + 1, poc - 1
+    while acc < value_pct * tot:
+        vu = vol[up] if up < n else -1.0
+        vd = vol[dn] if dn >= 0 else -1.0
+        if vu < 0 and vd < 0:
+            break
+        if vu >= vd:
+            inc.add(up); acc += vu; up += 1
+        else:
+            inc.add(dn); acc += vd; dn -= 1
+    return {"w": window, "days": int(len(d)), "from": d.index[0].strftime("%Y-%m-%d"), "to": d.index[-1].strftime("%Y-%m-%d"),
+            "poc": _num((edges[poc] + edges[poc + 1]) / 2, 0), "vah": _num(edges[max(inc) + 1], 0), "val": _num(edges[min(inc)], 0),
+            "share": round(100 * acc / tot)}
+
+
+def symbol_block(fo: pd.DataFrame, sym: str, max_expiries=4, band=0.10, ohlcv=None):
     d = fo[(fo["TckrSymb"] == sym)].copy()
     d["date"] = pd.to_datetime(d["TradDt"])
     opt = d[d["OptnTp"].isin(["CE", "PE"])]
@@ -72,7 +115,8 @@ def symbol_block(fo: pd.DataFrame, sym: str, max_expiries=4, band=0.10):
     except Exception:
         gex = None
     return {"hist": {"d": hist_d, "pcr_oi": pcr_oi, "pcr_vol": pcr_vol, "und": und},
-            "chain": {"asof": last.strftime("%Y-%m-%d"), "spot": _num(s0), "expiries": out_exp}, "gex": gex}
+            "chain": {"asof": last.strftime("%Y-%m-%d"), "spot": _num(s0), "expiries": out_exp}, "gex": gex,
+            "vp": {str(w): volume_profile(ohlcv, w, 25 if sym == "NIFTY" else 50) for w in (5, 10, 20, 60)} if ohlcv is not None else None}
 
 
 def participant_block(part: pd.DataFrame):
@@ -92,11 +136,11 @@ def participant_block(part: pd.DataFrame):
     return out
 
 
-def build_options(fo, part, vix):
+def build_options(fo, part, vix, ohlcv=None):
     """fo/part may be None when NSE blocked the download; returns None so the tab shows a clear message."""
     if fo is None or fo.empty:
         return None
-    symbols = {s: b for s in ("NIFTY", "BANKNIFTY") if (b := symbol_block(fo, s)) is not None}
+    symbols = {s: b for s in ("NIFTY", "BANKNIFTY") if (b := symbol_block(fo, s, ohlcv=(ohlcv or {}).get(s))) is not None}
     if not symbols:
         return None
     v = None

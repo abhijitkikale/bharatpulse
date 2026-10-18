@@ -46,7 +46,14 @@ def main(cached=False):
         credit = (move, hy) if move is not None else None
     fo, part, status["Options (F&O bhavcopy, participant OI)"] = fetch_fo.fetch_fo(download=not cached)
     vix = allx[allx["Index Name"] == "India VIX"].set_index("date")["Closing Index Value"].sort_index() if allx is not None else None
-    options = compute_options.build_options(fo, part, vix)
+    def idx_ohlcv(name):                                     # daily open/high/low/close/volume of an NSE index
+        if allx is None:
+            return None
+        d = allx[allx["Index Name"] == name].set_index("date").sort_index()
+        num = lambda c: pd.to_numeric(d[c], errors="coerce")
+        return pd.DataFrame({"o": num("Open Index Value"), "h": num("High Index Value"), "l": num("Low Index Value"),
+                             "c": num("Closing Index Value"), "v": num("Volume")}) if len(d) else None
+    options = compute_options.build_options(fo, part, vix, ohlcv={"NIFTY": idx_ohlcv("Nifty 50"), "BANKNIFTY": idx_ohlcv("Nifty Bank")})
     idx_dates_all = sorted(allx["date"].dt.normalize().unique()) if allx is not None else []
     bhav, status["Market activity (NSE price/volume file)"] = fetch_bhav.fetch_bhav(idx_dates_all, download=not cached)
     activity = compute_activity.build_activity(bhav)
