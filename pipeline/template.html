@@ -220,7 +220,7 @@ footer th{background:none;position:static}
           <span class="hint">Open interest</span><select id="op-exp"></select>
           <div class="seg" id="op-metric"><button data-v="oi" class="on">Open interest</button><button data-v="chg">Change in OI (1 day)</button></div>
           <span class="hint">GEX</span><div class="seg" id="op-gexs"><button data-v="nearest" class="on">Nearest expiry</button><button data-v="all">Nearest 4 expiries</button></div>
-          <span class="hint">Volume profile</span><div class="seg rseg" id="op-vp" data-key="vpw"><button data-v="5" class="on">5 sessions</button><button data-v="10">10</button><button data-v="20">20</button><button data-v="60">60</button></div>
+          <span class="hint">Volume profile</span><div class="seg rseg" id="op-vp" data-key="vpw"><button data-v="1" class="on">1 day</button><button data-v="5">5 sessions</button></div>
         </div>
         <div class="hint" id="op-oi-note" style="margin-bottom:6px"></div>
         <div style="overflow-x:auto"><div id="op-ladder" class="chart" style="height:740px;min-width:860px"></div></div>
@@ -607,8 +607,9 @@ const INFO={
  vp:{t:'POC, VAH and VAL (volume profile)',h:`<p>A volume profile shows <i>where</i> trading happened, not when. It spreads traded volume across price levels.</p>
   <ul><li><b>POC (point of control)</b> – the price level with the most volume. Often seen as the "fairest" price, and a level price tends to gravitate back to.</li><li><b>Value area</b> – the band around the POC holding about 70% of the volume. <b>VAH</b> is its top and <b>VAL</b> its bottom.</li></ul>
   <p><b>How to read it.</b> Price above VAH means the market is accepting higher prices, below VAL lower prices, and inside the value area a balanced, rotating market. The shaded violet band on the chart is the value area.</p>
-  <p><b>How it is calculated here (approximate).</b> NSE gives each index's daily high, low and volume. Each day's volume is spread evenly across that day's high–low range and summed over the sessions you pick (5, 10, 20 or 60), in 25-point bins for Nifty and 50-point bins for Bank Nifty. Index volume is the total shares traded in its stocks.</p>
-  <p class="hint">A true volume profile uses intraday trades, so these levels will differ from a trading platform's. They are on the same price axis as the open-interest and GEX panels so you can see where positioning and traded volume line up. Not investment advice.</p>`},
+  <p><b>Windows.</b> <b>1 day</b> is the latest session only; <b>5 sessions</b> combines the last five.</p>
+  <p><b>How it is calculated here (approximate).</b> The index itself reports no volume. For each 5-minute candle, the index high and low say <i>where</i> it traded and the volume of the matching ETF (NIFTYBEES for Nifty, BANKBEES for Bank Nifty) says <i>how much</i>. Each candle's volume is spread across its range, in 25-point bins for Nifty and 50-point bins for Bank Nifty. If intraday data is unavailable the 5-session profile falls back to NSE's daily high, low and volume, and the 1-day profile is not shown.</p>
+  <p class="hint">ETF volume is a proxy for index volume, so these levels will differ somewhat from a trading platform's profile on futures. They are on the same price axis as the open-interest and GEX panels so you can see where positioning and traded volume line up. Not investment advice.</p>`},
  breadth:{t:'Whole-market breadth',h:`<p><b>What it is.</b> Every main-board stock listed on NSE (about 2,000 or more; SME, bonds and call-auction series are excluded) is compared with its previous close and counted as an advance, a decline or unchanged.</p>
   <ul><li><b>Advance / decline ratio</b> = advances ÷ declines. Above about 1.5 is a broad rally, below about 0.67 a broad sell-off, and near 1 a mixed day.</li><li><b>Turnover</b> is the total rupee value traded, shown against its 20-day average to gauge participation.</li></ul>
   <p><b>What you can get from it.</b> Whether an index move is broad or narrow. A rising Nifty with more decliners than advancers means a few large stocks are carrying the index. Broad advances on rising turnover show wider participation.</p>
@@ -646,7 +647,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeInfo()});
 const SYMNAME={NIFTY:'Nifty 50',BANKNIFTY:'Bank Nifty'};
 const ord=n=>{n=Math.round(n);const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])};
 const emaArr=(a,span=10)=>{const k=2/(span+1);const o=[a[0]];for(let i=1;i<a.length;i++)o.push(a[i]*k+o[i-1]*(1-k));return o};
-const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII',gex:'nearest',range:5,pcrR:'All',vixR:'1Y',vpw:5};
+const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII',gex:'nearest',range:5,pcrR:'All',vixR:'1Y',vpw:1};
 const sma5=a=>a.map((_,i)=>{if(i<4)return null;const w=a.slice(i-4,i+1);return w.some(x=>x==null)?null:w.reduce((x,y)=>x+y,0)/5});
 const RNG={'1W':5,'1M':21,'3M':63,'6M':126,'1Y':252,'3Y':756,'All':1e9};
 const lastN=(a,k)=>a.slice(Math.max(a.length-(RNG[k]||1e9),0));
@@ -697,7 +698,7 @@ function renderOptions(){
   if(OS.exp>=ch.expiries.length)OS.exp=0;sel.value=OS.exp;sel.onchange=()=>{OS.exp=+sel.value;renderOptions()};
   const ex=ch.expiries[OS.exp];
   const gx=blk.gex,g=gx&&gx[OS.gex];
-  const vpw=blk.vp&&blk.vp[String(OS.vpw)];
+  const vpAsked=blk.vp&&blk.vp[String(OS.vpw)],vpw=vpAsked||(blk.vp&&(blk.vp['5']||blk.vp['1']));   // fall back if the chosen window is unavailable
   const traces=[],shapes=[],lvls=[];
   const dom=[[0,.30],[.345,.645],[.69,.99]];                 // x-domains of the three panels (paper coordinates)
   const addLine=(y,t,c,dash,scope,w)=>{if(y==null||!inV(y))return;lvls.push({y,t,c});
@@ -760,7 +761,7 @@ function renderOptions(){
   if(vpw){
     if(inV(vpw.val)&&inV(vpw.vah)||inV(vpw.poc))shapes.unshift({type:'rect',xref:'paper',yref:'y',x0:0,x1:1,y0:Math.max(vpw.val,lo),y1:Math.min(vpw.vah,hi),fillcolor:'rgba(179,136,255,.07)',line:{width:0},layer:'below'});
     addLine(vpw.poc,'POC','#e8c547','solid','all',2.4);addLine(vpw.vah,'VAH','#b388ff','dash','all');addLine(vpw.val,'VAL','#b388ff','dash','all');
-    $('#op-gex-sub').innerHTML+=` · <b>volume profile</b>: ${name} index, last ${vpw.days} sessions (${vpw.from} → ${vpw.to}), ${vpw.share}% value area · POC ${num(vpw.poc,0)} · VAH ${num(vpw.vah,0)} · VAL ${num(vpw.val,0)} <span class="hint">(from daily bars, approximate)</span>`;
+    $('#op-gex-sub').innerHTML+=` · <b>volume profile</b> (${vpw.days} ${vpw.days===1?'session':'sessions'}: ${vpw.from===vpw.to?vpw.to:vpw.from+' → '+vpw.to}) · POC ${num(vpw.poc,0)} · VAH ${num(vpw.vah,0)} · VAL ${num(vpw.val,0)} (${vpw.share}% value area) <span class="hint">${vpw.src==='intraday'?'5-minute index prices weighted by the '+(sym==='NIFTY'?'Nifty 50':'Bank Nifty')+' ETF volume; approximate':'from daily bars; approximate'}</span>${!vpAsked?' <b class="warn">(the '+OS.vpw+'-session profile is unavailable, showing '+vpw.days+')</b>':''}${vpw.to<ch.asof?' <b class="warn">(⚠ latest session available: '+vpw.to+')</b>':''}`;
   }
   addLine(ch.spot,'Spot','#e6edf3','dash','all');
   // right-hand labels with simple collision avoidance so close levels stay readable

@@ -27,16 +27,12 @@ def _pcr(put, call):
     return _num(put / call, 3) if call else None
 
 
-def volume_profile(df, window, bin_size, value_pct=0.70):
-    """Composite volume profile from DAILY bars (not intraday): each day's volume is spread evenly over its high-low range.
-    POC = price bin with the most volume; the value area is the smallest band around it holding `value_pct` of the volume
-    (VAH / VAL = its upper / lower edge). df columns: h (high), l (low), v (volume), indexed by date."""
-    d = df.dropna(subset=["h", "l", "v"]).tail(window)
-    d = d[d["v"] > 0]
-    if len(d) < min(window, 3):
-        return None
+def _profile(d, bin_size, value_pct=0.70, sessions=None):
+    """Volume profile from bars with columns h (high), l (low), v (volume): each bar's volume is spread evenly across its
+    high-low range. POC = price bin with the most volume; the value area is the smallest band around it holding `value_pct`
+    of the volume (VAH / VAL = its upper / lower edge)."""
     lo = np.floor(d["l"].min() / bin_size) * bin_size
-    hi = max(np.ceil(d["h"].max() / bin_size) * bin_size, lo + bin_size)       # at least one bin even if every day is flat
+    hi = max(np.ceil(d["h"].max() / bin_size) * bin_size, lo + bin_size)       # at least one bin even if every bar is flat
     edges = np.arange(lo, hi + bin_size, bin_size)
     n = len(edges) - 1
     if n < 1:
@@ -65,12 +61,51 @@ def volume_profile(df, window, bin_size, value_pct=0.70):
             inc.add(up); acc += vu; up += 1
         else:
             inc.add(dn); acc += vd; dn -= 1
-    return {"w": window, "days": int(len(d)), "from": d.index[0].strftime("%Y-%m-%d"), "to": d.index[-1].strftime("%Y-%m-%d"),
+    return {"days": int(sessions if sessions is not None else len(d)), "from": d.index[0].strftime("%Y-%m-%d"), "to": d.index[-1].strftime("%Y-%m-%d"),
             "poc": _num((edges[poc] + edges[poc + 1]) / 2, 0), "vah": _num(edges[max(inc) + 1], 0), "val": _num(edges[min(inc)], 0),
             "share": round(100 * acc / tot)}
 
 
-def symbol_block(fo: pd.DataFrame, sym: str, max_expiries=4, band=0.10, ohlcv=None):
+def volume_profile(df, window, bin_size, value_pct=0.70):
+    """Fallback: composite profile from DAILY bars (each day's volume spread evenly over its high-low range)."""
+    d = df.dropna(subset=["h", "l", "v"]).tail(window)
+    d = d[d["v"] > 0]
+    if len(d) < min(window, 3):
+        return None
+    p = _profile(d, bin_size, value_pct)
+    return None if p is None else {**p, "w": window, "src": "daily"}
+
+
+def intraday_profiles(idx5, vol5, bin_size, windows=(1, 5)):
+    """Profile from 5-minute bars: index high/low give WHERE each bar traded, the ETF's volume gives HOW MUCH.
+    idx5: DataFrame (h, l) and vol5: Series, both indexed by timestamp."""
+    d = idx5[["h", "l"]].join(vol5.rename("v"), how="inner").dropna()
+    d = d[d["v"] > 0]
+    if d.empty:
+        return {}
+    sess = pd.Index(d.index.date)
+    days = sorted(set(sess))
+    out = {}
+    for w in windows:
+        if len(days) < w:
+            out[str(w)] = None
+            continue
+        keep = set(days[-w:])
+        p = _profile(d[[x in keep for x in sess]], bin_size, sessions=len(keep))
+        out[str(w)] = None if p is None else {**p, "from": str(days[-w]), "to": str(days[-1]), "w": w, "src": "intraday"}
+    return out
+
+
+def _vp(sym, ohlcv, intraday):
+    """1-day and 5-session profiles: intraday (ETF-volume proxy) when available, daily bars as the 5-session fallback."""
+    bin_size = 25 if sym == "NIFTY" else 50
+    vp = intraday_profiles(intraday[0], intraday[1], bin_size) if intraday is not None else {}
+    if not vp.get("5") and ohlcv is not None:
+        vp["5"] = volume_profile(ohlcv, 5, bin_size)
+    return vp if any(vp.values()) else None
+
+
+def symbol_block(fo: pd.DataFrame, sym: str, max_expiries=4, band=0.10, ohlcv=None, intraday=None):
     d = fo[(fo["TckrSymb"] == sym)].copy()
     d["date"] = pd.to_datetime(d["TradDt"])
     opt = d[d["OptnTp"].isin(["CE", "PE"])]
@@ -116,7 +151,7 @@ def symbol_block(fo: pd.DataFrame, sym: str, max_expiries=4, band=0.10, ohlcv=No
         gex = None
     return {"hist": {"d": hist_d, "pcr_oi": pcr_oi, "pcr_vol": pcr_vol, "und": und},
             "chain": {"asof": last.strftime("%Y-%m-%d"), "spot": _num(s0), "expiries": out_exp}, "gex": gex,
-            "vp": {str(w): volume_profile(ohlcv, w, 25 if sym == "NIFTY" else 50) for w in (5, 10, 20, 60)} if ohlcv is not None else None}
+            "vp": _vp(sym, ohlcv, intraday)}
 
 
 def participant_block(part: pd.DataFrame):
@@ -136,11 +171,11 @@ def participant_block(part: pd.DataFrame):
     return out
 
 
-def build_options(fo, part, vix, ohlcv=None):
+def build_options(fo, part, vix, ohlcv=None, intraday=None):
     """fo/part may be None when NSE blocked the download; returns None so the tab shows a clear message."""
     if fo is None or fo.empty:
         return None
-    symbols = {s: b for s in ("NIFTY", "BANKNIFTY") if (b := symbol_block(fo, s, ohlcv=(ohlcv or {}).get(s))) is not None}
+    symbols = {s: b for s in ("NIFTY", "BANKNIFTY") if (b := symbol_block(fo, s, ohlcv=(ohlcv or {}).get(s), intraday=(intraday or {}).get(s))) is not None}
     if not symbols:
         return None
     v = None

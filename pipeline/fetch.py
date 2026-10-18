@@ -335,3 +335,28 @@ def patch_prices_with_nse(px, trading_dates):
         except Exception:
             continue
     return px, notes
+
+
+# ---------- 5-minute candles: index price levels + ETF volume, for the intraday volume profile ----------
+INTRADAY = {"NIFTY": ("^NSEI", "NIFTYBEES.NS"), "BANKNIFTY": ("^NSEBANK", "BANKBEES.NS")}
+
+
+def fetch_intraday():
+    """{sym: (DataFrame h/l of the index, Series volume of its ETF)} from Yahoo 5-minute data; empty on failure (never raises)."""
+    out, bad = {}, []
+    for sym, (ix, etf) in INTRADAY.items():
+        try:
+            d = yf.download([ix, etf], period="10d", interval="5m", auto_adjust=False, progress=False)
+            idx = pd.DataFrame({"h": d["High"][ix], "l": d["Low"][ix]}).dropna()
+            vol = d["Volume"][etf].dropna()
+            if idx.empty or vol.empty:
+                raise ValueError("no bars")
+            idx.index = idx.index.tz_convert("Asia/Kolkata")
+            vol.index = vol.index.tz_convert("Asia/Kolkata")
+            out[sym] = (idx, vol)
+        except Exception as e:
+            bad.append(f"{sym} ({type(e).__name__})")
+    if out:
+        last = max(v[0].index.max() for v in out.values())
+        return out, f"ok ({last:%d-%b-%Y %H:%M} IST)" + ("; missing " + ", ".join(bad) if bad else "")
+    return out, "failed: " + ", ".join(bad)
