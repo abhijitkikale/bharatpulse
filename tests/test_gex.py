@@ -76,3 +76,18 @@ def test_returns_none_without_priced_options():
     df["ClsPric"] = 0.0
     df["SttlmPric"] = 0.0
     assert compute_gex(df, d, 22000.0) is None
+
+
+def test_surface_has_one_row_per_expiry_and_matches_nearest():
+    spot = 22000.0
+    d1, d = _chain(spot, lambda k: 100000 if k > spot else 20000, lambda k: 20000 if k > spot else 100000, days=7)
+    d2, _ = _chain(spot, lambda k: 50000, lambda k: 50000, days=35)
+    out = compute_gex(pd.concat([d1, d2]), d, spot)
+    sf = out["surface"]
+    assert [m["dte"] for m in sf["expiries"]] == [7, 35]
+    assert len(sf["net"]) == 2 and all(len(r) == len(sf["k"]) for r in sf["net"] + sf["total"])
+    near = out["nearest"]
+    row = dict(zip(sf["k"], sf["net"][0]))
+    assert all(abs(row[k] - n) < 0.02 for k, n in zip(near["k"], near["net"]))          # first surface row == nearest-expiry GEX
+    assert all(v >= 0 for r in sf["total"] for v in r if v is not None)                # total gamma is unsigned
+    assert sf["expiries"][0]["call_wall"] >= spot and sf["expiries"][0]["put_wall"] < spot

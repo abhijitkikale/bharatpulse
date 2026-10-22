@@ -93,7 +93,7 @@ def _flip(grid, gex):
     return best
 
 
-def compute_gex(opts, trade_date, spot, rate=RATE, max_expiries=4, band=0.10, grid_pct=0.10, grid_steps=81):
+def compute_gex(opts, trade_date, spot, rate=RATE, max_expiries=4, band=0.10, grid_pct=0.10, grid_steps=81, surface_expiries=8):
     """opts: DataFrame of one symbol's options on `trade_date` with columns XpryDt, StrkPric, OptnTp, ClsPric,
     SttlmPric, OpnIntrst, TtlTradgVol. Returns a JSON-ready dict, or None if the data cannot support the model."""
     import pandas as pd
@@ -103,7 +103,9 @@ def compute_gex(opts, trade_date, spot, rate=RATE, max_expiries=4, band=0.10, gr
     o["px"] = np.where(o["px"] > 0, o["px"], o["SttlmPric"])
     rows = []              # one record per usable OTM option
     expiries = []
-    for e in sorted(o["exp"].unique())[:max_expiries]:
+    all_exp = sorted(o["exp"].unique())
+    core = {pd.Timestamp(e).value for e in all_exp[:max_expiries]}          # the "nearest N expiries" aggregate
+    for e in all_exp[:max(max_expiries, surface_expiries)]:
         e = pd.Timestamp(e)
         days = (e - pd.Timestamp(trade_date)).days
         if days < 1:
@@ -196,10 +198,39 @@ def compute_gex(opts, trade_date, spot, rate=RATE, max_expiries=4, band=0.10, gr
             atm[pd.Timestamp(e).strftime("%Y-%m-%d")] = round(float(np.interp(F0, ks_iv, [iv_by[e][k][0] for k in ks_iv])) * 100, 2)
     return {"rate": rate, "n_options": int(len(K)), "atm_iv": atm,
             "nearest": {"expiry": pd.Timestamp(first).strftime("%Y-%m-%d"), **summarise(E == first)} if first else None,
-            "all": summarise(np.ones(len(K), dtype=bool))}
+            "all": summarise(np.isin(E, list(core))), "surface": _surface(E, K, isc, gex_at(spot), expiries, iv_by, summarise, spot, trade_date, band)}
 
 
 def _gamma_vec(F, K, T, sigma, r):
     sd = sigma * np.sqrt(T)
     d1 = (np.log(F / K) + 0.5 * sd * sd) / sd
     return np.exp(-r * T) * npdf(d1) / (F * sd)
+
+
+def _surface(E, K, isc, g, expiries, iv_by, summarise, spot, trade_date, band):
+    """Per-expiry GEX by strike for a 3D view: one row per expiry (nearest first), one column per strike within +-band of spot.
+    Cells hold Rs crore per 1% move; None where an expiry has no open interest at that strike. Also each expiry's own flip and walls."""
+    import pandas as pd
+    rows = [(e, T) for e, T, _ in expiries if e in iv_by and (E == e.value).any()]
+    ks = np.unique(K[np.abs(K / spot - 1) <= band])
+    if not rows or len(ks) == 0:
+        return None
+    net, tot, meta = [], [], []
+    for e, T in rows:
+        m = E == e.value
+        n_row, t_row = [], []
+        for k in ks:
+            c = m & (K == k)
+            if not c.any():
+                n_row.append(None)
+                t_row.append(None)
+                continue
+            cg, pg = g[c & isc].sum() / 1e7, g[c & ~isc].sum() / 1e7
+            n_row.append(round(float(cg + pg), 2))
+            t_row.append(round(float(cg - pg), 2))                 # total = call gamma + |put gamma|, always >= 0
+        s = summarise(m)
+        net.append(n_row)
+        tot.append(t_row)
+        meta.append({"e": e.strftime("%Y-%m-%d"), "dte": int((e - pd.Timestamp(trade_date)).days), "net_cr": s["total_cr"], "flip": s["flip"],
+                     "call_wall": s["walls"]["call_gex"], "put_wall": s["walls"]["put_gex"]})
+    return {"k": [int(k) for k in ks], "expiries": meta, "net": net, "total": tot}

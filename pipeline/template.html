@@ -132,6 +132,7 @@ footer th{background:none;position:static}
   <button data-tab="risk">Risk Monitor</button>
   <button data-tab="options">Options</button>
   <button data-tab="vprofile">Volume Profile</button>
+  <button data-tab="surface3d">3D Surface</button>
 </nav>
 <div class="notice" role="note">⚠ <b>Data under validation / testing</b> — figures and calculations are still being verified and may contain errors. For information only; not investment advice.</div>
 <main>
@@ -243,6 +244,21 @@ footer th{background:none;position:static}
         <div class="tiles" id="vp-tiles"></div>
         <div style="overflow-x:auto"><div id="op-sesch" class="chart" style="height:620px;min-width:760px"></div></div>
         <div class="hint" id="op-ses-note" style="line-height:1.6"></div></div>
+    </div>
+  </section>
+  <section class="tab" id="tab-surface3d">
+    <div class="grid" id="s3-body">
+      <div class="card c12"><div class="hd"><div><h2>3D gamma surface: strike × expiry <span class="badge b-n">GEX is a model estimate</span> <button class="info" data-info="s3d" title="How to read this chart">ⓘ</button></h2><div class="sub" id="s3-sub"></div></div>
+        <div style="display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center"><div class="seg" id="s3-sym"><button data-v="NIFTY" class="on">Nifty 50</button><button data-v="BANKNIFTY">Bank Nifty</button></div>
+        <div class="seg" id="s3-metric"><button data-v="net" class="on">Net GEX</button><button data-v="total">Total gamma</button></div>
+        <span class="hint">Strike range</span><div class="seg" id="s3-range"><button data-v="3">±3%</button><button data-v="5">±5%</button><button data-v="10" class="on">±10%</button></div>
+        <div class="seg" id="s3-lv"><button data-v="1" class="on">Levels on</button><button data-v="0">Levels off</button></div>
+        <button class="btn" id="s3-reset">⟲ Reset view</button></div></div>
+        <div class="tiles" id="s3-tiles"></div>
+        <div style="overflow-x:auto"><div id="s3-plot" class="chart" style="height:640px;min-width:760px"></div></div>
+        <div class="hint" id="s3-note" style="line-height:1.6"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Levels by expiry</h2><div class="sub">Each expiry's own gamma flip and GEX walls (model estimates)</div></div></div>
+        <div class="scroll" style="max-height:none"><table id="s3-table"></table></div></div>
     </div>
   </section>
 </main>
@@ -615,6 +631,10 @@ const INFO={
   <p><b>What you can get from it.</b> Who is supplying or absorbing money in the market. Sustained FII selling absorbed by DII buying means domestic money is cushioning the market. Both selling together is a stronger warning.</p>
   <p class="hint">Flows are one input among many and do not predict the next day's move on their own. Provisional figures can be revised.</p>`},
  seccomp:{t:'Composite sector rank',h:`<p><b>What it does.</b> A single rank that blends several time periods, so a sector that is consistently strong ranks above one that only had a good week.</p><ol><li>For each sector, take its separate rank (1 = best return) in every period from <b>1W</b> up to the horizon you choose. For 6M that is 1W, 1M, 3M and 6M. <b>1D is ignored.</b></li><li>Add those ranks together.</li><li>The <b>lowest sum gets composite rank 1</b>, the next lowest rank 2, and so on.</li></ol><p><b>Ties.</b> If two sectors have the same sum, the one with the better <b>short-term</b> rank wins (1W first, then 1M, and so on).</p><p><b>n/a.</b> A sector whose history is too short for one of the periods cannot be scored and is ranked last.</p><p><b>Example.</b> A sector ranked 2, 4, 3 and 1 in 1W, 1M, 3M and 6M has a sum of 10. Hover over the sum to see the individual ranks.</p><p class="hint">3Y and 5Y returns are annualised. A rank is relative to the other sectors, not a forecast. Not investment advice.</p>`},
+ s3d:{t:'3D gamma surface',h:`<p>One surface for the whole options term structure. <b>Left–right</b> is the strike, <b>front–back</b> the expiry (nearest in front), and <b>height</b> the gamma exposure at that strike and expiry.</p>
+  <ul><li><b>Net GEX</b> – signed. Green peaks are call-heavy strikes (positive gamma, dealers tend to dampen moves there); red valleys are put-heavy strikes (negative gamma, moves tend to be amplified).</li><li><b>Total gamma</b> – unsigned. Shows where gamma is most concentrated regardless of direction: where dealers have the most hedging to do.</li></ul>
+  <p><b>Levels</b> are drawn on the floor of the chart for each expiry: the white line is spot, the amber line that expiry's gamma flip (where its net GEX changes sign), orange the strike with the biggest call GEX above spot and blue the biggest put GEX below spot. Drag to rotate, scroll to zoom, double-click to reset.</p>
+  <p class="hint">GEX is a model estimate from end-of-day prices and open interest (standard assumption: dealers long calls, short puts). Up to 8 expiries are shown; missing cells mean no open interest at that strike. Not investment advice.</p>`},
  vp:{t:'POC, VAH and VAL (value area)',h:`<p>A profile shows <i>where</i> the market spent its activity, not when. It spreads that activity across price levels.</p>
   <ul><li><b>POC (point of control)</b> – the price level with the most activity. Often seen as the "fairest" price, and a level price tends to gravitate back to.</li><li><b>Value area</b> – the band around the POC holding about 70% of the activity. <b>VAH</b> is its top and <b>VAL</b> its bottom.</li></ul>
   <p><b>How to read it.</b> Price above VAH means the market is accepting higher prices, below VAL lower prices, and inside the value area a balanced, rotating market. The shaded violet band on the chart is the value area.</p>
@@ -659,7 +679,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeInfo()});
 const SYMNAME={NIFTY:'Nifty 50',BANKNIFTY:'Bank Nifty'};
 const ord=n=>{n=Math.round(n);const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])};
 const emaArr=(a,span=10)=>{const k=2/(span+1);const o=[a[0]];for(let i=1;i<a.length;i++)o.push(a[i]*k+o[i-1]*(1-k));return o};
-const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII',gex:'nearest',range:5,pcrR:'All',vixR:'1Y',vpw:1,ses:-1};
+const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII',gex:'nearest',range:5,pcrR:'All',vixR:'1Y',vpw:1,ses:-1,s3:{sym:'NIFTY',metric:'net',range:10,lv:1}};
 const sma5=a=>a.map((_,i)=>{if(i<4)return null;const w=a.slice(i-4,i+1);return w.some(x=>x==null)?null:w.reduce((x,y)=>x+y,0)/5});
 const RNG={'1W':5,'1M':21,'3M':63,'6M':126,'1Y':252,'3Y':756,'All':1e9};
 const lastN=(a,k)=>a.slice(Math.max(a.length-(RNG[k]||1e9),0));
@@ -699,6 +719,44 @@ function renderVProfile(){
       {type:'rect',xref:'paper',yref:'y',x0:0,x1:1,y0:pr.val,y1:pr.vah,fillcolor:'rgba(179,136,255,.07)',line:{width:0},layer:'below'}],
     annotations:[ann(pr.poc,'POC','#e8c547'),ann(pr.vah,'VAH','#b388ff'),ann(pr.val,'VAL','#b388ff')]}),CFG);
   $('#op-ses-note').innerHTML=`POC <b>${num(pr.poc,0)}</b> · VAH <b>${num(pr.vah,0)}</b> · VAL <b>${num(pr.val,0)}</b> (${pr.share}% of the session's volume sits inside the value area; rows are ${pr.bin} points). The shaded histogram on the right is volume at each price. VWAP is the volume-weighted average price from the open to each candle, using each candle's typical price (high + low + close) ÷ 3. Volume comes from Yahoo 5-minute candles of the index stocks, which can differ slightly from TradingView's 1-minute data.`;
+}
+
+function renderSurface3D(){
+  const O=D.options,Q=OS.s3;
+  if(!O){$('#s3-body').innerHTML='<div class="card c12">Options data is unavailable in this build, so there is no surface.</div>';return}
+  if(!O.symbols[Q.sym])Q.sym=Object.keys(O.symbols)[0];
+  document.querySelectorAll('#s3-sym button').forEach(b=>{b.style.display=O.symbols[b.dataset.v]?'':'none';b.classList.toggle('on',b.dataset.v===Q.sym)});
+  [['#s3-metric',Q.metric],['#s3-range',String(Q.range)],['#s3-lv',String(Q.lv)]].forEach(([s,v])=>document.querySelectorAll(s+' button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)));
+  const blk=O.symbols[Q.sym],sf=blk.gex&&blk.gex.surface,spot=blk.chain.spot,name=SYMNAME[Q.sym],el=$('#s3-plot');
+  if(!sf||!sf.expiries.length){$('#s3-sub').textContent='The surface could not be computed from the latest data (too few priced options).';$('#s3-tiles').innerHTML='';$('#s3-table').innerHTML='';$('#s3-note').textContent='';Plotly.purge(el);return}
+  const ci=sf.k.map((k,i)=>i).filter(i=>Math.abs(sf.k[i]/spot-1)<=Q.range/100),K=ci.map(i=>sf.k[i]);
+  const Z=(Q.metric==='net'?sf.net:sf.total).map(r=>ci.map(i=>r[i]));
+  const Y=sf.expiries.map((_,i)=>i),YL=sf.expiries.map(e=>{const d=new Date(e.e+'T00:00:00');return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' ('+e.dte+'d)'});
+  const flat=Z.flat().filter(v=>v!=null),signed=Q.metric==='net';
+  const abs=flat.map(Math.abs).sort((a,b)=>a-b),cap=abs.length?Math.max(abs[Math.floor(abs.length*.97)],1e-9):1,nClip=abs.filter(v=>v>cap).length;     // a few huge cells would flatten everything else
+  const ZP=Z.map(r=>r.map(v=>v==null?null:Math.max(-cap,Math.min(cap,v)))),zmin=signed?-cap:0,zmax=cap;
+  $('#s3-sub').innerHTML=`${name} · closing data ${blk.chain.asof} · ${sf.expiries.length} expiries · ${K.length} strikes within ±${Q.range}% of spot ${num(spot,0)} · ${signed?'net GEX, ₹ cr per 1% move':'total gamma, ₹ cr per 1% move'} · drag to rotate`;
+  const tr=[{type:'surface',x:K,y:Y,z:ZP,connectgaps:true,cmin:zmin,cmax:zmax,colorscale:signed?'RdYlGn':'Viridis',...(signed?{cmid:0}:{}),showscale:true,colorbar:{title:{text:'₹ cr'},tickfont:{color:'#c9d1d9'},len:.7},
+    text:Z.map(r=>r.map(v=>v==null?'':v.toLocaleString('en-IN',{maximumFractionDigits:1}))),hovertemplate:'Strike <b>%{x:,}</b><br>Expiry %{y}<br>'+(signed?'Net GEX':'Total gamma')+' <b>%{text}</b> cr<extra></extra>',lighting:{ambient:.8,diffuse:.6},contours:{z:{show:true,usecolormap:true,project:{z:false}}}}];
+  if(Q.lv){
+    const fl=zmin,line=(xs,ys,name,c,w,dash)=>({type:'scatter3d',mode:'lines+markers',x:xs,y:ys,z:ys.map(()=>fl),name,line:{color:c,width:w,dash},marker:{size:3,color:c},hovertemplate:name+' %{x:,.0f}<extra></extra>',showlegend:true});
+    const pick=(f)=>{const xs=[],ys=[];sf.expiries.forEach((e,i)=>{if(e[f]!=null&&Math.abs(e[f]/spot-1)<=Q.range/100){xs.push(e[f]);ys.push(i)}});return[xs,ys]};
+    tr.push(line([spot,spot],[0,Y.length-1],'Spot','#e6edf3',5,'solid'));
+    [['flip','Gamma flip','#f5a623'],['call_wall','Call wall','#ff9f6b'],['put_wall','Put wall','#66c2ff']].forEach(([f,n,c])=>{const [xs,ys]=pick(f);if(xs.length)tr.push(line(xs,ys,n,c,5,'solid'))});
+  }
+  const cam={eye:{x:1.5,y:-1.7,z:.9}};
+  const ax=(title)=>({title:{text:title},color:'#c9d1d9',gridcolor:'#263040',backgroundcolor:'#0b0f16',showbackground:true,zerolinecolor:'#586174'});
+  Plotly.react(el,tr,{paper_bgcolor:'rgba(0,0,0,0)',font:{color:'#c9d1d9'},margin:{l:0,r:0,t:10,b:0},datarevision:Math.random(),showlegend:Q.lv===1,legend:{orientation:'h',y:.02,x:.02,font:{size:11}},
+    scene:{xaxis:{...ax('strike'),tickformat:',d'},yaxis:{...ax('expiry'),tickvals:Y,ticktext:YL,autorange:'reversed'},zaxis:{...ax(signed?'net GEX (₹ cr per 1%)':'total gamma (₹ cr per 1%)'),range:[zmin,zmax*1.05]},
+      camera:cam,aspectmode:'manual',aspectratio:{x:1.6,y:1.1,z:1}}},{displaylogo:false,responsive:true,modeBarButtonsToRemove:['resetCameraLastSave3d']});
+  el._cam=cam;
+  const s0=sf.expiries[0],tile=(k,v,s)=>`<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="k">${s}</div></div>`;
+  const tot=sf.expiries.reduce((a,e)=>a+e.net_cr,0);
+  $('#s3-tiles').innerHTML=tile('Spot (close)',num(spot,0),name)+tile('Nearest expiry flip',s0.flip!=null?num(s0.flip,0):'none within ±10%',s0.e+' · '+s0.dte+' days')+
+    tile('Net GEX, all shown expiries',num(tot,0)+' cr',tot>=0?'positive gamma overall: moves tend to be dampened':'negative gamma overall: moves tend to be amplified')+
+    tile('Biggest net GEX expiry',sf.expiries.reduce((a,e)=>Math.abs(e.net_cr)>Math.abs(a.net_cr)?e:a).e,'largest absolute net GEX across the term structure');
+  $('#s3-table').innerHTML='<thead><tr><th>Expiry</th><th>Days</th><th>Net GEX (₹ cr)</th><th>Gamma flip</th><th>vs spot</th><th>Call wall</th><th>Put wall</th></tr></thead><tbody>'+sf.expiries.map(e=>`<tr><td><b>${e.e}</b></td><td>${e.dte}</td><td class="${e.net_cr>=0?'up':'dn'}">${num(e.net_cr,0)}</td><td>${e.flip!=null?num(e.flip,0):'–'}</td><td>${e.flip!=null?sgn((e.flip/spot-1)*100,1)+'%':'–'}</td><td>${e.call_wall!=null?num(e.call_wall,0):'–'}</td><td>${e.put_wall!=null?num(e.put_wall,0):'–'}</td></tr>`).join('')+'</tbody>';
+  $('#s3-note').innerHTML='Height = gamma exposure at each strike and expiry (model estimate from closing prices and open interest; calls positive, puts negative). Floor lines mark spot and each expiry\'s own flip and walls. Near expiries carry the most gamma per strike; long-dated ones are flatter.'+(nClip?` <b>Height is capped at ±${num(cap,0)} cr so the largest ${nClip} cell${nClip>1?'s':''} do not flatten the rest; hover shows the true value.</b>`:'');
 }
 
 function renderOptions(){
@@ -850,6 +908,9 @@ function renderOptions(){
 }
 $('#secH').onchange=()=>{S.secH=$('#secH').value;renderSectors()};
 segBind('#op-sym','sym',()=>{OS.sym=S.sym;renderOptions()});
+const s3bind=(sel,key,num_)=>{$(sel).onclick=e=>{const v=e.target.dataset.v;if(v==null)return;OS.s3[key]=num_?+v:v;renderSurface3D()}};
+s3bind('#s3-sym','sym');s3bind('#s3-metric','metric');s3bind('#s3-range','range',true);s3bind('#s3-lv','lv',true);
+$('#s3-reset').onclick=()=>{const el=$('#s3-plot');if(el&&el._cam)Plotly.relayout(el,{'scene.camera':el._cam})};
 $('#vp-sym').onclick=e=>{const v=e.target.dataset.v;if(v==null)return;OS.sym=v;OS.ses=-1;renderVProfile()};
 segBind('#op-metric','opm',()=>{OS.metric=S.opm;renderOptions()});
 segBind('#op-gexs','opg',()=>{OS.gex=S.opg;renderOptions()});
@@ -894,7 +955,7 @@ function renderActivity(){
 $('#status').innerHTML='<table>'+Object.entries(D.status).map(([k,v])=>`<tr><td>${k}</td><td class="${/^(ok|cached)/.test(v)?'':'warn'}">${/^(ok|cached)/.test(v)?'✓':'⚠'} ${esc(v)}</td></tr>`).join('')+'</table><div style="margin-top:6px">'+esc(D.mcap_note)+'</div>';
 
 /* ---------- boot ---------- */
-function renderTab(){({overview:renderOverview,sectors:renderSectors,breadth:renderBreadth,flows:()=>{renderFlows();renderVal()},risk:renderRisk,options:renderOptions,vprofile:renderVProfile,activity:renderActivity})[S.tab]()}
+function renderTab(){({overview:renderOverview,sectors:renderSectors,breadth:renderBreadth,flows:()=>{renderFlows();renderVal()},risk:renderRisk,options:renderOptions,vprofile:renderVProfile,surface3d:renderSurface3D,activity:renderActivity})[S.tab]()}
 renderPsegs();renderMovers();renderTab();
 window.__ready=true;
 </script>
