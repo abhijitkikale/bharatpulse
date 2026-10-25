@@ -118,7 +118,7 @@ date,index,fpe
 2026-10-19,Energy,14.53
 2026-10-21,Energy,14.45
 2026-10-22,Energy,14.29
-2026-10-23,Energy,14.16
+2026-10-23,Energy,14.27
 2026-10-01,FMCG,26.52
 2026-10-05,FMCG,27.24
 2026-10-06,FMCG,27.45
@@ -283,7 +283,7 @@ date,index,fpe
 2026-10-19,Nifty 500,16.88
 2026-10-21,Nifty 500,16.75
 2026-10-22,Nifty 500,16.65
-2026-10-23,Nifty 500,16.42
+2026-10-23,Nifty 500,16.43
 2026-10-01,Nifty Microcap 250,14.83
 2026-10-05,Nifty Microcap 250,14.87
 2026-10-06,Nifty Microcap 250,14.96
@@ -298,7 +298,7 @@ date,index,fpe
 2026-10-19,Nifty Microcap 250,14.99
 2026-10-21,Nifty Microcap 250,14.72
 2026-10-22,Nifty Microcap 250,14.55
-2026-10-23,Nifty Microcap 250,14.21
+2026-10-23,Nifty Microcap 250,14.2
 2026-10-01,Nifty Midcap 150,19.46
 2026-10-05,Nifty Midcap 150,19.57
 2026-10-06,Nifty Midcap 150,19.73
@@ -343,7 +343,7 @@ date,index,fpe
 2026-10-19,Nifty Smallcap 250,19.21
 2026-10-21,Nifty Smallcap 250,18.8
 2026-10-22,Nifty Smallcap 250,18.58
-2026-10-23,Nifty Smallcap 250,18.03
+2026-10-23,Nifty Smallcap 250,18.22
 2026-10-01,Oil & Gas,11.64
 2026-10-05,Oil & Gas,11.73
 2026-10-06,Oil & Gas,11.94
