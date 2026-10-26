@@ -12,7 +12,7 @@
 //
 // Strategy (per enabled level):
 //   1. a candle touches the level          2. then a doji candle forms at the level
-//   3. later a candle retests the level (after price has left it) - it closes ABOVE the level = CALL setup,
+//   3. later a candle retests the level (after price has left it): closes ABOVE = CALL setup, BELOW = PUT setup,
 //      it closes BELOW the level = PUT setup. Signals are drawn on the close of the retest candle.
 // Information only, not investment advice. Test on your own data before trading it.
 indicator("BharatPulse Levels", shorttitle="BP Levels", overlay=true, max_lines_count=500, max_labels_count=500)
@@ -50,6 +50,9 @@ dojiPct  = input.float(30.0, "Doji: body at most this % of the candle range", mi
 maxWait  = input.int(12, "Give up after this many bars between the steps", minval=2, maxval=100, group=gStr)
 minAway  = input.int(1, "Bars price must leave the level before the retest", minval=0, maxval=20, group=gStr)
 sigFrom  = input.time(946684800000, "Show signals from", group=gStr)
+strikeIn = input.string("Auto", "Option strike step (Auto = 50 for Nifty, 100 for Bank Nifty)", options=["Auto", "50", "100"], group=gStr)
+markOnChart = input.bool(true, "Also mark CALL / PUT on the chart", group=gStr)
+showSigBox  = input.bool(true, "Show the setups table (top left)", group=gStr)
 
 // ---------------- helpers ----------------
 f_enabled(string name) =>
@@ -120,6 +123,10 @@ var int[]    stgBar  = array.new_int()      // bar where the current stage began
 var int[]    awayN   = array.new_int()      // bars spent away from the level since the doji
 var string   regTitle = ""
 var string   regBody  = ""
+var string[] sgWhen   = array.new_string()   // newest first: when, side, strike, level of each setup
+var string[] sgSide   = array.new_string()
+var string[] sgStrike = array.new_string()
+var string[] sgLevel  = array.new_string()
 
 if barstate.isfirst
     clean = str.replace_all(str.replace_all(txt, "\r", ""), "\n", ";")
@@ -147,6 +154,9 @@ if barstate.isfirst
                         array.push(awayN, 0)
 
 autoGap = (ta.highest(high, 200) - ta.lowest(low, 200)) / 32.0
+// option strike = the retest candle's close rounded to the nearest 50 (Nifty) or 100 (Bank Nifty)
+bool isBank = str.contains(str.upper(syminfo.ticker), "BANK") or str.contains(str.upper(regTitle), "BANK NIFTY")
+float strikeStep = strikeIn == "Auto" ? (isBank ? 100.0 : 50.0) : str.tonumber(strikeIn)
 
 // ---------------- touch > doji > retest ----------------
 bool callAny = false
@@ -174,12 +184,25 @@ if useStrat and barstate.isconfirmed and time >= sigFrom and array.size(lv) > 0
             if touching
                 if array.get(awayN, i) >= minAway
                     nm = array.get(ln, i)
-                    if close > L
-                        callAny := true
-                        label.new(bar_index, low, "CALL\n" + nm + " " + str.tostring(L, "#.##"), style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
-                    else if close < L
-                        putAny := true
-                        label.new(bar_index, high, "PUT\n" + nm + " " + str.tostring(L, "#.##"), style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
+                    string side = close > L ? "CALL" : close < L ? "PUT" : ""
+                    if side != ""
+                        callAny := callAny or side == "CALL"
+                        putAny := putAny or side == "PUT"
+                        strike = math.round(close / strikeStep) * strikeStep
+                        array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
+                        array.unshift(sgSide, side)
+                        array.unshift(sgStrike, str.tostring(strike, "#"))
+                        array.unshift(sgLevel, nm + " " + str.tostring(L, "#.##"))
+                        if array.size(sgWhen) > 6
+                            array.pop(sgWhen)
+                            array.pop(sgSide)
+                            array.pop(sgStrike)
+                            array.pop(sgLevel)
+                        if markOnChart
+                            if side == "CALL"
+                                label.new(bar_index, low, "CALL", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
+                            else
+                                label.new(bar_index, high, "PUT", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
                     array.set(stg, i, 0)
             else
                 array.set(awayN, i, array.get(awayN, i) + 1)
@@ -190,6 +213,7 @@ alertcondition(putAny, "BharatPulse PUT setup", "BharatPulse: PUT setup (touch, 
 // ---------------- draw levels, stacked labels, regime box (last bar only) ----------------
 var line[]  bpLines  = array.new_line()
 var label[] bpLabels = array.new_label()
+var table   sigBox   = table.new(position.top_left, 4, 7, bgcolor=color.new(#0b0f16, 8), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
 var table   regBox   = table.new(position.top_right, 1, 2, bgcolor=color.new(#0b0f16, 8), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
 
 if barstate.islast
@@ -219,3 +243,19 @@ if barstate.islast
         tc = str.contains(str.upper(regTitle), "POSITIVE") ? #2ecc9a : str.contains(str.upper(regTitle), "NEGATIVE") ? #ef5b5b : #e6edf3
         table.cell(regBox, 0, 0, regTitle, width = 30, text_color = tc, text_halign = text.align_left, text_size = size.normal)
         table.cell(regBox, 0, 1, regBody, width = 30, text_color = #c9d1d9, text_halign = text.align_left, text_size = size.small)
+    if showSigBox and useStrat
+        table.cell(sigBox, 0, 0, "Setup", text_color = #8b97a8, text_halign = text.align_left, text_size = size.small)
+        table.cell(sigBox, 1, 0, "Buy", text_color = #8b97a8, text_halign = text.align_left, text_size = size.small)
+        table.cell(sigBox, 2, 0, "Strike", text_color = #8b97a8, text_halign = text.align_left, text_size = size.small)
+        table.cell(sigBox, 3, 0, "At level", text_color = #8b97a8, text_halign = text.align_left, text_size = size.small)
+        ns = array.size(sgWhen)
+        for r = 0 to 5
+            if r < ns
+                sc = array.get(sgSide, r) == "CALL" ? #2ecc9a : #ef5b5b
+                table.cell(sigBox, 0, r + 1, array.get(sgWhen, r), text_color = #c9d1d9, text_halign = text.align_left, text_size = size.small)
+                table.cell(sigBox, 1, r + 1, array.get(sgSide, r), text_color = sc, text_halign = text.align_left, text_size = size.small)
+                table.cell(sigBox, 2, r + 1, array.get(sgStrike, r) + (array.get(sgSide, r) == "CALL" ? " CE" : " PE"), text_color = sc, text_halign = text.align_left, text_size = size.small)
+                table.cell(sigBox, 3, r + 1, array.get(sgLevel, r), text_color = #c9d1d9, text_halign = text.align_left, text_size = size.small)
+            else
+                for c = 0 to 3
+                    table.cell(sigBox, c, r + 1, r == 0 and ns == 0 and c == 0 ? "No setup yet" : "", text_color = #8b97a8, text_halign = text.align_left, text_size = size.small)
