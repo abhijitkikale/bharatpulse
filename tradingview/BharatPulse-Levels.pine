@@ -1,22 +1,81 @@
 //@version=5
 // BharatPulse Levels
-// Draws horizontal levels (spot, max pain, gamma flip, GEX / OI walls, POC, VAH, VAL ...) from text pasted
-// out of the BharatPulse dashboard (Options tab > "Levels for TradingView" > Copy).
+// Draws horizontal levels (spot, max pain, gamma flip, GEX / OI walls, POC, VAH, VAL ...) from text pasted out of the
+// BharatPulse dashboard (Options tab > "Levels for TradingView" > Copy levels), shows the day's gamma regime in a box at the
+// top right, and marks touch > doji > retest setups at the levels.
 //
-// Input format, one level per line (or separated by ;):   Name=Value
-//   Spot=22753
-//   Gamma flip=22749
-// Lines that do not look like Name=Value (for example the # header line) are ignored.
-// Add the indicator to a Nifty / Bank Nifty chart, open its Settings > Inputs, paste, click OK.
-indicator("BharatPulse Levels", shorttitle="BP Levels", overlay=true, max_lines_count=100, max_labels_count=100)
+// Input format, one entry per line (or separated by ;):
+//   Name=Value     a level, for example   Gamma flip=22749
+//   ~ text         a regime description line (first one is the title)
+//   # text         comment, ignored
+// Add the indicator to a Nifty / Bank Nifty chart, open Settings > Inputs, paste into "Levels", press OK.
+//
+// Strategy (per enabled level):
+//   1. a candle touches the level          2. then a doji candle forms at the level
+//   3. later a candle retests the level (after price has left it) - it closes ABOVE the level = CALL setup,
+//      it closes BELOW the level = PUT setup. Signals are drawn on the close of the retest candle.
+// Information only, not investment advice. Test on your own data before trading it.
+indicator("BharatPulse Levels", shorttitle="BP Levels", overlay=true, max_lines_count=500, max_labels_count=500)
 
-txt        = input.text_area("", "Levels (paste from BharatPulse)", tooltip="Paste the text copied from the dashboard. One 'Name=Value' per line.")
-lineWidth  = input.int(1, "Line width", minval=1, maxval=4)
-extendLeft = input.bool(true, "Extend lines to the left")
-labelBars  = input.int(4, "Label distance right of the last bar (bars)", minval=0, maxval=50)
-showValue  = input.bool(true, "Show the value in each label")
-txtSize    = input.string("small", "Label text size", options=["tiny", "small", "normal"])
-showLabels = input.bool(true, "Show labels")
+// ---------------- inputs ----------------
+txt = input.text_area("", "Levels (paste from BharatPulse)", tooltip="Paste the text copied from the dashboard.")
+
+gShow = "Show / hide lines"
+enSpot  = input.bool(true, "Spot", group=gShow)
+enPain  = input.bool(true, "Max pain", group=gShow)
+enFlip  = input.bool(true, "Gamma flip", group=gShow)
+enOiC   = input.bool(true, "OI call wall", group=gShow)
+enOiP   = input.bool(true, "OI put wall", group=gShow)
+enGexC  = input.bool(true, "GEX call wall", group=gShow)
+enGexP  = input.bool(true, "GEX put wall", group=gShow)
+enPoc   = input.bool(true, "POC", group=gShow)
+enVah   = input.bool(true, "VAH", group=gShow)
+enVal   = input.bool(true, "VAL", group=gShow)
+enOther = input.bool(true, "Any other level", group=gShow)
+
+gLook = "Appearance"
+lineWidth  = input.int(1, "Line width", minval=1, maxval=4, group=gLook)
+extendLeft = input.bool(true, "Extend lines to the left", group=gLook)
+showLabels = input.bool(true, "Show labels", group=gLook)
+labelBars  = input.int(3, "Labels: bars to the right of the last candle", minval=0, maxval=50, group=gLook)
+labelGap   = input.float(0.0, "Labels: minimum gap in points (0 = automatic)", minval=0.0, step=1.0, group=gLook)
+showValue  = input.bool(true, "Show the value in each label", group=gLook)
+txtSize    = input.string("small", "Label text size", options=["tiny", "small", "normal"], group=gLook)
+showRegime = input.bool(true, "Show the regime box (top right)", group=gLook)
+
+gStr = "Touch > doji > retest signals"
+useStrat = input.bool(true, "Show CALL / PUT signals", group=gStr)
+tolPct   = input.float(0.03, "Touch tolerance (% of the level)", minval=0.0, step=0.01, group=gStr)
+dojiPct  = input.float(30.0, "Doji: body at most this % of the candle range", minval=1.0, maxval=60.0, group=gStr)
+maxWait  = input.int(12, "Give up after this many bars between the steps", minval=2, maxval=100, group=gStr)
+minAway  = input.int(1, "Bars price must leave the level before the retest", minval=0, maxval=20, group=gStr)
+sigFrom  = input.time(timestamp(2000, 1, 1, 0, 0), "Show signals from", group=gStr)
+
+// ---------------- helpers ----------------
+f_enabled(string name) =>
+    s = str.lower(name)
+    bool e = enOther
+    if str.contains(s, "spot")
+        e := enSpot
+    else if str.contains(s, "max pain")
+        e := enPain
+    else if str.contains(s, "flip")
+        e := enFlip
+    else if str.contains(s, "oi call")
+        e := enOiC
+    else if str.contains(s, "oi put")
+        e := enOiP
+    else if str.contains(s, "gex call")
+        e := enGexC
+    else if str.contains(s, "gex put")
+        e := enGexP
+    else if str.contains(s, "poc")
+        e := enPoc
+    else if str.contains(s, "vah")
+        e := enVah
+    else if str.contains(s, "val")
+        e := enVal
+    e
 
 f_color(string name) =>
     s = str.lower(name)
@@ -53,8 +112,85 @@ f_style(string name) =>
 f_size() =>
     txtSize == "tiny" ? size.tiny : txtSize == "normal" ? size.normal : size.small
 
+// ---------------- parse the pasted text once ----------------
+var float[]  lv      = array.new_float()
+var string[] ln      = array.new_string()
+var int[]    stg     = array.new_int()      // 0 idle, 1 touched, 2 doji seen
+var int[]    stgBar  = array.new_int()      // bar where the current stage began
+var int[]    awayN   = array.new_int()      // bars spent away from the level since the doji
+var string   regTitle = ""
+var string   regBody  = ""
+
+if barstate.isfirst
+    clean = str.replace_all(str.replace_all(txt, "\r", ""), "\n", ";")
+    items = str.split(clean, ";")
+    for it in items
+        t = str.trim(it)
+        if str.length(t) > 0 and not str.startswith(t, "#")
+            if str.startswith(t, "~")
+                body = str.trim(str.substring(t, 1))
+                if regTitle == ""
+                    regTitle := body
+                else
+                    regBody := regBody == "" ? body : regBody + "\n" + body
+            else
+                parts = str.split(t, "=")
+                if array.size(parts) == 2
+                    nm = str.trim(array.get(parts, 0))
+                    raw = str.replace_all(str.trim(array.get(parts, 1)), ",", "")
+                    v = str.tonumber(raw)
+                    if not na(v) and str.length(nm) > 0 and f_enabled(nm)
+                        array.push(lv, v)
+                        array.push(ln, nm)
+                        array.push(stg, 0)
+                        array.push(stgBar, 0)
+                        array.push(awayN, 0)
+
+autoGap = (ta.highest(high, 200) - ta.lowest(low, 200)) / 32.0
+
+// ---------------- touch > doji > retest ----------------
+bool callAny = false
+bool putAny = false
+isDoji = (high - low) > 0 and math.abs(close - open) <= (high - low) * dojiPct / 100.0
+if useStrat and barstate.isconfirmed and time >= sigFrom and array.size(lv) > 0
+    for i = 0 to array.size(lv) - 1
+        L = array.get(lv, i)
+        tl = L * tolPct / 100.0
+        touching = high >= L - tl and low <= L + tl
+        s = array.get(stg, i)
+        if s > 0 and bar_index - array.get(stgBar, i) > maxWait
+            s := 0
+            array.set(stg, i, 0)
+        if s == 0
+            if touching
+                array.set(stg, i, 1)
+                array.set(stgBar, i, bar_index)
+        else if s == 1
+            if touching and isDoji and bar_index > array.get(stgBar, i)
+                array.set(stg, i, 2)
+                array.set(stgBar, i, bar_index)
+                array.set(awayN, i, 0)
+        else if s == 2
+            if touching
+                if array.get(awayN, i) >= minAway
+                    nm = array.get(ln, i)
+                    if close > L
+                        callAny := true
+                        label.new(bar_index, low, "CALL\n" + nm + " " + str.tostring(L, "#.##"), style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
+                    else if close < L
+                        putAny := true
+                        label.new(bar_index, high, "PUT\n" + nm + " " + str.tostring(L, "#.##"), style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
+                    array.set(stg, i, 0)
+            else
+                array.set(awayN, i, array.get(awayN, i) + 1)
+
+alertcondition(callAny, "BharatPulse CALL setup", "BharatPulse: CALL setup (touch, doji, retest closed above the level) on {{ticker}}")
+alertcondition(putAny, "BharatPulse PUT setup", "BharatPulse: PUT setup (touch, doji, retest closed below the level) on {{ticker}}")
+
+// ---------------- draw levels, stacked labels, regime box (last bar only) ----------------
 var line[]  bpLines  = array.new_line()
 var label[] bpLabels = array.new_label()
+var table   regBox   = table.new(position.top_right, 1, 2, bgcolor=color.new(#0b0f16, 8), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
 
 if barstate.islast
     for l in bpLines
@@ -63,17 +199,23 @@ if barstate.islast
         label.delete(b)
     array.clear(bpLines)
     array.clear(bpLabels)
-    clean = str.replace_all(str.replace_all(txt, "\r", ""), "\n", ";")
-    items = str.split(clean, ";")
-    for it in items
-        parts = str.split(it, "=")
-        if array.size(parts) == 2
-            nm = str.trim(array.get(parts, 0))
-            raw = str.replace_all(str.trim(array.get(parts, 1)), ",", "")
-            v = str.tonumber(raw)
-            if not na(v) and str.length(nm) > 0
-                c = f_color(nm)
-                array.push(bpLines, line.new(bar_index - 1, v, bar_index, v, extend = extendLeft ? extend.both : extend.right, color = c, style = f_style(nm), width = lineWidth))
-                if showLabels
-                    t = showValue ? nm + " " + str.tostring(v, "#.##") : nm
-                    array.push(bpLabels, label.new(bar_index + labelBars, v, t, style = label.style_label_left, color = color.new(#0b0f16, 15), textcolor = c, size = f_size()))
+    n = array.size(lv)
+    if n > 0
+        gap = labelGap > 0 ? labelGap : autoGap
+        idx = array.sort_indices(lv, order.descending)
+        float prev = na
+        for k = 0 to n - 1
+            i = array.get(idx, k)
+            v = array.get(lv, i)
+            nm = array.get(ln, i)
+            c = f_color(nm)
+            array.push(bpLines, line.new(bar_index - 1, v, bar_index, v, extend = extendLeft ? extend.both : extend.right, color = c, style = f_style(nm), width = lineWidth))
+            y = na(prev) ? v : math.min(v, prev - gap)       // two labels at one level sit one below the other
+            prev := y
+            if showLabels
+                tx = showValue ? nm + " " + str.tostring(v, "#.##") : nm
+                array.push(bpLabels, label.new(bar_index + labelBars, y, tx, style = label.style_label_left, color = color.new(#0b0f16, 15), textcolor = c, size = f_size()))
+    if showRegime and regTitle != ""
+        tc = str.contains(str.upper(regTitle), "POSITIVE") ? #2ecc9a : str.contains(str.upper(regTitle), "NEGATIVE") ? #ef5b5b : #e6edf3
+        table.cell(regBox, 0, 0, regTitle, width = 30, text_color = tc, text_halign = text.align_left, text_size = size.normal)
+        table.cell(regBox, 0, 1, regBody, width = 30, text_color = #c9d1d9, text_halign = text.align_left, text_size = size.small)
