@@ -8,6 +8,8 @@
 //   Name=Value     a level, for example   Gamma flip=22749
 //   ~ text         a regime description line (first one is the title)
 //   # text         comment, ignored
+// The levels are end-of-day numbers: text copied from the 26th close is drawn only on the NEXT trading day (the 27th).
+// The date is read from the header line (# ... close 2026-10-26). Before that day starts the lines are shown going forward from the last bar.
 // Add the indicator to a Nifty / Bank Nifty chart, open Settings > Inputs, paste into "Levels", press OK.
 //
 // Strategy (per enabled level):
@@ -42,6 +44,7 @@ labelGap   = input.float(0.0, "Labels: minimum gap in points (0 = automatic)", m
 showValue  = input.bool(true, "Show the value in each label", group=gLook)
 txtSize    = input.string("small", "Label text size", options=["tiny", "small", "normal"], group=gLook)
 showRegime = input.bool(true, "Show the regime box (top right)", group=gLook)
+restrictDay = input.bool(true, "Draw levels and signals only on the trading day AFTER the close date in the pasted text", group=gLook)
 
 gStr = "Touch > doji > retest signals"
 useStrat = input.bool(true, "Show CALL / PUT signals", group=gStr)
@@ -123,6 +126,10 @@ var int[]    stgBar  = array.new_int()      // bar where the current stage began
 var int[]    awayN   = array.new_int()      // bars spent away from the level since the doji
 var string   regTitle = ""
 var string   regBody  = ""
+var int      lvStartTime = na         // start of the calendar day after the close date in the pasted header
+var int      dayStartBar = na
+var int      dayEndBar   = na
+var int      dayKey      = na
 var string[] sgWhen   = array.new_string()   // newest first: when, side, strike, level of each setup
 var string[] sgSide   = array.new_string()
 var string[] sgStrike = array.new_string()
@@ -153,6 +160,25 @@ if barstate.isfirst
                         array.push(stgBar, 0)
                         array.push(awayN, 0)
 
+    cp = str.pos(txt, "close 20")
+    if not na(cp)
+        ds = str.substring(txt, cp + 6, cp + 16)
+        yy = str.tonumber(str.substring(ds, 0, 4))
+        mm = str.tonumber(str.substring(ds, 5, 7))
+        dd = str.tonumber(str.substring(ds, 8, 10))
+        if not na(yy) and not na(mm) and not na(dd)
+            lvStartTime := timestamp(syminfo.timezone, int(yy), int(mm), int(dd), 0, 0) + 86400000
+
+// the trading day the levels are for: the first session after the close date (EOD 26th -> 27th)
+int dayKeyNow = year * 10000 + month * 100 + dayofmonth
+if restrictDay and not na(lvStartTime)
+    if na(dayStartBar) and time >= lvStartTime
+        dayStartBar := bar_index
+        dayKey := dayKeyNow
+    if not na(dayStartBar) and dayKeyNow == dayKey
+        dayEndBar := bar_index
+bool inDay = not restrictDay or na(lvStartTime) or (not na(dayStartBar) and dayKeyNow == dayKey)
+
 autoGap = (ta.highest(high, 200) - ta.lowest(low, 200)) / 32.0
 // option strike = the retest candle's close rounded to the nearest 50 (Nifty) or 100 (Bank Nifty)
 bool isBank = str.contains(str.upper(syminfo.ticker), "BANK") or str.contains(str.upper(regTitle), "BANK NIFTY")
@@ -162,7 +188,7 @@ float strikeStep = strikeIn == "Auto" ? (isBank ? 100.0 : 50.0) : str.tonumber(s
 bool callAny = false
 bool putAny = false
 isDoji = (high - low) > 0 and math.abs(close - open) <= (high - low) * dojiPct / 100.0
-if useStrat and barstate.isconfirmed and time >= sigFrom and array.size(lv) > 0
+if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and array.size(lv) > 0
     for i = 0 to array.size(lv) - 1
         L = array.get(lv, i)
         tl = L * tolPct / 100.0
@@ -228,17 +254,29 @@ if barstate.islast
         gap = labelGap > 0 ? labelGap : autoGap
         idx = array.sort_indices(lv, order.descending)
         float prev = na
+        int xs = bar_index - 1
+        int xe = bar_index
+        string ext = extendLeft ? extend.both : extend.right
+        int lx = bar_index + labelBars
+        if restrictDay and not na(lvStartTime)
+            if na(dayStartBar)
+                ext := extend.right                      // the chart has not reached that session yet: preview the lines going forward
+            else
+                xs := dayStartBar
+                xe := math.max(dayEndBar, dayStartBar + 1)
+                ext := dayEndBar == bar_index ? extend.right : extend.none
+                lx := xe + labelBars
         for k = 0 to n - 1
             i = array.get(idx, k)
             v = array.get(lv, i)
             nm = array.get(ln, i)
             c = f_color(nm)
-            array.push(bpLines, line.new(bar_index - 1, v, bar_index, v, extend = extendLeft ? extend.both : extend.right, color = c, style = f_style(nm), width = lineWidth))
+            array.push(bpLines, line.new(xs, v, xe, v, extend = ext, color = c, style = f_style(nm), width = lineWidth))
             y = na(prev) ? v : math.min(v, prev - gap)       // two labels at one level sit one below the other
             prev := y
             if showLabels
                 tx = showValue ? nm + " " + str.tostring(v, "#.##") : nm
-                array.push(bpLabels, label.new(bar_index + labelBars, y, tx, style = label.style_label_left, color = color.new(#0b0f16, 15), textcolor = c, size = f_size()))
+                array.push(bpLabels, label.new(lx, y, tx, style = label.style_label_left, color = color.new(#0b0f16, 15), textcolor = c, size = f_size()))
     if showRegime and regTitle != ""
         tc = str.contains(str.upper(regTitle), "POSITIVE") ? #2ecc9a : str.contains(str.upper(regTitle), "NEGATIVE") ? #ef5b5b : #e6edf3
         table.cell(regBox, 0, 0, regTitle, width = 30, text_color = tc, text_halign = text.align_left, text_size = size.normal)
