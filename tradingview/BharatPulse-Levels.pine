@@ -49,7 +49,7 @@ tolPct   = input.float(0.03, "Touch tolerance (% of the level)", minval=0.0, ste
 dojiPct  = input.float(30.0, "Doji: body at most this % of the candle range", minval=1.0, maxval=60.0, group=gStr)
 maxWait  = input.int(12, "Give up after this many bars between the steps", minval=2, maxval=100, group=gStr)
 minAway  = input.int(1, "Bars price must leave the level before the retest", minval=0, maxval=20, group=gStr)
-sigFrom  = input.time(timestamp(2000, 1, 1, 0, 0), "Show signals from", group=gStr)
+sigFrom  = input.time(946684800000, "Show signals from", group=gStr)
 
 // ---------------- helpers ----------------
 f_enabled(string name) =>
