@@ -1,4 +1,4 @@
-//@version=5
+//@version=6
 // BharatPulse Levels
 // Draws horizontal levels (spot, max pain, gamma flip, GEX / OI walls, POC, VAH, VAL ...) from text pasted out of the
 // BharatPulse dashboard (Options tab > "Levels for TradingView" > Copy levels), shows the day's gamma regime in a box at the
