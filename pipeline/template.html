@@ -227,6 +227,10 @@ footer th{background:none;position:static}
         <div class="hint" id="op-oi-note" style="margin-bottom:6px"></div>
         <div style="overflow-x:auto"><div id="op-ladder" class="chart" style="height:740px;min-width:860px"></div></div>
         <div class="hint" id="op-gex-note" style="line-height:1.6"></div></div>
+      <div class="card c12"><div class="hd"><div><h2>Levels for TradingView</h2><div class="sub" id="op-tv-sub"></div></div>
+        <div style="display:flex;gap:8px;align-items:center"><span class="hint" id="op-tv-ok"></span><button class="btn" id="op-tv-copy">Copy levels</button></div></div>
+        <textarea id="op-tv-text" readonly rows="12" spellcheck="false" style="width:100%;box-sizing:border-box;background:#0b0f16;color:#e6edf3;border:1px solid #263040;border-radius:8px;padding:10px;font:12.5px/1.5 ui-monospace,Consolas,monospace;resize:vertical"></textarea>
+        <div class="hint" style="line-height:1.6;margin-top:6px">Uses the choices made in the ladder above (open-interest expiry, GEX expiries, volume-profile window) and the index chosen at the top of the tab. <b>In TradingView:</b> add the <b>BharatPulse Levels</b> indicator (Pine Script in the project's <code>tradingview</code> folder), open its <b>Settings &gt; Inputs</b>, paste into <b>Levels</b>, press OK. Repeat each day, and once per index.</div></div>
       <div class="card c12"><div class="hd"><div><h2>Who is positioned how (index derivatives) <button class="info" data-info="part" title="What is this chart?">ⓘ</button></h2><div class="sub" id="op-part-sub"></div></div>
         <div class="seg" id="op-who"><button data-v="FII" class="on">FII</button><button data-v="DII">DII</button><button data-v="Pro">Pro</button><button data-v="Client">Client</button></div></div>
         <div class="scroll" style="max-height:none"><table id="op-part"></table></div><div id="op-partch" class="chart" style="height:320px"></div></div>
@@ -870,6 +874,16 @@ function renderOptions(){
     $('#op-gex-sub').innerHTML+=` · <b>volume profile</b> (${vpw.days} ${vpw.days===1?'session':'sessions'}: ${vpw.from===vpw.to?vpw.to:vpw.from+' → '+vpw.to}) · POC ${num(vpw.poc,0)} · VAH ${num(vpw.vah,0)} · VAL ${num(vpw.val,0)} (${vpw.share}% of volume in the value area) <span class="hint">${vpw.src==='volume'?'index volume from 5-minute candles':'NSE index volume spread over each day\'s range; approximate'}</span>${!vpAsked?' <b class="warn">(the '+OS.vpw+'-session profile is unavailable, showing '+vpw.days+')</b>':''}${vpw.to<ch.asof?' <b class="warn">(⚠ latest session available: '+vpw.to+')</b>':''}`;
   }
   addLine(ch.spot,'Spot','#e6edf3','dash','all');
+  // ---- plain-text levels for the TradingView indicator (every level, even those outside the chart range) ----
+  {
+    const tv=[['Spot',ch.spot],['Max pain',ex&&ex.pain],['Gamma flip',flip],['OI call wall',cw],['OI put wall',pw],['GEX call wall',g&&g.walls.call_gex],['GEX put wall',g&&g.walls.put_gex]];
+    if(vpw)tv.push(['POC',vpw.poc],['VAH',vpw.vah],['VAL',vpw.val]);
+    const rows=tv.filter(r=>r[1]!=null&&isFinite(r[1])).sort((a,b)=>b[1]-a[1]).map(r=>r[0]+'='+(Math.round(r[1]*100)/100));
+    const oiTxt=ex?'OI expiry '+ex.e:'',gTxt=g?'GEX '+(OS.gex==='all'?'nearest 4 expiries':'expiry '+gx.nearest.expiry):'',vTxt=vpw?'profile '+(vpw.days===1?'1 day '+vpw.to:'5 sessions '+vpw.from+' to '+vpw.to):'';
+    const head='# BharatPulse '+name+' close '+ch.asof+(oiTxt?' | '+oiTxt:'')+(gTxt?' | '+gTxt:'')+(vTxt?' | '+vTxt:'');
+    $('#op-tv-text').value=head+'\n'+rows.join('\n');
+    $('#op-tv-sub').textContent=name+' · '+rows.length+' levels · '+[oiTxt,gTxt,vTxt].filter(Boolean).join(' · ');
+  }
   // right-hand labels with simple collision avoidance so close levels stay readable
   const H=740,mt=36,mb=58,plotPx=H-mt-mb;
   const ls=lvls.slice().sort((a,b)=>b.y-a.y),px=ls.map(q=>(hi-q.y)/(hi-lo)*plotPx),adj=[];
@@ -908,6 +922,12 @@ function renderOptions(){
 }
 $('#secH').onchange=()=>{S.secH=$('#secH').value;renderSectors()};
 segBind('#op-sym','sym',()=>{OS.sym=S.sym;renderOptions()});
+$('#op-tv-copy').onclick=async()=>{
+  const ta=$('#op-tv-text'),msg=$('#op-tv-ok');let ok=false;
+  try{await navigator.clipboard.writeText(ta.value);ok=true}catch(e){try{ta.focus();ta.select();ok=document.execCommand('copy')}catch(_){}}
+  msg.textContent=ok?'Copied ✓':'Press Ctrl+C to copy the selected text';msg.className='hint '+(ok?'up':'warn');if(!ok){ta.focus();ta.select()}
+  setTimeout(()=>{msg.textContent=''},3500)};
+$('#op-tv-text').onfocus=e=>e.target.select();
 const s3bind=(sel,key,num_)=>{$(sel).onclick=e=>{const v=e.target.dataset.v;if(v==null)return;OS.s3[key]=num_?+v:v;renderSurface3D()}};
 s3bind('#s3-sym','sym');s3bind('#s3-metric','metric');s3bind('#s3-range','range',true);s3bind('#s3-lv','lv',true);
 $('#s3-reset').onclick=()=>{const el=$('#s3-plot');if(el&&el._cam)Plotly.relayout(el,{'scene.camera':el._cam})};
