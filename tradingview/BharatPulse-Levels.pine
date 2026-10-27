@@ -8,6 +8,7 @@
 //   Name=Value     a level, for example   Gamma flip=22749   (Weekly POC / VAH / VAL = the last 5 sessions' profile)
 //   ~ text         a regime description line (first one is the title)
 //   # text         comment, ignored
+//   @pos_above=1  which side of the gamma flip is positive gamma (1 = above); lets the box and labels show a regime change
 // The levels are end-of-day numbers: text copied from the 26th close is drawn only on the NEXT trading day (the 27th).
 // The date is read from the header line (# ... close 2026-10-26). Before that day starts the lines are shown going forward from the last bar.
 // Add the indicator to a Nifty / Bank Nifty chart, open Settings > Inputs, paste into "Levels", press OK.
@@ -61,7 +62,7 @@ sigFrom  = input.time(946684800000, "Show signals from", group=gStr)
 strikeIn = input.string("Auto", "Option strike step (Auto = 50 for Nifty, 100 for Bank Nifty)", options=["Auto", "50", "100"], group=gStr)
 markOnChart = input.bool(true, "Also mark CALL / PUT on the chart", group=gStr)
 showSigBox  = input.bool(true, "Show the setups table", group=gStr)
-sigPos      = input.string("Bottom left", "Setups table position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gStr)
+sigPos      = input.string("Top center", "Setups table position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gStr)
 sigRows     = input.int(3, "Setups table: most recent setups to list", minval=1, maxval=6, group=gStr)
 sigOnlyWhen = input.bool(false, "Show the setups table only when there is a setup", group=gStr)
 
@@ -151,6 +152,8 @@ var int[]    stgBar  = array.new_int()      // bar where the current stage began
 var int[]    awayN   = array.new_int()      // bars spent away from the level since the doji
 var string   regTitle = ""
 var string   regBody  = ""
+var float    flipLvl = na              // the gamma flip level from the pasted text
+var int      posAboveFlag = na         // 1 = positive gamma applies ABOVE the flip, 0 = positive gamma applies BELOW it
 var int      lvStartTime = na         // start of the calendar day after the close date in the pasted header
 var int      dayStartBar = na
 var int      dayEndBar   = na
@@ -166,7 +169,11 @@ if barstate.isfirst
     for it in items
         t = str.trim(it)
         if str.length(t) > 0 and not str.startswith(t, "#")
-            if str.startswith(t, "~")
+            if str.startswith(t, "@")
+                ap = str.split(t, "=")
+                if array.size(ap) == 2 and str.lower(str.trim(array.get(ap, 0))) == "@pos_above"
+                    posAboveFlag := int(str.tonumber(str.trim(array.get(ap, 1))))
+            else if str.startswith(t, "~")
                 body = str.trim(str.substring(t, 1))
                 if regTitle == ""
                     regTitle := body
@@ -178,6 +185,8 @@ if barstate.isfirst
                     nm = str.trim(array.get(parts, 0))
                     raw = str.replace_all(str.trim(array.get(parts, 1)), ",", "")
                     v = str.tonumber(raw)
+                    if not na(v) and str.contains(str.lower(nm), "flip") and not str.contains(str.lower(nm), "weekly")
+                        flipLvl := v
                     if not na(v) and str.length(nm) > 0 and f_enabled(nm)
                         array.push(lv, v)
                         array.push(ln, nm)
@@ -202,7 +211,16 @@ if restrictDay and not na(lvStartTime)
         dayKey := dayKeyNow
     if not na(dayStartBar) and dayKeyNow == dayKey
         dayEndBar := bar_index
+flipXUp = ta.crossover(close, flipLvl)
+flipXDn = ta.crossunder(close, flipLvl)
 bool inDay = not restrictDay or na(lvStartTime) or (not na(dayStartBar) and dayKeyNow == dayKey)
+
+// regime change: the close crosses the gamma flip
+bool flipCross = (flipXUp or flipXDn) and not na(flipLvl) and not na(posAboveFlag) and inDay
+if flipCross and barstate.isconfirmed
+    bool posAfter = flipXUp ? posAboveFlag == 1 : posAboveFlag != 1
+    label.new(bar_index, flipXUp ? low : high, (posAfter ? "POSITIVE" : "NEGATIVE") + " gamma regime\nflip " + str.tostring(flipLvl, "#.##") + (flipXUp ? " crossed up" : " crossed down"), style = flipXUp ? label.style_label_up : label.style_label_down, color = posAfter ? #2ecc9a : #ef5b5b, textcolor = color.white, size = size.small)
+alertcondition(flipCross, "BharatPulse gamma flip crossed", "BharatPulse: price crossed the gamma flip on {{ticker}} (regime changed)")
 
 autoGap = (ta.highest(high, 200) - ta.lowest(low, 200)) / 32.0
 // option strike = the retest candle's close rounded to the nearest 50 (Nifty) or 100 (Bank Nifty)
@@ -309,10 +327,17 @@ if barstate.islast
         table.delete(sigBox)
         sigBox := na
     if showRegime and regTitle != ""
-        regBox := table.new(f_pos(regPos), 1, 2, bgcolor=color.new(#0b0f16, boxTransp), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
+        regBox := table.new(f_pos(regPos), 1, 3, bgcolor=color.new(#0b0f16, boxTransp), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
         tc = str.contains(str.upper(regTitle), "POSITIVE") ? #2ecc9a : str.contains(str.upper(regTitle), "NEGATIVE") ? #ef5b5b : #e6edf3
         table.cell(regBox, 0, 0, regTitle, width = 28, text_color = tc, text_halign = text.align_left, text_size = size.small)
         table.cell(regBox, 0, 1, regBody, width = 28, text_color = #c9d1d9, text_halign = text.align_left, text_size = size.tiny)
+        if not na(flipLvl) and not na(posAboveFlag)
+            aboveNow = close > flipLvl
+            posNow = aboveNow == (posAboveFlag == 1)
+            titlePos = str.contains(str.upper(regTitle), "POSITIVE")
+            titleNeg = str.contains(str.upper(regTitle), "NEGATIVE")
+            changed = (titlePos and not posNow) or (titleNeg and posNow)
+            table.cell(regBox, 0, 2, "Now: price " + (aboveNow ? "above" : "below") + " the gamma flip " + str.tostring(flipLvl, "#.##") + ", so the " + (posNow ? "POSITIVE" : "NEGATIVE") + " gamma side applies" + (changed ? " (REGIME CHANGED since the close)" : ""), width = 28, text_color = posNow ? #2ecc9a : #ef5b5b, text_halign = text.align_left, text_size = size.tiny)
     ns = array.size(sgWhen)
     if showSigBox and useStrat and (ns > 0 or not sigOnlyWhen)
         nr = math.min(ns, sigRows)
