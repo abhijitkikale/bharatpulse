@@ -46,7 +46,9 @@ labelBars  = input.int(3, "Labels: bars to the right of the last candle", minval
 labelGap   = input.float(0.0, "Labels: minimum gap in points (0 = automatic)", minval=0.0, step=1.0, group=gLook)
 showValue  = input.bool(true, "Show the value in each label", group=gLook)
 txtSize    = input.string("small", "Label text size", options=["tiny", "small", "normal"], group=gLook)
-showRegime = input.bool(true, "Show the regime box (top right)", group=gLook)
+showRegime = input.bool(true, "Show the regime box", group=gLook)
+regPos     = input.string("Top right", "Regime box position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gLook)
+boxTransp  = input.int(35, "Boxes: background transparency (0 = solid, 100 = clear)", minval=0, maxval=100, group=gLook)
 restrictDay = input.bool(true, "Draw levels and signals only on the trading day AFTER the close date in the pasted text", group=gLook)
 
 gStr = "Touch > doji > retest signals"
@@ -58,7 +60,10 @@ minAway  = input.int(1, "Bars price must leave the level before the retest", min
 sigFrom  = input.time(946684800000, "Show signals from", group=gStr)
 strikeIn = input.string("Auto", "Option strike step (Auto = 50 for Nifty, 100 for Bank Nifty)", options=["Auto", "50", "100"], group=gStr)
 markOnChart = input.bool(true, "Also mark CALL / PUT on the chart", group=gStr)
-showSigBox  = input.bool(true, "Show the setups table (top left)", group=gStr)
+showSigBox  = input.bool(true, "Show the setups table", group=gStr)
+sigPos      = input.string("Bottom left", "Setups table position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gStr)
+sigRows     = input.int(3, "Setups table: most recent setups to list", minval=1, maxval=6, group=gStr)
+sigOnlyWhen = input.bool(true, "Show the setups table only when there is a setup", group=gStr)
 
 // ---------------- helpers ----------------
 f_enabled(string name) =>
@@ -129,6 +134,11 @@ f_style(string name) =>
     else if str.contains(s, "max pain") or str.contains(s, "flip")
         st := line.style_dotted
     st
+
+f_pos(string p) =>
+    p == "Top left" ? position.top_left : p == "Top center" ? position.top_center : p == "Top right" ? position.top_right :
+     p == "Middle left" ? position.middle_left : p == "Middle right" ? position.middle_right : p == "Bottom left" ? position.bottom_left :
+     p == "Bottom center" ? position.bottom_center : position.bottom_right
 
 f_size() =>
     txtSize == "tiny" ? size.tiny : txtSize == "normal" ? size.normal : size.small
@@ -254,8 +264,8 @@ alertcondition(putAny, "BharatPulse PUT setup", "BharatPulse: PUT setup (touch, 
 // ---------------- draw levels, stacked labels, regime box (last bar only) ----------------
 var line[]  bpLines  = array.new_line()
 var label[] bpLabels = array.new_label()
-var table   sigBox   = table.new(position.top_left, 4, 7, bgcolor=color.new(#0b0f16, 8), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
-var table   regBox   = table.new(position.top_right, 1, 2, bgcolor=color.new(#0b0f16, 8), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
+var table   sigBox   = na
+var table   regBox   = na
 
 if barstate.islast
     for l in bpLines
@@ -292,23 +302,31 @@ if barstate.islast
             if showLabels
                 tx = showValue ? nm + " " + str.tostring(v, "#.##") : nm
                 array.push(bpLabels, label.new(lx, y, tx, style = label.style_label_left, color = color.new(#0b0f16, 15), textcolor = c, size = f_size()))
+    if not na(regBox)
+        table.delete(regBox)
+        regBox := na
+    if not na(sigBox)
+        table.delete(sigBox)
+        sigBox := na
     if showRegime and regTitle != ""
+        regBox := table.new(f_pos(regPos), 1, 2, bgcolor=color.new(#0b0f16, boxTransp), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
         tc = str.contains(str.upper(regTitle), "POSITIVE") ? #2ecc9a : str.contains(str.upper(regTitle), "NEGATIVE") ? #ef5b5b : #e6edf3
-        table.cell(regBox, 0, 0, regTitle, width = 30, text_color = tc, text_halign = text.align_left, text_size = size.normal)
-        table.cell(regBox, 0, 1, regBody, width = 30, text_color = #c9d1d9, text_halign = text.align_left, text_size = size.small)
-    if showSigBox and useStrat
-        table.cell(sigBox, 0, 0, "Setup", text_color = #8b97a8, text_halign = text.align_left, text_size = size.small)
-        table.cell(sigBox, 1, 0, "Buy", text_color = #8b97a8, text_halign = text.align_left, text_size = size.small)
-        table.cell(sigBox, 2, 0, "Strike", text_color = #8b97a8, text_halign = text.align_left, text_size = size.small)
-        table.cell(sigBox, 3, 0, "At level", text_color = #8b97a8, text_halign = text.align_left, text_size = size.small)
-        ns = array.size(sgWhen)
-        for r = 0 to 5
-            if r < ns
+        table.cell(regBox, 0, 0, regTitle, width = 28, text_color = tc, text_halign = text.align_left, text_size = size.small)
+        table.cell(regBox, 0, 1, regBody, width = 28, text_color = #c9d1d9, text_halign = text.align_left, text_size = size.tiny)
+    ns = array.size(sgWhen)
+    if showSigBox and useStrat and (ns > 0 or not sigOnlyWhen)
+        nr = math.min(ns, sigRows)
+        sigBox := table.new(f_pos(sigPos), 4, math.max(nr, 1) + 1, bgcolor=color.new(#0b0f16, boxTransp), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
+        table.cell(sigBox, 0, 0, "Setup", text_color = #8b97a8, text_halign = text.align_left, text_size = size.tiny)
+        table.cell(sigBox, 1, 0, "Buy", text_color = #8b97a8, text_halign = text.align_left, text_size = size.tiny)
+        table.cell(sigBox, 2, 0, "Strike", text_color = #8b97a8, text_halign = text.align_left, text_size = size.tiny)
+        table.cell(sigBox, 3, 0, "At level", text_color = #8b97a8, text_halign = text.align_left, text_size = size.tiny)
+        if nr == 0
+            table.cell(sigBox, 0, 1, "No setup yet", text_color = #8b97a8, text_halign = text.align_left, text_size = size.tiny)
+        else
+            for r = 0 to nr - 1
                 sc = array.get(sgSide, r) == "CALL" ? #2ecc9a : #ef5b5b
-                table.cell(sigBox, 0, r + 1, array.get(sgWhen, r), text_color = #c9d1d9, text_halign = text.align_left, text_size = size.small)
-                table.cell(sigBox, 1, r + 1, array.get(sgSide, r), text_color = sc, text_halign = text.align_left, text_size = size.small)
-                table.cell(sigBox, 2, r + 1, array.get(sgStrike, r) + (array.get(sgSide, r) == "CALL" ? " CE" : " PE"), text_color = sc, text_halign = text.align_left, text_size = size.small)
-                table.cell(sigBox, 3, r + 1, array.get(sgLevel, r), text_color = #c9d1d9, text_halign = text.align_left, text_size = size.small)
-            else
-                for c = 0 to 3
-                    table.cell(sigBox, c, r + 1, r == 0 and ns == 0 and c == 0 ? "No setup yet" : "", text_color = #8b97a8, text_halign = text.align_left, text_size = size.small)
+                table.cell(sigBox, 0, r + 1, array.get(sgWhen, r), text_color = #c9d1d9, text_halign = text.align_left, text_size = size.tiny)
+                table.cell(sigBox, 1, r + 1, array.get(sgSide, r), text_color = sc, text_halign = text.align_left, text_size = size.tiny)
+                table.cell(sigBox, 2, r + 1, array.get(sgStrike, r) + (array.get(sgSide, r) == "CALL" ? " CE" : " PE"), text_color = sc, text_halign = text.align_left, text_size = size.tiny)
+                table.cell(sigBox, 3, r + 1, array.get(sgLevel, r), text_color = #c9d1d9, text_halign = text.align_left, text_size = size.tiny)
