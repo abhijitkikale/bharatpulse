@@ -54,9 +54,24 @@ def main(cached=False):
         return pd.DataFrame({"o": num("Open Index Value"), "h": num("High Index Value"), "l": num("Low Index Value"),
                              "c": num("Closing Index Value"), "v": num("Volume")}) if len(d) else None
     intraday, status["Index 1-min candles + volume (Fyers)"] = fetch_fyers.fetch_intraday()
+    provisional = None
+    if intraday and fo is not None:                    # NSE's F&O file for the latest session is not out yet: use Fyers' option chain for it
+        last_bar = max(v.index.max() for v in intraday.values())
+        session = last_bar.date()
+        if last_bar.strftime("%H:%M") >= "15:25" and pd.Timestamp(session) > pd.to_datetime(fo["TradDt"]).max():
+            chains, st = fetch_fyers.fetch_chains()
+            if chains:
+                fo, added = fetch_fyers.provisional_fo(fo, session, chains)
+                if added:
+                    provisional = {"date": str(session), "symbols": added}
+                    status["Options (Fyers option chain, provisional)"] = f"ok ({session:%d-%b-%Y}; {', '.join(added)}; NSE's file replaces it once published)"
+                else:
+                    status["Options (Fyers option chain, provisional)"] = "not used (open interest did not match NSE's previous day)"
+            else:
+                status["Options (Fyers option chain, provisional)"] = st
     if not intraday:
         intraday, status["Index 5-min candles + volume (Yahoo; fallback)"] = fetch.fetch_intraday(cons)
-    options = compute_options.build_options(fo, part, vix, ohlcv={"NIFTY": idx_ohlcv("Nifty 50"), "BANKNIFTY": idx_ohlcv("Nifty Bank")}, intraday=intraday)
+    options = compute_options.build_options(fo, part, vix, ohlcv={"NIFTY": idx_ohlcv("Nifty 50"), "BANKNIFTY": idx_ohlcv("Nifty Bank")}, intraday=intraday, provisional=provisional)
     idx_dates_all = sorted(allx["date"].dt.normalize().unique()) if allx is not None else []
     bhav, status["Market activity (NSE price/volume file)"] = fetch_bhav.fetch_bhav(idx_dates_all, download=not cached)
     activity = compute_activity.build_activity(bhav)

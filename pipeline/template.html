@@ -773,7 +773,8 @@ function renderOptions(){
   const rng=OS.range/100,lo=ch.spot*(1-rng),hi=ch.spot*(1+rng),inV=x=>x!=null&&x>=lo&&x<=hi;
   const avg=(a,n)=>{const v=a.slice(-n-1,-1).filter(x=>x!=null);return v.length?mean(v):null};
   const lastOf=a=>a.filter(x=>x!=null).at(-1);
-  $('#op-sub').innerHTML=`F&O data as of ${ch.asof} · ${name} spot ${num(ch.spot,0)} · charts show strikes within ±${OS.range}% of spot`;
+  const isProv=O.provisional&&O.provisional.symbols.includes(sym)&&O.provisional.date===ch.asof;
+  $('#op-sub').innerHTML=`F&O data as of ${ch.asof} · ${name} spot ${num(ch.spot,0)} · charts show strikes within ±${OS.range}% of spot`+(isProv?` · <b class="warn">provisional: from the Fyers option chain because NSE's F&O file for ${ch.asof} is not out yet; it is replaced automatically when NSE publishes</b>`:'');
   // tiles
   const tile=(k,v,s,cl='')=>`<div class="tile"><div class="k">${k}</div><div class="v ${cl}">${v}</div><div class="k">${s}</div></div>`;
   const pc=(s)=>{const b=O.symbols[s];if(!b)return '';const a=b.hist.pcr_oi,p=lastOf(a),pv=a.filter(x=>x!=null).at(-2),av=avg(a,20);

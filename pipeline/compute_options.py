@@ -152,10 +152,11 @@ def symbol_block(fo: pd.DataFrame, sym: str, max_expiries=4, band=0.10, ohlcv=No
     g = opt.groupby(["date", "OptnTp"])[["OpnIntrst", "TtlTradgVol"]].sum().unstack()
     hist_d, pcr_oi, pcr_vol, und = [], [], [], []
     spot = opt.groupby("date")["UndrlygPric"].median()
+    prov_days = set(opt.loc[opt["Prov"].eq(True), "date"]) if "Prov" in opt else set()       # days built from Fyers: volumes are incomplete
     for day in g.index:
         hist_d.append(day.strftime("%Y-%m-%d"))
         pcr_oi.append(_pcr(g.loc[day, ("OpnIntrst", "PE")], g.loc[day, ("OpnIntrst", "CE")]))
-        pcr_vol.append(_pcr(g.loc[day, ("TtlTradgVol", "PE")], g.loc[day, ("TtlTradgVol", "CE")]))
+        pcr_vol.append(None if day in prov_days else _pcr(g.loc[day, ("TtlTradgVol", "PE")], g.loc[day, ("TtlTradgVol", "CE")]))
         und.append(_num(spot.loc[day]))
     # --- latest chain, nearest expiries ---
     last = opt["date"].max()
@@ -209,7 +210,7 @@ def participant_block(part: pd.DataFrame):
     return out
 
 
-def build_options(fo, part, vix, ohlcv=None, intraday=None):
+def build_options(fo, part, vix, ohlcv=None, intraday=None, provisional=None):
     """fo/part may be None when NSE blocked the download; returns None so the tab shows a clear message."""
     if fo is None or fo.empty:
         return None
@@ -220,4 +221,4 @@ def build_options(fo, part, vix, ohlcv=None, intraday=None):
     if vix is not None and len(vix):
         v = vix.dropna().tail(780)
         v = {"d": [d.strftime("%Y-%m-%d") for d in v.index], "v": [_num(x) for x in v.values]}
-    return {"symbols": symbols, "part": participant_block(part), "vix": v}
+    return {"symbols": symbols, "part": participant_block(part), "vix": v, "provisional": provisional}

@@ -63,3 +63,75 @@ def fetch_intraday(days=10):
         last = max(v.index.max() for v in out.values())
         return out, f"ok ({last:%d-%b-%Y %H:%M} IST)" + ("; missing " + ", ".join(bad) if bad else "")
     return {}, "failed: " + "; ".join(bad) + " (token may have expired: run tools/fyers_login.py)"
+
+
+# ---------------- option chain: a provisional "today" while NSE's F&O file is not out yet ----------------
+FO_COLS = ["TradDt", "FinInstrmTp", "TckrSymb", "XpryDt", "StrkPric", "OptnTp", "ClsPric", "SttlmPric",
+           "OpnIntrst", "ChngInOpnIntrst", "TtlTradgVol", "UndrlygPric"]
+
+
+def fetch_chains(strikes=100):
+    """{sym: {"spot": index last price, "rows": [dict per option]}} for EVERY listed expiry (about 100 strikes around the money
+    each). Returns ({}, text) when Fyers cannot be used."""
+    h = _auth()
+    if h is None:
+        return {}, "not configured"
+    out, bad = {}, []
+    for sym, fy in INDEX.items():
+        try:
+            first = _get("options-chain-v3", h, symbol=fy, strikecount=strikes)["data"]
+            spot = next(float(r["ltp"]) for r in first["optionsChain"] if not r.get("option_type"))
+            rows = []
+            for e in first["expiryData"]:
+                d = first if e is first["expiryData"][0] else _get("options-chain-v3", h, symbol=fy, strikecount=strikes, timestamp=e["expiry"])["data"]
+                xp = dt.datetime.strptime(e["date"], "%d-%m-%Y").date().isoformat()
+                for r in d["optionsChain"]:
+                    if r.get("option_type") in ("CE", "PE") and r.get("oi") is not None:
+                        rows.append({"XpryDt": xp, "StrkPric": float(r["strike_price"]), "OptnTp": r["option_type"], "ltp": float(r["ltp"]),
+                                     "oi": float(r["oi"]), "prev_oi": float(r.get("prev_oi") or 0), "volume": float(r.get("volume") or 0)})
+            if not rows:
+                raise RuntimeError("empty chain")
+            out[sym] = {"spot": spot, "rows": rows}
+        except Exception as e:
+            bad.append(f"{sym} ({str(e)[:60]})")
+    return out, ("ok" if out else "failed: " + "; ".join(bad)) + (("; missing " + ", ".join(bad)) if out and bad else "")
+
+
+def provisional_fo(fo, trade_date, chains, tol=0.01):
+    """Add one provisional trading day to the NSE F&O frame from Fyers chains. Strikes Fyers returns use Fyers' open interest and
+    prices; every other live contract keeps the previous day's NSE open interest (far out-of-the-money open interest hardly moves
+    in a day) with no price, so put-call totals stay comparable. Trust check: on the strikes both sources list, Fyers'
+    previous-day open interest must equal NSE's last file within `tol` and cover most of the book; otherwise that symbol is skipped.
+    A contract expiring on trade_date is carried like any other (NSE's own file for an expiry day still lists it). Rows are
+    flagged Prov=True. Returns (frame, [symbols added])."""
+    day = pd.Timestamp(trade_date)
+    f = fo.copy()
+    f["_d"] = pd.to_datetime(f["TradDt"])
+    prior = f[(f["_d"] < day) & f["OptnTp"].isin(["CE", "PE"])]
+    if prior.empty:
+        return fo, []
+    prev_day = prior["_d"].max()
+    added, new = [], []
+    for sym, c in chains.items():
+        p = prior[(prior["_d"] == prev_day) & (prior["TckrSymb"] == sym) & (pd.to_datetime(prior["XpryDt"]) >= day)]
+        if p.empty or not c["rows"]:
+            continue
+        fy = pd.DataFrame(c["rows"])
+        fy = fy[pd.to_datetime(fy["XpryDt"]) > day]
+        keys = set(zip(fy["XpryDt"], fy["StrkPric"], fy["OptnTp"]))
+        both = p.assign(StrkPric=p["StrkPric"].astype(float), XpryDt=p["XpryDt"].astype(str)).set_index(["XpryDt", "StrkPric", "OptnTp"])["OpnIntrst"]
+        j = fy.set_index(["XpryDt", "StrkPric", "OptnTp"])[["prev_oi"]].join(both.rename("nse_prev"), how="inner")
+        if j.empty or j["nse_prev"].sum() < 0.6 * p.loc[pd.to_datetime(p["XpryDt"]) > day, "OpnIntrst"].sum() or abs(j["prev_oi"].sum() / j["nse_prev"].sum() - 1) > tol:
+            continue
+        carry = p[[(x, k, t) not in keys for x, k, t in zip(p["XpryDt"].astype(str), p["StrkPric"].astype(float), p["OptnTp"])]]
+        a = pd.DataFrame({"TradDt": day.strftime("%Y-%m-%d"), "FinInstrmTp": "IDO", "TckrSymb": sym, "XpryDt": fy["XpryDt"], "StrkPric": fy["StrkPric"],
+                          "OptnTp": fy["OptnTp"], "ClsPric": fy["ltp"], "SttlmPric": fy["ltp"], "OpnIntrst": fy["oi"],
+                          "ChngInOpnIntrst": fy["oi"] - fy["prev_oi"], "TtlTradgVol": fy["volume"], "UndrlygPric": c["spot"]})
+        b = carry[FO_COLS].copy()
+        b["TradDt"], b["ClsPric"], b["SttlmPric"], b["ChngInOpnIntrst"], b["TtlTradgVol"], b["UndrlygPric"] = day.strftime("%Y-%m-%d"), 0.0, 0.0, 0.0, 0.0, c["spot"]
+        a, b = a[FO_COLS].assign(Prov=True), b.assign(Prov=True)
+        new += [a, b]
+        added.append(sym)
+    if not new:
+        return fo, []
+    return pd.concat([fo] + new, ignore_index=True), added
