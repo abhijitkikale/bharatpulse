@@ -5,7 +5,7 @@
 // top right, and marks touch > doji > retest setups at the levels.
 //
 // Input format, one entry per line (or separated by ;):
-//   Name=Value     a level, for example   Gamma flip=22749
+//   Name=Value     a level, for example   Gamma flip=22749   (Weekly POC / VAH / VAL = the last 5 sessions' profile)
 //   ~ text         a regime description line (first one is the title)
 //   # text         comment, ignored
 // The levels are end-of-day numbers: text copied from the 26th close is drawn only on the NEXT trading day (the 27th).
@@ -33,6 +33,9 @@ enGexP  = input.bool(true, "GEX put wall", group=gShow)
 enPoc   = input.bool(true, "POC", group=gShow)
 enVah   = input.bool(true, "VAH", group=gShow)
 enVal   = input.bool(true, "VAL", group=gShow)
+enWkPoc = input.bool(true, "Weekly POC (last 5 sessions)", group=gShow)
+enWkVah = input.bool(true, "Weekly VAH", group=gShow)
+enWkVal = input.bool(true, "Weekly VAL", group=gShow)
 enOther = input.bool(true, "Any other level", group=gShow)
 
 gLook = "Appearance"
@@ -61,7 +64,13 @@ showSigBox  = input.bool(true, "Show the setups table (top left)", group=gStr)
 f_enabled(string name) =>
     s = str.lower(name)
     bool e = enOther
-    if str.contains(s, "spot")
+    if str.contains(s, "weekly") and str.contains(s, "poc")
+        e := enWkPoc
+    else if str.contains(s, "weekly") and str.contains(s, "vah")
+        e := enWkVah
+    else if str.contains(s, "weekly") and str.contains(s, "val")
+        e := enWkVal
+    else if str.contains(s, "spot")
         e := enSpot
     else if str.contains(s, "max pain")
         e := enPain
@@ -86,7 +95,11 @@ f_enabled(string name) =>
 f_color(string name) =>
     s = str.lower(name)
     color c = #8b97a8
-    if str.contains(s, "spot")
+    if str.contains(s, "weekly") and str.contains(s, "poc")
+        c := #ff80ab
+    else if str.contains(s, "weekly") and (str.contains(s, "vah") or str.contains(s, "val"))
+        c := #80cbc4
+    else if str.contains(s, "spot")
         c := #e6edf3
     else if str.contains(s, "max pain")
         c := #d4e157
@@ -109,7 +122,9 @@ f_color(string name) =>
 f_style(string name) =>
     s = str.lower(name)
     string st = line.style_dashed
-    if str.contains(s, "poc")
+    if str.contains(s, "weekly")
+        st := str.contains(s, "poc") ? line.style_solid : line.style_dotted
+    else if str.contains(s, "poc")
         st := line.style_solid
     else if str.contains(s, "max pain") or str.contains(s, "flip")
         st := line.style_dotted
