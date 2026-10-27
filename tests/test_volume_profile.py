@@ -73,3 +73,14 @@ def test_vwap_matches_a_hand_calculation():
     den = sum(s["v"][:3])
     assert abs(s["vwap"][2] - num / den) < 0.01
     assert s["prof"]["val"] <= s["prof"]["poc"] <= s["prof"]["vah"] and len(s["prof"]["p"]) == len(s["prof"]["v"])
+
+
+def test_one_minute_candles_give_five_minute_chart_and_fine_profile():
+    t = pd.date_range("2026-10-16 09:15", periods=30, freq="1min", tz="Asia/Kolkata")
+    c = np.linspace(100, 110, 30)
+    df = pd.DataFrame({"o": c, "h": c + .5, "l": c - .5, "c": c + .2, "v": np.full(30, 1000.0)}, index=t)
+    vp, ses = intraday_block(df, 1)
+    s = ses[0]
+    assert len(s["t"]) == 6 and s["t"][0] == "09:15" and s["t"][1] == "09:20"           # 30 one-minute bars -> six 5-minute bars
+    assert abs(sum(s["v"]) - 30000) < 1 and s["o"][0] == df["o"].iloc[0] and abs(s["c"][0] - df["c"].iloc[4]) < 0.01
+    assert vp["1"]["src"] == "volume" and 100 <= vp["1"]["val"] <= vp["1"]["poc"] <= vp["1"]["vah"] <= 111

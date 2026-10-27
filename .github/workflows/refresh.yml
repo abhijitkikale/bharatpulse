@@ -54,6 +54,8 @@ jobs:
         working-directory: pipeline
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}   # optional; scoped to this step only
+          FYERS_APP_ID: ${{ secrets.FYERS_APP_ID }}   # optional data-only Fyers app; the token is one day old at most
+          FYERS_TOKEN: ${{ secrets.FYERS_TOKEN }}
         run: python run.py
       - name: Stage site
         run: |

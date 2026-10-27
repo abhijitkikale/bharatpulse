@@ -92,9 +92,15 @@ def volume_profile(df, window, bin_size, value_pct=0.70):
     return None if p is None else {**p, "w": window, "src": "daily"}
 
 
-def intraday_block(df, bin_size, n_sessions=5):
-    """From 5-minute index candles (o, h, l, c) whose volume v is the summed traded shares of the index's stocks:
-    the 1-day and 5-session profiles, plus per-session bars, VWAP and histogram for the session chart."""
+def _chart_bars(s, freq):
+    """Aggregate finer candles into chart candles (open first, high max, low min, close last, volume sum)."""
+    b = s.resample(freq).agg({"o": "first", "h": "max", "l": "min", "c": "last", "v": "sum"})
+    return b.dropna(subset=["o"])
+
+
+def intraday_block(df, bin_size, n_sessions=5, chart_freq="5min"):
+    """From intraday index candles (o, h, l, c, v; 1-minute from Fyers or 5-minute from Yahoo, v = traded volume of the index):
+    the 1-day and 5-session profiles (on the finest candles given), plus per-session chart bars, VWAP and histogram."""
     d = df.dropna(subset=["o", "h", "l", "c", "v"])
     d = d[d["v"] > 0]
     days = sorted(set(d.index.date))
@@ -112,10 +118,11 @@ def intraday_block(df, bin_size, n_sessions=5):
             vp["5"] = {**p, "from": str(days[-5]), "to": str(days[-1]), "w": 5, "src": "volume"}
     sessions = []
     for day in days[-n_sessions:]:
-        s = d[[x == day for x in d.index.date]]
-        pr = _profile(s, bin_size, sessions=1, hist=True)
+        fine = d[[x == day for x in d.index.date]]
+        pr = _profile(fine, bin_size, sessions=1, hist=True)
         if pr is None:
             continue
+        s = _chart_bars(fine, chart_freq)
         typical = (s["h"] + s["l"] + s["c"]) / 3
         vwap = (typical * s["v"]).cumsum() / s["v"].cumsum()
         sessions.append({"date": str(day), "t": [x.strftime("%H:%M") for x in s.index], "o": [_num(v) for v in s["o"]], "h": [_num(v) for v in s["h"]],
