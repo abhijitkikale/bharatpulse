@@ -63,7 +63,7 @@ markOnChart = input.bool(true, "Also mark CALL / PUT on the chart", group=gStr)
 showSigBox  = input.bool(true, "Show the setups table", group=gStr)
 sigPos      = input.string("Bottom left", "Setups table position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gStr)
 sigRows     = input.int(3, "Setups table: most recent setups to list", minval=1, maxval=6, group=gStr)
-sigOnlyWhen = input.bool(true, "Show the setups table only when there is a setup", group=gStr)
+sigOnlyWhen = input.bool(false, "Show the setups table only when there is a setup", group=gStr)
 
 // ---------------- helpers ----------------
 f_enabled(string name) =>
