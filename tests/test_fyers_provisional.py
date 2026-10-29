@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "pipeline"))
 import pandas as pd
 
-from fetch_fyers import FO_COLS, provisional_fo
+from fetch_fyers import FO_COLS, candles_frame, provisional_fo
 
 
 def _fo():
@@ -43,3 +43,10 @@ def test_big_jump_in_open_interest_is_fine_when_previous_day_matches():
     ch["NIFTY"]["rows"][0]["oi"] = 5000                    # rollover on expiry day: OI can jump a lot
     out, added = provisional_fo(_fo(), "2026-10-27", ch)
     assert added == ["NIFTY"]
+
+
+def test_repeated_fyers_candles_are_counted_once():
+    c = [[1793000100, 10, 12, 9, 11, 500], [1793000040, 9, 11, 8, 10, 400], [1793000100, 10, 12, 9, 11, 500], [1793000040, 9, 11, 8, 10, 400]]
+    d = candles_frame(c)
+    assert len(d) == 2 and d["v"].sum() == 900 and list(d["o"]) == [9.0, 10.0]          # sorted by time, no double counting
+    assert str(d.index.tz) == "Asia/Kolkata"

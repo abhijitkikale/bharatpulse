@@ -40,6 +40,17 @@ def _get(path, headers, **params):
     return j
 
 
+def candles_frame(candles):
+    """Fyers candles [[epoch, o, h, l, c, v], ...] -> DataFrame(o, h, l, c, v) on an IST index. Fyers can repeat candles inside one
+    response (seen for the current session), which would double the volume, so each timestamp is kept once."""
+    d = pd.DataFrame(candles, columns=["t", "o", "h", "l", "c", "v"])
+    if d.empty:
+        raise RuntimeError("no candles")
+    d = d.drop_duplicates("t", keep="last").sort_values("t")
+    d.index = pd.to_datetime(d["t"], unit="s", utc=True).dt.tz_convert("Asia/Kolkata")
+    return d[["o", "h", "l", "c", "v"]].astype(float)
+
+
 def fetch_intraday(days=10):
     """{sym: DataFrame(o, h, l, c, v)} of 1-minute index candles (IST index). The index's own traded volume is included,
     so no stock-by-stock sum is needed. Returns (frames, status text); frames is {} if Fyers cannot be used."""
@@ -52,11 +63,7 @@ def fetch_intraday(days=10):
         try:
             j = _get("history", h, symbol=fy, resolution="1", date_format="1", cont_flag="1",
                      range_from=(today - dt.timedelta(days=days)).isoformat(), range_to=today.isoformat())
-            d = pd.DataFrame(j["candles"], columns=["t", "o", "h", "l", "c", "v"])
-            if d.empty:
-                raise RuntimeError("no candles")
-            d.index = pd.to_datetime(d["t"], unit="s", utc=True).dt.tz_convert("Asia/Kolkata")
-            out[sym] = d[["o", "h", "l", "c", "v"]].astype(float)
+            out[sym] = candles_frame(j["candles"])
         except Exception as e:
             bad.append(f"{sym} ({str(e)[:60]})")
     if out:
