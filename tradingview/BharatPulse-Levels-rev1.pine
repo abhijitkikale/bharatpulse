@@ -1,0 +1,388 @@
+//@version=6
+// BharatPulse Levels  -  REV 1  (BharatPulse-Levels-rev1.pine)
+// Rev 0 (BharatPulse-Levels.pine) enters a setup on the CLOSE of the retest candle.
+// Rev 1 adds an optional CONFIRMATION CANDLE: after the retest candle, wait one more candle and only draw the CALL / PUT if it
+//   - does not cross back over the level (CALL: closes above it, PUT: closes below it)      [default], or
+//   - simply closes in the signal's direction (CALL: green candle, PUT: red candle).
+// The signal is then drawn on the confirmation candle and the strike is taken from ITS close. A small grey x marks a setup that
+// was dropped because the next candle did not confirm it. Set "Confirmation candle" to Off to get exactly Rev 0.
+// Add Rev 0 and Rev 1 to the same chart (or two charts) to compare them side by side.
+// Draws horizontal levels (spot, max pain, gamma flip, GEX / OI walls, POC, VAH, VAL ...) from text pasted out of the
+// BharatPulse dashboard (Options tab > "Levels for TradingView" > Copy levels), shows the day's gamma regime in a box at the
+// top right, and marks touch > doji > retest setups at the levels.
+//
+// Input format, one entry per line (or separated by ;):
+//   Name=Value     a level, for example   Gamma flip=22749   (Weekly POC / VAH / VAL = the last 5 sessions' profile)
+//   ~ text         a regime description line (first one is the title)
+//   # text         comment, ignored
+//   @pos_above=1  which side of the gamma flip is positive gamma (1 = above); lets the box and labels show a regime change
+// The levels are end-of-day numbers: text copied from the 26th close is drawn only on the NEXT trading day (the 27th).
+// The date is read from the header line (# ... close 2026-10-26). Before that day starts the lines are shown going forward from the last bar.
+// Add the indicator to a Nifty / Bank Nifty chart, open Settings > Inputs, paste into "Levels", press OK.
+//
+// Strategy (per enabled level):
+//   1. a candle touches the level          2. then a doji candle forms at the level
+//   3. later a candle retests the level (after price has left it): closes ABOVE = CALL setup, BELOW = PUT setup,
+//      it closes BELOW the level = PUT setup. Signals are drawn on the close of the retest candle.
+// Information only, not investment advice. Test on your own data before trading it.
+indicator("BharatPulse Levels Rev 1", shorttitle="BP Rev1", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ---------------- inputs ----------------
+txt = input.text_area("", "Levels (paste from BharatPulse)", tooltip="Paste the text copied from the dashboard.")
+
+gShow = "Show / hide lines"
+enSpot  = input.bool(true, "Spot", group=gShow)
+enPain  = input.bool(true, "Max pain", group=gShow)
+enFlip  = input.bool(true, "Gamma flip", group=gShow)
+enOiC   = input.bool(true, "OI call wall", group=gShow)
+enOiP   = input.bool(true, "OI put wall", group=gShow)
+enGexC  = input.bool(true, "GEX call wall", group=gShow)
+enGexP  = input.bool(true, "GEX put wall", group=gShow)
+enPoc   = input.bool(true, "POC", group=gShow)
+enVah   = input.bool(true, "VAH", group=gShow)
+enVal   = input.bool(true, "VAL", group=gShow)
+enWkPoc = input.bool(true, "Weekly POC (last 5 sessions)", group=gShow)
+enWkVah = input.bool(true, "Weekly VAH", group=gShow)
+enWkVal = input.bool(true, "Weekly VAL", group=gShow)
+enOther = input.bool(true, "Any other level", group=gShow)
+
+gLook = "Appearance"
+lineWidth  = input.int(1, "Line width", minval=1, maxval=4, group=gLook)
+extendLeft = input.bool(true, "Extend lines to the left", group=gLook)
+showLabels = input.bool(true, "Show labels", group=gLook)
+labelBars  = input.int(3, "Labels: bars to the right of the last candle", minval=0, maxval=50, group=gLook)
+labelGap   = input.float(0.0, "Labels: minimum gap in points (0 = automatic)", minval=0.0, step=1.0, group=gLook)
+showValue  = input.bool(true, "Show the value in each label", group=gLook)
+txtSize    = input.string("small", "Label text size", options=["tiny", "small", "normal"], group=gLook)
+showRegime = input.bool(true, "Show the regime box", group=gLook)
+regPos     = input.string("Top right", "Regime box position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gLook)
+boxTransp  = input.int(35, "Boxes: background transparency (0 = solid, 100 = clear)", minval=0, maxval=100, group=gLook)
+restrictDay = input.bool(true, "Draw levels and signals only on the trading day AFTER the close date in the pasted text", group=gLook)
+
+gStr = "Touch > doji > retest signals"
+useStrat = input.bool(true, "Show CALL / PUT signals", group=gStr)
+tolPct   = input.float(0.03, "Touch tolerance (% of the level)", minval=0.0, step=0.01, group=gStr)
+dojiPct  = input.float(30.0, "Doji: body at most this % of the candle range", minval=1.0, maxval=60.0, group=gStr)
+maxWait  = input.int(12, "Give up after this many bars between the steps", minval=2, maxval=100, group=gStr)
+minAway  = input.int(1, "Bars price must leave the level before the retest", minval=0, maxval=20, group=gStr)
+sigFrom  = input.time(946684800000, "Show signals from", group=gStr)
+confirmMode = input.string("Next candle must not cross back over the level", "Confirmation candle (Rev 1)", options=["Off (same as Rev 0)", "Next candle must not cross back over the level", "Next candle must close in the signal direction"], group=gStr)
+showFailed  = input.bool(true, "Mark setups that were not confirmed (grey x)", group=gStr)
+strikeIn = input.string("Auto", "Option strike step (Auto = 50 for Nifty, 100 for Bank Nifty)", options=["Auto", "50", "100"], group=gStr)
+markOnChart = input.bool(true, "Also mark CALL / PUT on the chart", group=gStr)
+showSigBox  = input.bool(true, "Show the setups table", group=gStr)
+sigPos      = input.string("Top center", "Setups table position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gStr)
+sigRows     = input.int(3, "Setups table: most recent setups to list", minval=1, maxval=6, group=gStr)
+sigOnlyWhen = input.bool(false, "Show the setups table only when there is a setup", group=gStr)
+
+// ---------------- helpers ----------------
+f_enabled(string name) =>
+    s = str.lower(name)
+    bool e = enOther
+    if str.contains(s, "weekly") and str.contains(s, "poc")
+        e := enWkPoc
+    else if str.contains(s, "weekly") and str.contains(s, "vah")
+        e := enWkVah
+    else if str.contains(s, "weekly") and str.contains(s, "val")
+        e := enWkVal
+    else if str.contains(s, "spot")
+        e := enSpot
+    else if str.contains(s, "max pain")
+        e := enPain
+    else if str.contains(s, "flip")
+        e := enFlip
+    else if str.contains(s, "oi call")
+        e := enOiC
+    else if str.contains(s, "oi put")
+        e := enOiP
+    else if str.contains(s, "gex call")
+        e := enGexC
+    else if str.contains(s, "gex put")
+        e := enGexP
+    else if str.contains(s, "poc")
+        e := enPoc
+    else if str.contains(s, "vah")
+        e := enVah
+    else if str.contains(s, "val")
+        e := enVal
+    e
+
+f_color(string name) =>
+    s = str.lower(name)
+    color c = #8b97a8
+    if str.contains(s, "weekly") and str.contains(s, "poc")
+        c := #ff80ab
+    else if str.contains(s, "weekly") and (str.contains(s, "vah") or str.contains(s, "val"))
+        c := #80cbc4
+    else if str.contains(s, "spot")
+        c := #e6edf3
+    else if str.contains(s, "max pain")
+        c := #d4e157
+    else if str.contains(s, "flip")
+        c := #f5a623
+    else if str.contains(s, "oi call")
+        c := #ef5b5b
+    else if str.contains(s, "oi put")
+        c := #2ecc9a
+    else if str.contains(s, "gex call")
+        c := #ff9f6b
+    else if str.contains(s, "gex put")
+        c := #66c2ff
+    else if str.contains(s, "poc")
+        c := #e8c547
+    else if str.contains(s, "vah") or str.contains(s, "val")
+        c := #b388ff
+    c
+
+f_style(string name) =>
+    s = str.lower(name)
+    string st = line.style_dashed
+    if str.contains(s, "weekly")
+        st := str.contains(s, "poc") ? line.style_solid : line.style_dotted
+    else if str.contains(s, "poc")
+        st := line.style_solid
+    else if str.contains(s, "max pain") or str.contains(s, "flip")
+        st := line.style_dotted
+    st
+
+f_pos(string p) =>
+    p == "Top left" ? position.top_left : p == "Top center" ? position.top_center : p == "Top right" ? position.top_right :
+     p == "Middle left" ? position.middle_left : p == "Middle right" ? position.middle_right : p == "Bottom left" ? position.bottom_left :
+     p == "Bottom center" ? position.bottom_center : position.bottom_right
+
+f_size() =>
+    txtSize == "tiny" ? size.tiny : txtSize == "normal" ? size.normal : size.small
+
+// ---------------- parse the pasted text once ----------------
+var float[]  lv      = array.new_float()
+var string[] ln      = array.new_string()
+var int[]    stg     = array.new_int()      // 0 idle, 1 touched, 2 doji seen
+var int[]    stgBar  = array.new_int()      // bar where the current stage began
+var int[]    awayN   = array.new_int()      // bars spent away from the level since the doji
+var string[] pendSide = array.new_string()  // Rev 1: a retest waiting for its confirmation candle (CALL / PUT / empty)
+var int[]    pendBar  = array.new_int()     // the bar on which that retest happened
+var string   regTitle = ""
+var string   regBody  = ""
+var float    flipLvl = na              // the gamma flip level from the pasted text
+var int      posAboveFlag = na         // 1 = positive gamma applies ABOVE the flip, 0 = positive gamma applies BELOW it
+var int      lvStartTime = na         // start of the calendar day after the close date in the pasted header
+var int      dayStartBar = na
+var int      dayEndBar   = na
+var int      dayKey      = na
+var string[] sgWhen   = array.new_string()   // newest first: when, side, strike, level of each setup
+var string[] sgSide   = array.new_string()
+var string[] sgStrike = array.new_string()
+var string[] sgLevel  = array.new_string()
+
+if barstate.isfirst
+    clean = str.replace_all(str.replace_all(txt, "\r", ""), "\n", ";")
+    items = str.split(clean, ";")
+    for it in items
+        t = str.trim(it)
+        if str.length(t) > 0 and not str.startswith(t, "#")
+            if str.startswith(t, "@")
+                ap = str.split(t, "=")
+                if array.size(ap) == 2 and str.lower(str.trim(array.get(ap, 0))) == "@pos_above"
+                    posAboveFlag := int(str.tonumber(str.trim(array.get(ap, 1))))
+            else if str.startswith(t, "~")
+                body = str.trim(str.substring(t, 1))
+                if regTitle == ""
+                    regTitle := body
+                else
+                    regBody := regBody == "" ? body : regBody + "\n" + body
+            else
+                parts = str.split(t, "=")
+                if array.size(parts) == 2
+                    nm = str.trim(array.get(parts, 0))
+                    raw = str.replace_all(str.trim(array.get(parts, 1)), ",", "")
+                    v = str.tonumber(raw)
+                    if not na(v) and str.contains(str.lower(nm), "flip") and not str.contains(str.lower(nm), "weekly")
+                        flipLvl := v
+                    if not na(v) and str.length(nm) > 0 and f_enabled(nm)
+                        array.push(lv, v)
+                        array.push(ln, nm)
+                        array.push(stg, 0)
+                        array.push(stgBar, 0)
+                        array.push(awayN, 0)
+                        array.push(pendSide, "")
+                        array.push(pendBar, 0)
+
+    cp = str.pos(txt, "close 20")
+    if not na(cp)
+        ds = str.substring(txt, cp + 6, cp + 16)
+        yy = str.tonumber(str.substring(ds, 0, 4))
+        mm = str.tonumber(str.substring(ds, 5, 7))
+        dd = str.tonumber(str.substring(ds, 8, 10))
+        if not na(yy) and not na(mm) and not na(dd)
+            lvStartTime := timestamp(syminfo.timezone, int(yy), int(mm), int(dd), 0, 0) + 86400000
+
+// the trading day the levels are for: the first session after the close date (EOD 26th -> 27th)
+int dayKeyNow = year * 10000 + month * 100 + dayofmonth
+if restrictDay and not na(lvStartTime)
+    if na(dayStartBar) and time >= lvStartTime
+        dayStartBar := bar_index
+        dayKey := dayKeyNow
+    if not na(dayStartBar) and dayKeyNow == dayKey
+        dayEndBar := bar_index
+flipXUp = ta.crossover(close, flipLvl)
+flipXDn = ta.crossunder(close, flipLvl)
+bool inDay = not restrictDay or na(lvStartTime) or (not na(dayStartBar) and dayKeyNow == dayKey)
+
+// regime change: the close crosses the gamma flip
+bool flipCross = (flipXUp or flipXDn) and not na(flipLvl) and not na(posAboveFlag) and inDay
+if flipCross and barstate.isconfirmed
+    bool posAfter = flipXUp ? posAboveFlag == 1 : posAboveFlag != 1
+    label.new(bar_index, flipXUp ? low : high, (posAfter ? "POSITIVE" : "NEGATIVE") + " gamma regime\nflip " + str.tostring(flipLvl, "#.##") + (flipXUp ? " crossed up" : " crossed down"), style = flipXUp ? label.style_label_up : label.style_label_down, color = posAfter ? #2ecc9a : #ef5b5b, textcolor = color.white, size = size.small)
+alertcondition(flipCross, "BharatPulse gamma flip crossed", "BharatPulse: price crossed the gamma flip on {{ticker}} (regime changed)")
+
+autoGap = (ta.highest(high, 200) - ta.lowest(low, 200)) / 32.0
+// option strike = the retest candle's close rounded to the nearest 50 (Nifty) or 100 (Bank Nifty)
+bool isBank = str.contains(str.upper(syminfo.ticker), "BANK") or str.contains(str.upper(regTitle), "BANK NIFTY")
+float strikeStep = strikeIn == "Auto" ? (isBank ? 100.0 : 50.0) : str.tonumber(strikeIn)
+
+// ---------------- touch > doji > retest ----------------
+bool callAny = false
+bool putAny = false
+isDoji = (high - low) > 0 and math.abs(close - open) <= (high - low) * dojiPct / 100.0
+bool confirmOn = confirmMode != "Off (same as Rev 0)"
+if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and array.size(lv) > 0
+    for i = 0 to array.size(lv) - 1
+        L = array.get(lv, i)
+        tl = L * tolPct / 100.0
+        touching = high >= L - tl and low <= L + tl
+        string emitSide = ""
+        // Rev 1: this candle is the confirmation candle for a retest that happened on the previous candle
+        string ps = array.get(pendSide, i)
+        if ps != ""
+            if bar_index == array.get(pendBar, i) + 1
+                bool ok = confirmMode == "Next candle must close in the signal direction" ? (ps == "CALL" ? close > open : close < open) : (ps == "CALL" ? close > L : close < L)
+                if ok
+                    emitSide := ps
+                else if showFailed
+                    label.new(bar_index, ps == "CALL" ? low : high, "x", style = ps == "CALL" ? label.style_label_up : label.style_label_down, color = color.new(#8b97a8, 30), textcolor = color.white, size = size.tiny)
+            array.set(pendSide, i, "")
+        s = array.get(stg, i)
+        if s > 0 and bar_index - array.get(stgBar, i) > maxWait
+            s := 0
+            array.set(stg, i, 0)
+        if s == 0
+            if touching
+                array.set(stg, i, 1)
+                array.set(stgBar, i, bar_index)
+        else if s == 1
+            if touching and isDoji and bar_index > array.get(stgBar, i)
+                array.set(stg, i, 2)
+                array.set(stgBar, i, bar_index)
+                array.set(awayN, i, 0)
+        else if s == 2
+            if touching
+                if array.get(awayN, i) >= minAway
+                    string side = close > L ? "CALL" : close < L ? "PUT" : ""
+                    if side != ""
+                        if confirmOn
+                            array.set(pendSide, i, side)
+                            array.set(pendBar, i, bar_index)
+                        else
+                            emitSide := side
+                    array.set(stg, i, 0)
+            else
+                array.set(awayN, i, array.get(awayN, i) + 1)
+        if emitSide != ""
+            nm = array.get(ln, i)
+            callAny := callAny or emitSide == "CALL"
+            putAny := putAny or emitSide == "PUT"
+            strike = math.round(close / strikeStep) * strikeStep
+            array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
+            array.unshift(sgSide, emitSide)
+            array.unshift(sgStrike, str.tostring(strike, "#"))
+            array.unshift(sgLevel, nm + " " + str.tostring(L, "#.##"))
+            if array.size(sgWhen) > 6
+                array.pop(sgWhen)
+                array.pop(sgSide)
+                array.pop(sgStrike)
+                array.pop(sgLevel)
+            if markOnChart
+                if emitSide == "CALL"
+                    label.new(bar_index, low, confirmOn ? "CALL ✓" : "CALL", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
+                else
+                    label.new(bar_index, high, confirmOn ? "PUT ✓" : "PUT", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
+
+alertcondition(callAny, "BharatPulse CALL setup", "BharatPulse: CALL setup (touch, doji, retest closed above the level) on {{ticker}}")
+alertcondition(putAny, "BharatPulse PUT setup", "BharatPulse: PUT setup (touch, doji, retest closed below the level) on {{ticker}}")
+
+// ---------------- draw levels, stacked labels, regime box (last bar only) ----------------
+var line[]  bpLines  = array.new_line()
+var label[] bpLabels = array.new_label()
+var table   sigBox   = na
+var table   regBox   = na
+
+if barstate.islast
+    for l in bpLines
+        line.delete(l)
+    for b in bpLabels
+        label.delete(b)
+    array.clear(bpLines)
+    array.clear(bpLabels)
+    n = array.size(lv)
+    if n > 0
+        gap = labelGap > 0 ? labelGap : autoGap
+        idx = array.sort_indices(lv, order.descending)
+        float prev = na
+        int xs = bar_index - 1
+        int xe = bar_index
+        string ext = extendLeft ? extend.both : extend.right
+        int lx = bar_index + labelBars
+        if restrictDay and not na(lvStartTime)
+            if na(dayStartBar)
+                ext := extend.right                      // the chart has not reached that session yet: preview the lines going forward
+            else
+                xs := dayStartBar
+                xe := math.max(dayEndBar, dayStartBar + 1)
+                ext := dayEndBar == bar_index ? extend.right : extend.none
+                lx := xe + labelBars
+        for k = 0 to n - 1
+            i = array.get(idx, k)
+            v = array.get(lv, i)
+            nm = array.get(ln, i)
+            c = f_color(nm)
+            array.push(bpLines, line.new(xs, v, xe, v, extend = ext, color = c, style = f_style(nm), width = lineWidth))
+            y = na(prev) ? v : math.min(v, prev - gap)       // two labels at one level sit one below the other
+            prev := y
+            if showLabels
+                tx = showValue ? nm + " " + str.tostring(v, "#.##") : nm
+                array.push(bpLabels, label.new(lx, y, tx, style = label.style_label_left, color = color.new(#0b0f16, 15), textcolor = c, size = f_size()))
+    if not na(regBox)
+        table.delete(regBox)
+        regBox := na
+    if not na(sigBox)
+        table.delete(sigBox)
+        sigBox := na
+    if showRegime and regTitle != ""
+        regBox := table.new(f_pos(regPos), 1, 3, bgcolor=color.new(#0b0f16, boxTransp), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
+        tc = str.contains(str.upper(regTitle), "POSITIVE") ? #2ecc9a : str.contains(str.upper(regTitle), "NEGATIVE") ? #ef5b5b : #e6edf3
+        table.cell(regBox, 0, 0, regTitle, width = 28, text_color = tc, text_halign = text.align_left, text_size = size.small)
+        table.cell(regBox, 0, 1, regBody, width = 28, text_color = #c9d1d9, text_halign = text.align_left, text_size = size.tiny)
+        if not na(flipLvl) and not na(posAboveFlag)
+            aboveNow = close > flipLvl
+            posNow = aboveNow == (posAboveFlag == 1)
+            titlePos = str.contains(str.upper(regTitle), "POSITIVE")
+            titleNeg = str.contains(str.upper(regTitle), "NEGATIVE")
+            changed = (titlePos and not posNow) or (titleNeg and posNow)
+            table.cell(regBox, 0, 2, "Now: price " + (aboveNow ? "above" : "below") + " the gamma flip " + str.tostring(flipLvl, "#.##") + ", so the " + (posNow ? "POSITIVE" : "NEGATIVE") + " gamma side applies" + (changed ? " (REGIME CHANGED since the close)" : ""), width = 28, text_color = posNow ? #2ecc9a : #ef5b5b, text_halign = text.align_left, text_size = size.tiny)
+    ns = array.size(sgWhen)
+    if showSigBox and useStrat and (ns > 0 or not sigOnlyWhen)
+        nr = math.min(ns, sigRows)
+        sigBox := table.new(f_pos(sigPos), 4, math.max(nr, 1) + 1, bgcolor=color.new(#0b0f16, boxTransp), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
+        table.cell(sigBox, 0, 0, confirmOn ? "Confirmed" : "Setup", text_color = #8b97a8, text_halign = text.align_left, text_size = size.tiny)
+        table.cell(sigBox, 1, 0, "Buy", text_color = #8b97a8, text_halign = text.align_left, text_size = size.tiny)
+        table.cell(sigBox, 2, 0, "Strike", text_color = #8b97a8, text_halign = text.align_left, text_size = size.tiny)
+        table.cell(sigBox, 3, 0, "At level", text_color = #8b97a8, text_halign = text.align_left, text_size = size.tiny)
+        if nr == 0
+            table.cell(sigBox, 0, 1, "No setup yet", text_color = #8b97a8, text_halign = text.align_left, text_size = size.tiny)
+        else
+            for r = 0 to nr - 1
+                sc = array.get(sgSide, r) == "CALL" ? #2ecc9a : #ef5b5b
+                table.cell(sigBox, 0, r + 1, array.get(sgWhen, r), text_color = #c9d1d9, text_halign = text.align_left, text_size = size.tiny)
+                table.cell(sigBox, 1, r + 1, array.get(sgSide, r), text_color = sc, text_halign = text.align_left, text_size = size.tiny)
+                table.cell(sigBox, 2, r + 1, array.get(sgStrike, r) + (array.get(sgSide, r) == "CALL" ? " CE" : " PE"), text_color = sc, text_halign = text.align_left, text_size = size.tiny)
+                table.cell(sigBox, 3, r + 1, array.get(sgLevel, r), text_color = #c9d1d9, text_halign = text.align_left, text_size = size.tiny)
