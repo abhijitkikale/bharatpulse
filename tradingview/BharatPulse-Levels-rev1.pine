@@ -1,12 +1,15 @@
 //@version=6
 // BharatPulse Levels  -  REV 1  (BharatPulse-Levels-rev1.pine)
-// Rev 0 (BharatPulse-Levels.pine) enters a setup on the CLOSE of the retest candle.
-// Rev 1 adds an optional CONFIRMATION CANDLE: after the retest candle, wait one more candle and only draw the CALL / PUT if it
-//   - does not cross back over the level (CALL: closes above it, PUT: closes below it)      [default], or
-//   - simply closes in the signal's direction (CALL: green candle, PUT: red candle).
-// The signal is then drawn on the confirmation candle and the strike is taken from ITS close. A small grey x marks a setup that
-// was dropped because the next candle did not confirm it. Set "Confirmation candle" to Off to get exactly Rev 0.
-// Add Rev 0 and Rev 1 to the same chart (or two charts) to compare them side by side.
+// Rev 0 (BharatPulse-Levels.pine) draws the CALL / PUT on the close of the retest candle.
+// Rev 1 uses the NEXT candle after the retest to decide the direction ("Confirmation candle" setting):
+//   * Next candle decides [default]: it closes ABOVE the level = CALL, BELOW the level = PUT.
+//       - it closes on the same side as the retest candle  = the level held / price bounced back  -> labelled (bounce)
+//       - it closes on the other side                      = price crossed the level              -> labelled (cross)
+//   * Next candle must not cross back: keeps the retest candle's direction only if the next candle closes on the same side.
+//   * Next candle must close in the signal direction: green candle for CALL, red candle for PUT.
+//   * Off: exactly Rev 0.
+// The signal is drawn on that next candle and the option strike is taken from ITS close. A small grey x marks a retest that was
+// dropped because the next candle did not confirm it. Add Rev 0 and Rev 1 to the same chart to compare them.
 // Draws horizontal levels (spot, max pain, gamma flip, GEX / OI walls, POC, VAH, VAL ...) from text pasted out of the
 // BharatPulse dashboard (Options tab > "Levels for TradingView" > Copy levels), shows the day's gamma regime in a box at the
 // top right, and marks touch > doji > retest setups at the levels.
@@ -66,7 +69,7 @@ dojiPct  = input.float(30.0, "Doji: body at most this % of the candle range", mi
 maxWait  = input.int(12, "Give up after this many bars between the steps", minval=2, maxval=100, group=gStr)
 minAway  = input.int(1, "Bars price must leave the level before the retest", minval=0, maxval=20, group=gStr)
 sigFrom  = input.time(946684800000, "Show signals from", group=gStr)
-confirmMode = input.string("Next candle must not cross back over the level", "Confirmation candle (Rev 1)", options=["Off (same as Rev 0)", "Next candle must not cross back over the level", "Next candle must close in the signal direction"], group=gStr)
+confirmMode = input.string("Next candle decides: close above = CALL, close below = PUT", "Confirmation candle (Rev 1)", options=["Off (same as Rev 0)", "Next candle decides: close above = CALL, close below = PUT", "Next candle must not cross back over the level", "Next candle must close in the signal direction"], group=gStr)
 showFailed  = input.bool(true, "Mark setups that were not confirmed (grey x)", group=gStr)
 strikeIn = input.string("Auto", "Option strike step (Auto = 50 for Nifty, 100 for Bank Nifty)", options=["Auto", "50", "100"], group=gStr)
 markOnChart = input.bool(true, "Also mark CALL / PUT on the chart", group=gStr)
@@ -245,21 +248,27 @@ bool callAny = false
 bool putAny = false
 isDoji = (high - low) > 0 and math.abs(close - open) <= (high - low) * dojiPct / 100.0
 bool confirmOn = confirmMode != "Off (same as Rev 0)"
+bool decides = confirmMode == "Next candle decides: close above = CALL, close below = PUT"
 if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and array.size(lv) > 0
     for i = 0 to array.size(lv) - 1
         L = array.get(lv, i)
         tl = L * tolPct / 100.0
         touching = high >= L - tl and low <= L + tl
         string emitSide = ""
+        string emitTag = ""
         // Rev 1: this candle is the confirmation candle for a retest that happened on the previous candle
         string ps = array.get(pendSide, i)
         if ps != ""
             if bar_index == array.get(pendBar, i) + 1
-                bool ok = confirmMode == "Next candle must close in the signal direction" ? (ps == "CALL" ? close > open : close < open) : (ps == "CALL" ? close > L : close < L)
-                if ok
-                    emitSide := ps
-                else if showFailed
-                    label.new(bar_index, ps == "CALL" ? low : high, "x", style = ps == "CALL" ? label.style_label_up : label.style_label_down, color = color.new(#8b97a8, 30), textcolor = color.white, size = size.tiny)
+                if decides
+                    emitSide := close > L ? "CALL" : close < L ? "PUT" : ""
+                    emitTag := emitSide == "" or ps == "EQ" ? "" : emitSide == ps ? " (bounce)" : " (cross)"
+                else
+                    bool ok = confirmMode == "Next candle must close in the signal direction" ? (ps == "CALL" ? close > open : close < open) : (ps == "CALL" ? close > L : close < L)
+                    if ok
+                        emitSide := ps
+                    else if showFailed
+                        label.new(bar_index, ps == "CALL" ? low : high, "x", style = ps == "CALL" ? label.style_label_up : label.style_label_down, color = color.new(#8b97a8, 30), textcolor = color.white, size = size.tiny)
             array.set(pendSide, i, "")
         s = array.get(stg, i)
         if s > 0 and bar_index - array.get(stgBar, i) > maxWait
@@ -278,7 +287,10 @@ if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and array.siz
             if touching
                 if array.get(awayN, i) >= minAway
                     string side = close > L ? "CALL" : close < L ? "PUT" : ""
-                    if side != ""
+                    if decides
+                        array.set(pendSide, i, side == "" ? "EQ" : side)      // the next candle decides, even if the retest closed exactly on the level
+                        array.set(pendBar, i, bar_index)
+                    else if side != ""
                         if confirmOn
                             array.set(pendSide, i, side)
                             array.set(pendBar, i, bar_index)
@@ -295,7 +307,7 @@ if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and array.siz
             array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
             array.unshift(sgSide, emitSide)
             array.unshift(sgStrike, str.tostring(strike, "#"))
-            array.unshift(sgLevel, nm + " " + str.tostring(L, "#.##"))
+            array.unshift(sgLevel, nm + " " + str.tostring(L, "#.##") + emitTag)
             if array.size(sgWhen) > 6
                 array.pop(sgWhen)
                 array.pop(sgSide)
@@ -303,9 +315,9 @@ if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and array.siz
                 array.pop(sgLevel)
             if markOnChart
                 if emitSide == "CALL"
-                    label.new(bar_index, low, confirmOn ? "CALL ✓" : "CALL", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
+                    label.new(bar_index, low, confirmOn ? "CALL ✓" + emitTag : "CALL", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
                 else
-                    label.new(bar_index, high, confirmOn ? "PUT ✓" : "PUT", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
+                    label.new(bar_index, high, confirmOn ? "PUT ✓" + emitTag : "PUT", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
 
 alertcondition(callAny, "BharatPulse CALL setup", "BharatPulse: CALL setup (touch, doji, retest closed above the level) on {{ticker}}")
 alertcondition(putAny, "BharatPulse PUT setup", "BharatPulse: PUT setup (touch, doji, retest closed below the level) on {{ticker}}")
