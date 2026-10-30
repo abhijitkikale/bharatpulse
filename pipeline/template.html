@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <link rel="icon" href="/*__FAVICON__*/">
 <title>BharatPulse — India Markets Dashboard</title>
@@ -109,6 +109,7 @@ footer th{background:none;position:static}
 #infoBox.open{display:block}
 #infoBox .ih{display:flex;align-items:center;gap:10px;margin-bottom:6px}#infoBox h3{margin:0;font-size:17px;flex:1}
 #infoBody p{margin:8px 0}#infoBody ul{margin:6px 0 6px 18px;padding:0}#infoBody li{margin:5px 0}
+.livebn{border:1px solid #1f6b52;background:#0f2a22;color:#c9f2e0;border-radius:10px;padding:7px 12px;margin:8px 0;font-size:13px}.livebn b{color:#2ecc9a}
 .regime{border-radius:10px;padding:10px 14px;margin:8px 0 10px;border:1px solid;line-height:1.55}
 .regime .rt{font-weight:800;letter-spacing:.4px;margin-bottom:2px}
 .regime.pos{background:#0f2a22;border-color:#1f6b52}.regime.pos .rt{color:var(--pos)}
@@ -217,6 +218,7 @@ footer th{background:none;position:static}
   </section>
 
   <section class="tab" id="tab-options">
+    <div class="livebn" id="lb-op" hidden></div>
     <div class="grid" id="opt-body">
       <div class="card c12"><div class="hd"><div><h2>Options &amp; derivatives (end of day)</h2><div class="sub" id="op-sub"></div></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="hint">Strike range</span><div class="seg rseg" id="op-range" data-key="range"><button data-v="3">±3%</button><button data-v="5" class="on">±5%</button><button data-v="10">±10%</button></div>
@@ -253,6 +255,7 @@ footer th{background:none;position:static}
     </div>
   </section>
   <section class="tab" id="tab-vprofile">
+    <div class="livebn" id="lb-vp" hidden></div>
     <div class="grid" id="vp-body">
       <div class="card c12"><div class="hd"><div><h2>Volume profile: price · volume · POC / VAH / VAL · VWAP <button class="info" data-info="vp" title="About POC, VAH and VAL">ⓘ</button></h2><div class="sub" id="op-ses-sub"></div></div>
         <div style="display:flex;gap:8px 14px;flex-wrap:wrap;align-items:center"><div class="seg" id="vp-sym"><button data-v="NIFTY" class="on">Nifty 50</button><button data-v="BANKNIFTY">Bank Nifty</button></div>
@@ -705,6 +708,44 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-info]');if
 $('#infoClose').onclick=closeInfo;$('#infoScrim').onclick=closeInfo;
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeInfo()});
 
+/* ---------- live snapshot: written every 30 min by tools/live_loop.py on the owner's PC, read from the live-data branch ---------- */
+const LIVE_URL='https://raw.githubusercontent.com/abhijitkikale/bharatpulse/live-data/live.json';
+let LIVE=null;
+const okNum=v=>typeof v==='number'&&isFinite(v),okDate=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v),okTime=v=>typeof v==='string'&&/^\d\d:\d\d$/.test(v);
+const nums=(a,n)=>Array.isArray(a)&&a.length===n&&a.every(okNum);
+function cleanLive(j){          // the file comes over the network: keep only the exact expected shape, copied field by field as plain numbers / dates
+  if(!j||j.v!==1||!okDate(j.date)||typeof j.asof!=='string'||isNaN(Date.parse(j.asof)))return null;
+  const out={date:j.date,asof:new Date(j.asof),symbols:{}};
+  for(const sym of ['NIFTY','BANKNIFTY']){
+    const b=j.symbols&&j.symbols[sym];if(!b||!okNum(b.spot)||!okTime(b.last))continue;
+    const vp={};
+    for(const k of ['1','5']){const v=b.vp&&b.vp[k];
+      if(v&&[v.poc,v.vah,v.val,v.share,v.days].every(okNum)&&okDate(v.from)&&okDate(v.to))vp[k]={poc:v.poc,vah:v.vah,val:v.val,share:v.share,days:v.days,from:v.from,to:v.to,w:+k,src:'volume'}}
+    const q=b.session,pr=q&&q.prof;
+    if(!vp['1']||!q||!pr||!okDate(q.date)||!Array.isArray(q.t)||!q.t.every(okTime))continue;
+    const n=q.t.length;
+    if(!n||!['o','h','l','c','v','vwap'].every(f=>nums(q[f],n))||![pr.bin,pr.poc,pr.vah,pr.val,pr.share].every(okNum)||!Array.isArray(pr.p)||!nums(pr.p,pr.p.length)||!nums(pr.v,pr.p.length))continue;
+    out.symbols[sym]={spot:b.spot,last:b.last,vp,session:{date:q.date,t:q.t.slice(),o:q.o.slice(),h:q.h.slice(),l:q.l.slice(),c:q.c.slice(),v:q.v.slice(),vwap:q.vwap.slice(),
+      prof:{bin:pr.bin,poc:pr.poc,vah:pr.vah,val:pr.val,share:pr.share,p:pr.p.slice(),v:pr.v.slice()}}};
+  }
+  return Object.keys(out.symbols).length?out:null;
+}
+function liveFor(blk,sym){      // the live entry, only while it is newer than this symbol's end-of-day data and not older than 5 hours
+  const L=LIVE&&LIVE.symbols[sym];
+  return L&&blk&&blk.chain&&LIVE.date>blk.chain.asof&&Date.now()-LIVE.asof<5*3600e3?L:null}
+function effBlk(sym){           // the options block with today's developing volume profile laid over the end-of-day one
+  const blk=D.options.symbols[sym],L=liveFor(blk,sym);
+  if(!L)return {blk,lv:null};
+  return {blk:{...blk,vp:{...(blk.vp||{}),...L.vp},intraday:(blk.intraday||[]).filter(x=>x.date<LIVE.date).concat([L.session])},lv:L}}
+const liveTime=()=>LIVE.asof.toLocaleTimeString('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false});
+function liveBanner(sel,L){const el=$(sel);if(!el)return;
+  if(!L){el.hidden=true;return}
+  el.hidden=false;el.innerHTML=`<b>● Live</b> · volume profile updated <b>${liveTime()} IST</b> (last candle ${L.last}) · refreshes every 30 minutes while the PC runs the live loop · GEX, OI and the other expiries below are still the ${D.options.symbols[OS.sym].chain.asof} close`}
+async function pollLive(){
+  try{const r=await fetch(LIVE_URL,{cache:'no-store'});if(!r.ok)return;
+    const c=cleanLive(await r.json()),was=LIVE&&LIVE.asof.getTime();
+    LIVE=c;if((c&&c.asof.getTime())!==was&&(S.tab==='options'||S.tab==='vprofile'))renderTab()}catch(e){}}
+
 /* ---------- options tab ---------- */
 const SYMNAME={NIFTY:'Nifty 50',BANKNIFTY:'Bank Nifty'};
 const ord=n=>{n=Math.round(n);const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])};
@@ -721,7 +762,7 @@ function renderVProfile(){
   if(!O.symbols[OS.sym])OS.sym=Object.keys(O.symbols)[0];
   document.querySelectorAll('#vp-sym button').forEach(b=>{b.style.display=O.symbols[b.dataset.v]?'':'none';b.classList.toggle('on',b.dataset.v===OS.sym)});
   const tile=(k,v,s)=>`<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="k">${s}</div></div>`;
-  const blk=O.symbols[OS.sym],name=SYMNAME[OS.sym],V=blk.vp||{};
+  const {blk,lv}=effBlk(OS.sym),name=SYMNAME[OS.sym],V=blk.vp||{};liveBanner('#lb-vp',lv);
   $('#vp-tiles').innerHTML=['1','5'].filter(k=>V[k]).map(k=>{const v=V[k];return tile(k==='1'?'1 day · '+v.to:'5 sessions · '+v.from+' → '+v.to,'POC '+num(v.poc,0),`VAH ${num(v.vah,0)} · VAL ${num(v.val,0)} · ${v.share}% of volume in the value area`)}).join('');
   const S=blk.intraday||[],el=$('#op-sesch'),sel=$('#op-ses');
   if(!S.length){sel.innerHTML='';$('#op-ses-sub').textContent='5-minute candles are unavailable in this build.';$('#op-ses-note').textContent='';Plotly.purge(el);return}
@@ -795,7 +836,7 @@ function renderOptions(){
   if(!O.symbols[OS.sym])OS.sym=Object.keys(O.symbols)[0];            // a symbol can be missing if NSE data was partial
   document.querySelectorAll('#op-sym button').forEach(b=>{b.style.display=O.symbols[b.dataset.v]?'':'none';b.classList.toggle('on',b.dataset.v===OS.sym)});
   document.querySelectorAll('.rseg').forEach(el=>[...el.children].forEach(b=>b.classList.toggle('on',String(OS[el.dataset.key])===b.dataset.v)));
-  const sym=OS.sym,blk=O.symbols[sym],h=blk.hist,ch=blk.chain,name=SYMNAME[sym];
+  const sym=OS.sym,{blk,lv}=effBlk(sym),h=blk.hist,ch=blk.chain,name=SYMNAME[sym];liveBanner('#lb-op',lv);
   const rng=OS.range/100,lo=ch.spot*(1-rng),hi=ch.spot*(1+rng),inV=x=>x!=null&&x>=lo&&x<=hi;
   const avg=(a,n)=>{const v=a.slice(-n-1,-1).filter(x=>x!=null);return v.length?mean(v):null};
   const lastOf=a=>a.filter(x=>x!=null).at(-1);
@@ -903,13 +944,14 @@ function renderOptions(){
   addLine(ch.spot,'Spot','#e6edf3','dash','all');
   // ---- plain-text levels for the TradingView indicator (every level, even those outside the chart range) ----
   {
-    const tv=[['Spot',ch.spot],['Max pain',ex&&ex.pain],['Gamma flip',flip],['OI call wall',cw],['OI put wall',pw],['GEX call wall',g&&g.walls.call_gex],['GEX put wall',g&&g.walls.put_gex]];
+    const spP=lv?lv.spot:ch.spot;                                          // live: today's last price; otherwise the close
+    const tv=[['Spot',spP],['Max pain',ex&&ex.pain],['Gamma flip',flip],['OI call wall',cw],['OI put wall',pw],['GEX call wall',g&&g.walls.call_gex],['GEX put wall',g&&g.walls.put_gex]];
     const dv=blk.vp&&blk.vp['1'],wk=blk.vp&&blk.vp['5'];                 // the daily lines are always the 1-day profile; the weekly lines the last 5 sessions
     if(dv)tv.push(['POC',dv.poc],['VAH',dv.vah],['VAL',dv.val]);
     if(wk)tv.push(['Weekly POC',wk.poc],['Weekly VAH',wk.vah],['Weekly VAL',wk.val]);
     const rows=tv.filter(r=>r[1]!=null&&isFinite(r[1])).sort((a,b)=>b[1]-a[1]).map(r=>r[0]+'='+(Math.round(r[1]*100)/100));
     const oiTxt=ex?'OI expiry '+ex.e:'',gTxt=g?'GEX '+(OS.gex==='all'?'nearest 4 expiries':'expiry '+gx.nearest.expiry):'',vTxt=(dv?'profile 1 day '+dv.to:'')+(dv&&wk?' | ':'')+(wk?'weekly profile '+wk.days+' sessions '+wk.from+' to '+wk.to:'');
-    const head='# BharatPulse '+name+' close '+ch.asof+(oiTxt?' | '+oiTxt:'')+(gTxt?' | '+gTxt:'')+(vTxt?' | '+vTxt:'');
+    const head='# BharatPulse '+name+' close '+ch.asof+(lv?' | LIVE profile '+liveTime()+' IST (levels so far today)':'')+(oiTxt?' | '+oiTxt:'')+(gTxt?' | '+gTxt:'')+(vTxt?' | '+vTxt:'');
     // plain-text regime description (lines starting with ~ are shown in the box at the top right of the chart)
     const reg=[],r1=x=>Math.round(x);
     if(g){
@@ -920,13 +962,13 @@ function renderOptions(){
       if(flip!=null)reg.push('~ Next session: positive gamma applies '+(posAbove?'above':'below')+' '+r1(flip)+' and negative gamma '+(posAbove?'below':'above')+' it. Close '+r1(ch.spot)+' is '+(aboveF?'above':'below')+' the flip ('+sgn((ch.spot/flip-1)*100,1)+'%).'+(Math.abs(flip/ch.spot-1)<.005?' Borderline: a small move can switch the regime.':''));
       else reg.push('~ No gamma flip within 10% of spot, so the regime should hold unless positions change a lot.');
     }
-    if(dv){const pv=ch.spot>dv.vah?'above the 1-day value area ('+r1(dv.vah)+'): the market is accepting higher prices':ch.spot<dv.val?'below the 1-day value area ('+r1(dv.val)+'): the market is accepting lower prices':'inside the 1-day value area '+r1(dv.val)+' to '+r1(dv.vah)+': balanced, rotating market';
-      reg.push('~ Close is '+pv+'. POC '+r1(dv.poc)+'.')}
-    if(wk)reg.push('~ Weekly (5 sessions): POC '+r1(wk.poc)+', value area '+r1(wk.val)+' to '+r1(wk.vah)+'. Close is '+(ch.spot>wk.vah?'above':ch.spot<wk.val?'below':'inside')+' the weekly value area.');
+    if(dv){const pv=spP>dv.vah?'above the 1-day value area ('+r1(dv.vah)+'): the market is accepting higher prices':spP<dv.val?'below the 1-day value area ('+r1(dv.val)+'): the market is accepting lower prices':'inside the 1-day value area '+r1(dv.val)+' to '+r1(dv.vah)+': balanced, rotating market';
+      reg.push('~ '+(lv?'Price ':'Close ')+'is '+pv+'. POC '+r1(dv.poc)+'.')}
+    if(wk)reg.push('~ Weekly (5 sessions): POC '+r1(wk.poc)+', value area '+r1(wk.val)+' to '+r1(wk.vah)+'. '+(lv?'Price':'Close')+' is '+(spP>wk.vah?'above':spP<wk.val?'below':'inside')+' the weekly value area.');
     const cl=s=>s.replace(/;/g,',').replace(/=/g,' equals ');
     const posLine=(g&&flip!=null)?'@pos_above='+(posAbove?1:0)+'\n':'';
     $('#op-tv-text').value=head+'\n'+posLine+reg.map(cl).join('\n')+(reg.length?'\n':'')+rows.join('\n');
-    $('#op-tv-sub').textContent=name+' · '+rows.length+' levels · '+[oiTxt,gTxt,vTxt].filter(Boolean).join(' · ');
+    $('#op-tv-sub').textContent=name+' · '+rows.length+' levels · '+[lv?'LIVE profile '+liveTime()+' IST':'',oiTxt,gTxt,vTxt].filter(Boolean).join(' · ');
   }
   // right-hand labels with simple collision avoidance so close levels stay readable
   const H=740,mt=36,mb=58,plotPx=H-mt-mb;
@@ -1071,6 +1113,7 @@ $('#status').innerHTML='<table>'+Object.entries(D.status).map(([k,v])=>`<tr><td>
 /* ---------- boot ---------- */
 function renderTab(){({overview:renderOverview,sectors:renderSectors,breadth:renderBreadth,flows:()=>{renderFlows();renderVal()},risk:renderRisk,options:renderOptions,vprofile:renderVProfile,surface3d:renderSurface3D,momentum:renderMomentum,activity:renderActivity})[S.tab]()}
 renderPsegs();renderMovers();renderTab();
+pollLive();setInterval(()=>{if(!document.hidden)pollLive()},120000);
 window.__ready=true;
 </script>
 </body>
