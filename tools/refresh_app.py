@@ -1,8 +1,11 @@
 """BharatPulse refresh page - runs on YOUR PC only (127.0.0.1), started by 'Refresh BharatPulse.bat'.
 
-Open page > press "Refresh dashboard" > sign in to Fyers (your PIN / TOTP are typed on Fyers' own page; this program never sees them)
-> the page swaps the one-time code for today's data-only token, stores it as an encrypted GitHub secret, starts the cloud build and
-shows its progress. The token is never displayed or written anywhere except data/fyers_token.json (git-ignored) and the GitHub secret.
+Open page > press "Sign in and start" > sign in to Fyers (your PIN / TOTP are typed on Fyers' own page; this program never sees them)
+> the page swaps the one-time code for today's data-only token and stores it as an encrypted GitHub secret. Then:
+  * before 15:40 IST on a weekday (the morning routine): it starts the 30-minute LIVE updates (tools/live_loop.py, run inside this
+    window). The same token also serves the evening cloud build, so no second sign-in is needed that day.
+  * after that (the evening routine): it starts the cloud build and shows its progress.
+If this page is opened during the day and a still-valid token is already saved, the live updates start by themselves. The token is never displayed or written anywhere except data/fyers_token.json (git-ignored) and the GitHub secret.
 
 Needs the environment variables FYERS_APP_ID and FYERS_APP_SECRET and the GitHub CLI (gh) signed in. The Fyers app's redirect URL
 must be exactly http://127.0.0.1:5050/
@@ -24,15 +27,19 @@ import webbrowser
 
 import requests
 
+import live_loop
+
 HOST, PORT = "127.0.0.1", 5050
 REDIRECT = f"http://{HOST}:{PORT}/"
 BASE = "https://api-t1.fyers.in/api/v3"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TOKEN_FILE = ROOT / "data" / "fyers_token.json"
 LIVE = "https://abhijitkikale.github.io/bharatpulse/"
-STEPS = [("login", "Sign in to Fyers"), ("token", "Get today's data token"), ("github", "Send it to GitHub (encrypted)"),
-         ("start", "Start the cloud build"), ("build", "Build and publish the dashboard")]
-S = {"state": None, "stage": "idle", "error": None, "run_url": None}
+STEPS_BUILD = [("login", "Sign in to Fyers"), ("token", "Get today's data token"), ("github", "Send it to GitHub (encrypted)"),
+               ("start", "Start the cloud build"), ("build", "Build and publish the dashboard")]
+STEPS_LIVE = [("login", "Sign in to Fyers"), ("token", "Get today's data token"), ("github", "Send it to GitHub (encrypted)"),
+              ("live", "Start the 30-minute live updates")]
+S = {"state": None, "stage": "idle", "error": None, "run_url": None, "mode": "build", "stop": None}
 LOCK = threading.Lock()
 
 
@@ -70,6 +77,20 @@ def token_info():
     if expires <= saved:
         expires += dt.timedelta(days=1)
     return {"have": True, "saved": saved.strftime("%d %b %H:%M"), "valid": dt.datetime.now() < expires, "expires": expires.strftime("%d %b %H:%M")}
+
+
+def live_running():
+    return live_loop.get_state()["running"]
+
+
+def start_live():
+    """Run the 30-minute live loop in a background thread of this helper (no second window). Does nothing if it already runs."""
+    with LOCK:
+        if live_running():
+            return
+        S["stop"] = threading.Event()
+        live_loop.set_state(running=True, msg="starting", last=None, next=None)        # set now so a double click cannot start two
+        threading.Thread(target=live_loop.run_loop, kwargs={"push": True, "stop": S["stop"], "log": lambda *a: None}, daemon=True).start()
 
 
 def watch_build(t0):
@@ -115,6 +136,13 @@ def finish_login(code):
             p = run(["gh", "secret", "set", name], stdin=val)
             if p.returncode:
                 raise Fail(f"Could not store {name} on GitHub: {p.stderr.strip()[:150]}")
+        if live_loop.market_day_window():
+            S["mode"] = "live"
+            set_stage("live")
+            start_live()
+            set_stage("done")
+            return
+        S["mode"] = "build"
         set_stage("start")
         t0 = time.time()
         p = run(["gh", "workflow", "run", "refresh.yml"])
@@ -132,14 +160,18 @@ def finish_login(code):
 def status():
     with LOCK:
         stage, err, url = S["stage"], S["error"], S["run_url"]
-    keys = [k for k, _ in STEPS]
+    steps_def = STEPS_LIVE if S["mode"] == "live" else STEPS_BUILD
+    keys = [k for k, _ in steps_def]
     failed = S.get("failed_at") if stage == "error" else None
     cur = len(keys) if stage == "done" else keys.index(failed) if failed in keys else keys.index(stage) if stage in keys else -1
     steps = []
-    for i, (k, label) in enumerate(STEPS):
+    for i, (k, label) in enumerate(steps_def):
         st = "done" if i < cur else ("error" if failed and i == cur else "active" if i == cur else "todo")
         steps.append({"label": label, "state": st})
-    return {"stage": stage, "error": err, "run_url": url, "steps": steps, "live": LIVE,
+    ls = live_loop.get_state()
+    liveline = ("running: " if ls["running"] else "stopped: ") + ls["msg"] + (f" · next update {ls['next']} IST" if ls["running"] and ls["next"] else "")
+    return {"stage": stage, "error": err, "run_url": url, "steps": steps, "live": LIVE, "mode": S["mode"],
+            "liveloop": {"running": ls["running"], "text": liveline, "can_start": (not ls["running"]) and live_loop.market_day_window() and token_info().get("valid", False)},
             "env_ok": bool(env("FYERS_APP_ID") and env("FYERS_APP_SECRET")), "gh_ok": gh_ok(), "token": token_info()}
 
 
@@ -165,12 +197,14 @@ ul{list-style:none;margin:0;padding:0}li{display:flex;align-items:center;gap:12p
 @keyframes p{50%{box-shadow:0 0 0 5px rgba(76,201,240,.25)}}.msg{margin-top:10px;padding:10px 12px;border-radius:8px;background:#1d1417;border:1px solid #4a2a2f;color:#ffb4b4}
 .fin{background:#102019;border:1px solid #1f4a38;color:#a7f0d2;border-radius:8px;padding:10px 12px;margin-top:10px}.small{font-size:13px;color:var(--mut)}a{color:var(--acc)}
 </style></head><body><div class="wrap">
-<img class="logo" id="logo" alt="BharatPulse"><h1>Refresh BharatPulse</h1><div class="sub">Sign in to Fyers once a day and the dashboard rebuilds with fresh data.</div>
-<div class="card"><button class="btn" id="go">Refresh dashboard</button><div id="note" class="small" style="margin-top:10px"></div></div>
+<img class="logo" id="logo" alt="BharatPulse"><h1>Refresh BharatPulse</h1><div class="sub">Sign in to Fyers once a day. In the morning this starts the 30-minute live updates (leave this window open until 15:45); in the evening it rebuilds the dashboard.</div>
+<div class="card"><button class="btn" id="go">Sign in and start</button><div id="note" class="small" style="margin-top:10px"></div>
+<button class="btn ghost" id="startlive" style="display:none;margin-top:10px">Start live updates (today's sign-in is still valid)</button></div>
 <div class="card" id="progress" style="display:none"><ul id="steps"></ul><div id="err" class="msg" style="display:none"></div><div id="fin" class="fin" style="display:none"></div></div>
 <div class="card"><div class="row"><span class="k">Fyers app details on this PC</span><span id="s-env"></span></div>
 <div class="row"><span class="k">GitHub sign-in</span><span id="s-gh"></span></div>
-<div class="row"><span class="k">Today's data token</span><span id="s-tok"></span></div></div>
+<div class="row"><span class="k">Today's data token</span><span id="s-tok"></span></div>
+<div class="row"><span class="k">Live updates</span><span id="s-live"></span></div></div>
 <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn ghost" id="live" target="_blank" rel="noopener noreferrer">Open the live dashboard</a>
 <a class="btn ghost" id="run" target="_blank" rel="noopener noreferrer" style="display:none">Open the build page</a><button class="btn ghost" id="quit">Close this helper</button></div>
 <p class="small">Your PIN and one-time code are typed on Fyers' own page. This helper runs only on this PC and never shows or sends your login details anywhere except GitHub's encrypted secret store (a one-day, data-only token).</p>
@@ -181,15 +215,17 @@ async function tick(){let d;try{d=await (await fetch('/status',{cache:'no-store'
  pill($('#s-env'),d.env_ok,'ready','missing (see setup note)');pill($('#s-gh'),d.gh_ok,'signed in','not signed in');
  const t=d.token;$('#s-tok').textContent=!t.have?'none yet':(t.valid?'saved '+t.saved+', works until '+t.expires:'expired ('+t.saved+')');$('#s-tok').className=t.have&&t.valid?'ok':'warn';
  const busy=!['idle','done','error'].includes(d.stage);$('#go').disabled=busy||!d.env_ok||!d.gh_ok;
- $('#go').textContent=busy?'Working...':(d.stage==='done'?'Refresh again':'Refresh dashboard');
+ $('#go').textContent=busy?'Working...':(d.stage==='done'?'Sign in again':'Sign in and start');
+ $('#s-live').textContent=d.liveloop.text;$('#s-live').className=d.liveloop.running?'ok':'warn';$('#startlive').style.display=d.liveloop.can_start?'inline-block':'none';
  let note='';if(!d.env_ok)note='Setup needed: set FYERS_APP_ID and FYERS_APP_SECRET on this PC (see the setup steps), then open this helper again.';else if(!d.gh_ok)note='Setup needed: sign in to GitHub with the GitHub CLI (gh auth login).';
  $('#note').textContent=note;
  $('#progress').style.display=d.stage==='idle'?'none':'block';
  $('#steps').innerHTML='';d.steps.forEach(s=>{const li=document.createElement('li');li.className=s.state;const dot=document.createElement('span');dot.className='dot';dot.textContent=s.state==='done'?'\\u2713':s.state==='error'?'!':'';li.appendChild(dot);li.appendChild(document.createTextNode(s.label));$('#steps').appendChild(li)});
  const e=$('#err');e.style.display=d.error?'block':'none';e.textContent=d.error||'';
- const f=$('#fin');f.style.display=d.stage==='done'?'block':'none';f.textContent='Done. The dashboard has been rebuilt. Reload the live page in a minute to see the new data.';
+ const f=$('#fin');f.style.display=d.stage==='done'?'block':'none';f.textContent=d.mode==='live'?'Done. Live updates are running: the dashboard shows new volume-profile levels every 30 minutes. Keep this window open until about 15:45. The evening build will use today\\'s sign-in, so you do not need to sign in again.':'Done. The dashboard has been rebuilt. Reload the live page in a minute to see the new data.';
  $('#live').href=d.live;const r=$('#run');if(d.run_url){r.href=d.run_url;r.style.display='inline-block'}else r.style.display='none';}
 $('#go').onclick=()=>{location.href='/login'};
+$('#startlive').onclick=async()=>{try{await fetch('/startlive',{method:'POST'})}catch(e){}tick()};
 $('#quit').onclick=async()=>{try{await fetch('/quit',{method:'POST'})}catch(e){};document.body.innerHTML='<p style="padding:30px">You can close this tab.</p>'};
 tick();setInterval(tick,2000);
 </script></body></html>"""
@@ -245,7 +281,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(404, "Not found", "text/plain")
 
     def do_POST(self):
+        if self.path == "/startlive":
+            if live_loop.market_day_window() and token_info().get("valid"):
+                start_live()
+            return self._send(200, "ok", "text/plain")
         if self.path == "/quit":
+            if S.get("stop"):
+                S["stop"].set()
             self._send(200, "bye", "text/plain")
             threading.Thread(target=self.server.shutdown, daemon=True).start()
         else:
@@ -261,6 +303,9 @@ def main():
     except OSError:
         sys.exit(f"Port {PORT} is already in use. Close the other BharatPulse helper window and try again.")
     print(f"BharatPulse refresh page: {REDIRECT}   (close this window to stop it)")
+    if live_loop.market_day_window() and token_info().get("valid"):
+        print("A valid sign-in is already saved: starting the 30-minute live updates.")
+        start_live()
     if "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(REDIRECT)).start()
     try:

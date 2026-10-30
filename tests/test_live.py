@@ -39,3 +39,14 @@ def test_live_snapshot_has_today_profile_and_weekly():
 def test_no_snapshot_when_there_are_no_candles_for_today():
     now = pd.Timestamp("2026-10-31 10:30", tz="Asia/Kolkata")          # candles end on the 30th: a holiday / stale token
     assert live.build_live({"NIFTY": _frame(DAYS)}, now) is None
+
+
+def test_next_slot_and_market_window():
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
+    import live_loop
+    t = lambda s: pd.Timestamp(s, tz="Asia/Kolkata")
+    assert live_loop.next_slot(t("2026-10-30 08:00")).strftime("%H:%M") == "09:45"      # never before the first update of the day
+    assert live_loop.next_slot(t("2026-10-30 09:46")).strftime("%H:%M") == "10:15"
+    assert live_loop.next_slot(t("2026-10-30 10:15")).strftime("%H:%M") == "10:45"
+    assert live_loop.market_day_window(t("2026-10-30 07:00")) and not live_loop.market_day_window(t("2026-10-30 15:45"))
+    assert not live_loop.market_day_window(t("2026-10-31 10:00"))                          # Saturday
