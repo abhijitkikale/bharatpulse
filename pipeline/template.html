@@ -69,6 +69,7 @@ tbody tr.click:hover td{background:var(--card2)}
 .tile .k{color:var(--mut);font-size:11px}.tile .v{font-size:16px;font-weight:700}
 .btn{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:5px 11px;cursor:pointer;font:inherit;font-size:12px}
 .btn:hover{border-color:var(--acc)}
+input.num{width:64px;background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:5px 7px;font:inherit}
 select{background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:5px 9px;font:inherit}
 /* drawer */
 #scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:30;display:none}
@@ -133,6 +134,7 @@ footer th{background:none;position:static}
   <button data-tab="options">Options</button>
   <button data-tab="vprofile">Volume Profile</button>
   <button data-tab="surface3d">3D Surface</button>
+  <button data-tab="momentum">Momentum Stocks</button>
 </nav>
 <div class="notice" role="note">⚠ <b>Data under validation / testing</b> — figures and calculations are still being verified and may contain errors. For information only; not investment advice.</div>
 <main>
@@ -153,6 +155,16 @@ footer th{background:none;position:static}
       <div class="card c12"><div class="hd"><div><h2>Sector Momentum Rank</h2><div class="sub">Rank by return in each period (1 = best). Click a sector row. The two right-hand columns combine the ranks from 1W up to the horizon you pick: lowest sum = composite rank 1.</div></div><div style="display:flex;gap:8px;align-items:center"><span class="hint">Composite horizon</span><select id="secH"><option value="1M">1M</option><option value="3M">3M</option><option value="6M" selected>6M</option><option value="1Y">1Y</option><option value="3Y">3Y</option><option value="5Y">5Y</option></select><button class="info" data-info="seccomp" title="How is the composite rank worked out?">ⓘ</button></div></div><div class="scroll" style="max-height:none"><table class="heat" id="tb-secrank"></table></div></div>
       <div class="card c12"><div class="hd"><div><h2>% of stocks above moving average (sectors)</h2><div class="sub">Share of each sector's stocks trading above their SMA. Grey bar = Nifty 500.</div></div>
         <div class="seg" id="smaSel"><button data-v="a50" class="on">SMA 50</button><button data-v="a200">SMA 200</button></div></div><div id="ch-sma" class="chart"></div></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-momentum">
+    <div class="grid">
+      <div class="card c12"><div class="hd"><div><h2>Momentum Stocks <button class="info" data-info="momstk" title="How is the score worked out?">ⓘ</button></h2><div class="sub" id="mom-sub"></div></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="hint">Horizon</span><select id="mom-h"><option value="1M">1M</option><option value="3M">3M</option><option value="6M" selected>6M</option><option value="1Y">1Y</option><option value="3Y">3Y</option><option value="5Y">5Y</option></select>
+          <span class="hint">Sector weight</span><input class="num" id="mom-ws" type="number" min="0" max="1" step="0.05"><span class="hint">Stock weight</span><input class="num" id="mom-wt" type="number" min="0" max="1" step="0.05">
+          <button class="btn" id="mom-reset" title="Back to 0.6 / 0.4">Reset</button><select id="mom-sec"></select></div></div>
+        <div class="scroll" style="max-height:75vh"><table class="heat" id="tb-mom"></table></div></div>
     </div>
   </section>
 
@@ -368,20 +380,28 @@ function renderOverview(){
   $('#tb-globrank').onclick=e=>{const tr=e.target.closest('tr[data-n]');if(tr&&/India/.test(tr.dataset.n)){S.pp.drawer=S.pp.glob;openIndex(/500/.test(tr.dataset.n)?'Nifty 500':'Nifty 50',true)}}}
 
 /* ---------- sectors ---------- */
+// composite rank: sum of an item's ranks from 1W up to the chosen horizon (1D ignored); lowest sum = 1,
+// ties go to the better short-term rank, and an item missing any of those periods is "n/a" and ranked last
+function composite(items,get,inc){
+  const rk=ranks(items,get);
+  const comp=items.map(it=>{const rs=inc.map(q=>(rk[it.key]||{})[q]);const ok=rs.every(r=>r);return {key:it.key,ok,rs:ok?rs.map(r=>r[0]):null,sum:ok?rs.reduce((a,r)=>a+r[0],0):null}});
+  comp.sort((a,b)=>{if(a.ok!==b.ok)return a.ok?-1:1;if(!a.ok)return a.key.localeCompare(b.key);if(a.sum!==b.sum)return a.sum-b.sum;for(let k=0;k<a.rs.length;k++)if(a.rs[k]!==b.rs[k])return a.rs[k]-b.rs[k];return 0});
+  comp.forEach((c,k)=>c.rank=c.ok?k+1:null);
+  return {rk,cr:Object.fromEntries(comp.map(c=>[c.key,c])),nOk:comp.filter(c=>c.ok).length};
+}
+function sectComposite(H){
+  const ORDER=PERIODS.filter(q=>q!=='1D'),inc=ORDER.slice(0,ORDER.indexOf(H)+1);
+  const items=SECT.map(i=>({key:i.label,i}));
+  return {items,H,inc,...composite(items,(it,pp)=>it.i.ret[pp],inc)};
+}
 function renderSectors(){
   renderPsegs();
   const p=S.pp.sec;
   $('#sec-sub').textContent=`Sector index return over ${p}${annNote(p)} · click a sector to see its stocks`;
   const s=SECT.filter(i=>i.ret[p]!=null).sort((x,y)=>y.ret[p]-x.ret[p]);
   bar('#ch-sec',s.map(i=>i.label),s.map(i=>i.ret[p]),from('sec'));
-  const items=SECT.map(i=>({key:i.label,i}));const rk=ranks(items,(it,pp)=>it.i.ret[pp]);
+  const {items,rk,H,inc,cr,nOk}=sectComposite(S.secH||'6M');
   const sorted=items.slice().sort((a,b)=>((rk[a.key]||{})[p]||[99])[0]-((rk[b.key]||{})[p]||[99])[0]);
-  // composite rank: sum of a sector's ranks from 1W up to the chosen horizon (1D ignored); lowest sum = 1,
-  // ties go to the better short-term rank, and a sector missing any of those periods is "n/a" and ranked last
-  const ORDER=PERIODS.filter(q=>q!=='1D'),H=S.secH||'6M',inc=ORDER.slice(0,ORDER.indexOf(H)+1);
-  const comp=items.map(it=>{const rs=inc.map(q=>(rk[it.key]||{})[q]);const ok=rs.every(r=>r);return {key:it.key,ok,rs:ok?rs.map(r=>r[0]):null,sum:ok?rs.reduce((a,r)=>a+r[0],0):null}});
-  comp.sort((a,b)=>{if(a.ok!==b.ok)return a.ok?-1:1;if(!a.ok)return a.key.localeCompare(b.key);if(a.sum!==b.sum)return a.sum-b.sum;for(let k=0;k<a.rs.length;k++)if(a.rs[k]!==b.rs[k])return a.rs[k]-b.rs[k];return 0});
-  comp.forEach((c,k)=>c.rank=c.ok?k+1:null);const cr=Object.fromEntries(comp.map(c=>[c.key,c]));const nOk=comp.filter(c=>c.ok).length;
   if(S.secSort)sorted.sort((a,b)=>{const x=cr[a.key],y=cr[b.key];if(x.ok!==y.ok)return x.ok?-1:1;return S.secSort==='asc'?x.rank-y.rank:y.rank-x.rank});
   const arrow=S.secSort==='asc'?' ▲':S.secSort==='desc'?' ▼':' ⇅';
   $('#secH').value=H;
@@ -608,6 +628,12 @@ function renderRisk(){
 
 /* ---------- info pop-outs (the small "i" buttons) ---------- */
 const INFO={
+ momstk:{t:'Momentum Stocks: how the score works',h:`<p><b>Two scores, both from 0 (best) to 100 (worst).</b></p>
+  <p><b>Sector score.</b> The sector's composite rank from the Sectors tab (its ranks from 1W up to the horizon, added up; lowest sum = rank 1), turned into a 0-100 position among all sectors.</p>
+  <p><b>Stock score.</b> The same method applied to the stock's own returns against the other stocks of its sector, turned into a 0-100 position within that sector. Using positions instead of raw ranks keeps a 5-stock sector and a 40-stock sector comparable.</p>
+  <p><b>Weighted score = sector weight × sector score + stock weight × stock score.</b> The lowest weighted score is the top stock. If two stocks tie, the one with the bigger % rise over the horizon comes first. Change the weights in the two boxes; editing one sets the other to 1 minus it. They are remembered in your browser.</p>
+  <p><b>Which sector.</b> A stock can sit in several sector indices (for example Bank and Financial Services). It is counted once, under the smallest of them. Stocks that belong to no sector index, or lack history for a period, are not listed.</p>
+  <p class="hint">Past returns only. Not investment advice.</p>`},
  pcr:{t:'Put-call ratio (PCR)',h:`<p><b>What it is.</b> Open interest in put options divided by open interest in call options, across all expiries. The dotted line uses traded volume instead. The bold line is a 5-day average, which smooths the jumps that happen around weekly expiries.</p>
   <p><b>How to read it.</b></p><ul><li><b>Above 1</b> – more puts than calls: traders are hedging or positioned for a fall.</li><li><b>Below 1</b> – more calls than puts: positioning is leaning bullish.</li><li>Nifty's open-interest PCR usually moves between about 0.7 and 1.3.</li></ul>
   <p><b>What you can get from it.</b> A quick read of crowd positioning and sentiment. Extreme readings are often watched as contrarian warnings (very low = complacency, very high = fear), but this dashboard has not tested that.</p>
@@ -989,11 +1015,61 @@ function renderActivity(){
   const go=e=>{const tr=e.target.closest('tr[data-s]');if(tr)openStock(tr.dataset.s,true)};$('#act-l').onclick=go;$('#act-s').onclick=go;
 }
 
+/* ---------- momentum stocks ---------- */
+const MOM={ws:0.6,wt:0.4,sec:''};
+try{const w=JSON.parse(localStorage.getItem('bp_mom_w')||'null');if(w&&w.ws>=0&&w.wt>=0&&w.ws<=1&&w.wt<=1){MOM.ws=+w.ws;MOM.wt=+w.wt}}catch(e){}
+const momSave=()=>{try{localStorage.setItem('bp_mom_w',JSON.stringify({ws:MOM.ws,wt:MOM.wt}))}catch(e){}};
+const pct0=(rank,n)=>n>1?(rank-1)/(n-1)*100:0;       // 0 = best, 100 = worst
+function momRows(H){
+  const SC=sectComposite(H),sectSet=new Set(SECT.map(i=>i.label)),assigned={};
+  // each stock is counted once, under the smallest sector index it belongs to
+  D.stocks.forEach(s=>{
+    const c=(s.x||[]).filter(l=>sectSet.has(l)&&SC.cr[l]&&SC.cr[l].ok);
+    if(!c.length)return;
+    c.sort((a,b)=>(D.members[a].length-D.members[b].length)||(SC.cr[a].rank-SC.cr[b].rank));
+    (assigned[c[0]]??=[]).push(s);
+  });
+  const rows=[];
+  for(const [sec,list] of Object.entries(assigned)){
+    const mem=members(sec).map(s=>({key:s.s,s}));
+    const W=composite(mem,(it,pp)=>it.s.r[pp],SC.inc);
+    const sc=SC.cr[sec];
+    list.forEach(s=>{const c=W.cr[s.s];if(!c||!c.ok)return;
+      rows.push({s,sec,sRank:sc.rank,nSec:SC.nOk,sPct:pct0(sc.rank,SC.nOk),tRank:c.rank,nIn:W.nOk,tPct:pct0(c.rank,W.nOk),ret:s.r[H]});});
+  }
+  return {rows,H};
+}
+function renderMomentum(){
+  const H=S.secH||'6M';$('#mom-h').value=H;
+  const {rows}=momRows(H);
+  const ws=MOM.ws,wt=MOM.wt;
+  rows.forEach(r=>r.w=Math.round((ws*r.sPct+wt*r.tPct)*1e4)/1e4);
+  rows.sort((a,b)=>a.w-b.w||((b.ret??-1e9)-(a.ret??-1e9)));          // lowest weighted score first; tie -> bigger % rise
+  rows.forEach((r,k)=>r.rank=k+1);
+  const secs=[...new Set(rows.map(r=>r.sec))].sort();if(MOM.sec&&!secs.includes(MOM.sec))MOM.sec='';
+  $('#mom-sec').innerHTML='<option value="">All sectors</option>'+secs.map(x=>`<option value="${esc(x)}"${x===MOM.sec?' selected':''}>${esc(x)}</option>`).join('');
+  if(document.activeElement!==$('#mom-ws'))$('#mom-ws').value=ws;if(document.activeElement!==$('#mom-wt'))$('#mom-wt').value=wt;
+  $('#mom-sub').textContent=`Weighted score = ${ws} × sector score + ${wt} × stock score · both scores 0 (best) to 100 (worst) · lowest = top stock · horizon 1W→${H} · ${rows.length} stocks`;
+  const shown=MOM.sec?rows.filter(r=>r.sec===MOM.sec):rows,n=rows.length;
+  $('#tb-mom').innerHTML=`<thead><tr><th style="text-align:left">#</th><th style="text-align:left">Stock</th><th style="text-align:left">Sector</th><th style="text-align:center">Sector<br>rank</th><th style="text-align:center">Sector<br>score</th><th style="text-align:center">Rank in<br>sector</th><th style="text-align:center">Stock<br>score</th><th style="text-align:center;border-left:2px solid var(--line)">Weighted<br>score</th>${PERIODS.map(q=>`<th class="${q===H?'sel':''}" style="text-align:center">${q}</th>`).join('')}</tr></thead><tbody>`+
+   shown.map(r=>`<tr class="click" data-s="${esc(r.s.s)}"><td style="text-align:left">${r.rank}</td><td style="text-align:left" title="${esc(r.s.n)}"><b>${esc(r.s.s)}</b> <span class="hint">${esc(r.s.n)}</span></td><td style="text-align:left">${esc(r.sec)}</td><td class="h" style="background:${heatColor((r.sRank-1)/Math.max(r.nSec-1,1))}">${r.sRank}<span class="hint">/${r.nSec}</span></td><td style="text-align:center">${r.sPct.toFixed(0)}</td><td class="h" style="background:${heatColor((r.tRank-1)/Math.max(r.nIn-1,1))}">${r.tRank}<span class="hint">/${r.nIn}</span></td><td style="text-align:center">${r.tPct.toFixed(0)}</td><td class="h" style="border-left:2px solid var(--line);background:${heatColor((r.rank-1)/Math.max(n-1,1))};font-size:14px">${r.w.toFixed(1)}</td>${PERIODS.map(q=>`<td class="${cls(r.s.r[q])}" style="text-align:center">${fmt(r.s.r[q])}</td>`).join('')}</tr>`).join('')+'</tbody>';
+}
+(function(){
+  const setW=(a,v)=>{if(!isFinite(v))return;v=Math.min(1,Math.max(0,v));if(a==='ws'){MOM.ws=v;MOM.wt=Math.round((1-v)*100)/100}else{MOM.wt=v;MOM.ws=Math.round((1-v)*100)/100}
+    $('#mom-ws').value=MOM.ws;$('#mom-wt').value=MOM.wt;momSave();renderMomentum()};
+  $('#mom-ws').oninput=e=>{if(e.target.value!=='')setW('ws',+e.target.value)};
+  $('#mom-wt').oninput=e=>{if(e.target.value!=='')setW('wt',+e.target.value)};
+  $('#mom-reset').onclick=()=>{MOM.ws=0.6;MOM.wt=0.4;$('#mom-ws').value=0.6;$('#mom-wt').value=0.4;momSave();renderMomentum()};
+  $('#mom-h').onchange=()=>{S.secH=$('#mom-h').value;renderMomentum()};
+  $('#mom-sec').onchange=()=>{MOM.sec=$('#mom-sec').value;renderMomentum()};
+  $('#tb-mom').onclick=e=>{const tr=e.target.closest('tr[data-s]');if(tr)openStock(tr.dataset.s,true)};
+})();
+
 /* ---------- status footer ---------- */
 $('#status').innerHTML='<table>'+Object.entries(D.status).map(([k,v])=>`<tr><td>${k}</td><td class="${/^(ok|cached)/.test(v)?'':'warn'}">${/^(ok|cached)/.test(v)?'✓':'⚠'} ${esc(v)}</td></tr>`).join('')+'</table><div style="margin-top:6px">'+esc(D.mcap_note)+'</div>';
 
 /* ---------- boot ---------- */
-function renderTab(){({overview:renderOverview,sectors:renderSectors,breadth:renderBreadth,flows:()=>{renderFlows();renderVal()},risk:renderRisk,options:renderOptions,vprofile:renderVProfile,surface3d:renderSurface3D,activity:renderActivity})[S.tab]()}
+function renderTab(){({overview:renderOverview,sectors:renderSectors,breadth:renderBreadth,flows:()=>{renderFlows();renderVal()},risk:renderRisk,options:renderOptions,vprofile:renderVProfile,surface3d:renderSurface3D,momentum:renderMomentum,activity:renderActivity})[S.tab]()}
 renderPsegs();renderMovers();renderTab();
 window.__ready=true;
 </script>
