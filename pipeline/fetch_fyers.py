@@ -77,9 +77,9 @@ FO_COLS = ["TradDt", "FinInstrmTp", "TckrSymb", "XpryDt", "StrkPric", "OptnTp", 
            "OpnIntrst", "ChngInOpnIntrst", "TtlTradgVol", "UndrlygPric"]
 
 
-def fetch_chains(strikes=100):
+def fetch_chains(strikes=100, current_only=False):
     """{sym: {"spot": index last price, "rows": [dict per option]}} for EVERY listed expiry (about 100 strikes around the money
-    each). Returns ({}, text) when Fyers cannot be used."""
+    each), or only the current (nearest) expiry with current_only=True: one call per index. Returns ({}, text) when Fyers cannot be used."""
     h = _auth()
     if h is None:
         return {}, "not configured"
@@ -89,7 +89,7 @@ def fetch_chains(strikes=100):
             first = _get("options-chain-v3", h, symbol=fy, strikecount=strikes)["data"]
             spot = next(float(r["ltp"]) for r in first["optionsChain"] if not r.get("option_type"))
             rows = []
-            for e in first["expiryData"]:
+            for e in (first["expiryData"][:1] if current_only else first["expiryData"]):
                 d = first if e is first["expiryData"][0] else _get("options-chain-v3", h, symbol=fy, strikecount=strikes, timestamp=e["expiry"])["data"]
                 xp = dt.datetime.strptime(e["date"], "%d-%m-%Y").date().isoformat()
                 for r in d["optionsChain"]:

@@ -1,6 +1,8 @@
-"""BharatPulse live updates: every 30 minutes during the NSE session (09:15-15:30 IST, weekdays) pull today's 1-minute index candles
-from Fyers (your data-only app), recompute the developing volume profile (POC / VAH / VAL, 5-session weekly levels, VWAP) and
-publish one small file, live.json, to the 'live-data' branch of the repo. The dashboard reads it and shows a green "Live" banner.
+"""BharatPulse live updates: every 5 minutes during the NSE session (09:15-15:30 IST, weekdays) pull today's 1-minute index candles
+from Fyers (your data-only app), recompute the developing volume profile (POC / VAH / VAL, 5-session weekly levels, VWAP), pull the current
+expiry's option chain for live GEX levels (gamma flip, GEX / OI walls, max pain) and publish one small file, live.json, to the
+'live-data' branch of the repo. The dashboard reads it and shows a green "Live" banner. When a live level moves by a strike or more,
+the text for the indicator's "Live levels" box is also sent to your Telegram chat (tools/telegram_notify.py).
 
 Normally you do not start this yourself: 'Refresh BharatPulse.bat' (tools/refresh_app.py) starts it after your Fyers sign-in, or
 automatically when it opens with a still-valid token. The command line works too:
@@ -24,14 +26,18 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "pipeline"))
 import fetch_fyers  # noqa: E402
 import live  # noqa: E402
+import live_gex  # noqa: E402
+import telegram_notify  # noqa: E402
 
 OUT = ROOT / "data" / "live.json"
 REPO = ROOT / "data" / "_live_repo"      # a tiny separate clone; the branch holds one commit that is replaced each time
 BRANCH = "live-data"
 OPEN, CLOSE, FINAL = (9, 15), (15, 30), (15, 40)     # IST; one last cycle after the close picks up the final candles
-FIRST = (9, 45)                                      # first update of the day (30 minutes after the open)
+FIRST = (9, 20)                                      # first update of the day
+EVERY = 5                                            # minutes between updates
 
 STATE = {"running": False, "msg": "not started", "last": None, "next": None}     # read by the refresh page
+SENT = {"date": None, "blocks": {}}                  # last live level block sent to Telegram, per index
 _LOCK = threading.Lock()
 
 
@@ -87,16 +93,40 @@ def publish(payload_text):
     git("push", "-q", "-f", "origin", BRANCH)
 
 
+def telegram_moves(gex, now, log=print, sender=telegram_notify.send):
+    """Send the indicator text of every index whose live levels moved by a strike or more since the last message."""
+    day = str(now.date())
+    if SENT["date"] != day:
+        SENT["date"], SENT["blocks"] = day, {}
+    for sym, b in gex.items():
+        if live_gex.moved(sym, b, SENT["blocks"].get(sym)):
+            ok, msg = sender(live_gex.tv_text(sym, b, now))
+            log(f"  Telegram {sym}: {msg}")
+            if ok:
+                SENT["blocks"][sym] = b
+
+
 def cycle(push, log=print):
     """One update. Returns (ok, short message for the status line)."""
+    now = now_ist()
     frames, status = fetch_fyers.fetch_intraday(days=10)
     if not frames:
         log("  Fyers:", status)
         return False, "Fyers did not return data: sign in again (the token may have expired)"
-    payload = live.build_live(frames, now_ist())
+    payload = live.build_live(frames, now)
     if payload is None:
         log("  no candles for today's session yet (holiday, before the open, or an old token). Fyers says:", status)
         return False, "no candles for today's session yet"
+    try:                                        # live GEX is extra: a failure here must not stop the volume-profile update
+        chains, cstat = fetch_fyers.fetch_chains(current_only=True)
+        gex = live_gex.build_gex(chains, now) if chains else None
+        if gex:
+            payload["gex"] = gex
+            telegram_moves(gex, now, log)
+        else:
+            log("  live GEX unavailable:", cstat)
+    except Exception as e:
+        log("  live GEX failed:", str(e)[:150])
     text = json.dumps(payload, separators=(",", ":"), allow_nan=False)
     OUT.write_text(text, encoding="utf-8")
     for sym, b in payload["symbols"].items():
@@ -109,11 +139,11 @@ def cycle(push, log=print):
 
 
 def next_slot(t):
-    """Next :15 or :45 past the hour strictly after t, never before the first update of the day."""
+    """Next 5-minute mark strictly after t, never before the first update of the day."""
     s = t.floor("min")
     while True:
         s += pd.Timedelta(minutes=1)
-        if s.minute in (15, 45) and hm(s) >= FIRST:
+        if s.minute % EVERY == 0 and hm(s) >= FIRST:
             return s
 
 
@@ -175,7 +205,7 @@ def main():
     if a.once:
         print(now_ist().strftime("%H:%M"), "one cycle")
         sys.exit(0 if cycle(push)[0] else 1)
-    print("Live updates started: every 30 minutes (:15 and :45) until the close. Close this window to stop.")
+    print(f"Live updates started: every {EVERY} minutes until the close. Close this window to stop.")
     try:
         run_loop(push)
     except KeyboardInterrupt:

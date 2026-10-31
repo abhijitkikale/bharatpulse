@@ -2,7 +2,7 @@
 
 Open page > press "Sign in and start" > sign in to Fyers (your PIN / TOTP are typed on Fyers' own page; this program never sees them)
 > the page swaps the one-time code for today's data-only token and stores it as an encrypted GitHub secret. Then:
-  * before 15:40 IST on a weekday (the morning routine): it starts the 30-minute LIVE updates (tools/live_loop.py, run inside this
+  * before 15:40 IST on a weekday (the morning routine): it starts the 5-minute LIVE updates (tools/live_loop.py, run inside this
     window). The same token also serves the evening cloud build, so no second sign-in is needed that day.
   * after that (the evening routine): it starts the cloud build and shows its progress.
 If this page is opened during the day and a still-valid token is already saved, the live updates start by themselves. The token is never displayed or written anywhere except data/fyers_token.json (git-ignored) and the GitHub secret.
@@ -38,7 +38,7 @@ LIVE = "https://abhijitkikale.github.io/bharatpulse/"
 STEPS_BUILD = [("login", "Sign in to Fyers"), ("token", "Get today's data token"), ("github", "Send it to GitHub (encrypted)"),
                ("start", "Start the cloud build"), ("build", "Build and publish the dashboard")]
 STEPS_LIVE = [("login", "Sign in to Fyers"), ("token", "Get today's data token"), ("github", "Send it to GitHub (encrypted)"),
-              ("live", "Start the 30-minute live updates")]
+              ("live", "Start the 5-minute live updates")]
 S = {"state": None, "stage": "idle", "error": None, "run_url": None, "mode": "build", "stop": None}
 LOCK = threading.Lock()
 
@@ -84,7 +84,7 @@ def live_running():
 
 
 def start_live():
-    """Run the 30-minute live loop in a background thread of this helper (no second window). Does nothing if it already runs."""
+    """Run the 5-minute live loop in a background thread of this helper (no second window). Does nothing if it already runs."""
     with LOCK:
         if live_running():
             return
@@ -197,7 +197,7 @@ ul{list-style:none;margin:0;padding:0}li{display:flex;align-items:center;gap:12p
 @keyframes p{50%{box-shadow:0 0 0 5px rgba(76,201,240,.25)}}.msg{margin-top:10px;padding:10px 12px;border-radius:8px;background:#1d1417;border:1px solid #4a2a2f;color:#ffb4b4}
 .fin{background:#102019;border:1px solid #1f4a38;color:#a7f0d2;border-radius:8px;padding:10px 12px;margin-top:10px}.small{font-size:13px;color:var(--mut)}a{color:var(--acc)}
 </style></head><body><div class="wrap">
-<img class="logo" id="logo" alt="BharatPulse"><h1>Refresh BharatPulse</h1><div class="sub">Sign in to Fyers once a day. In the morning this starts the 30-minute live updates (leave this window open until 15:45); in the evening it rebuilds the dashboard.</div>
+<img class="logo" id="logo" alt="BharatPulse"><h1>Refresh BharatPulse</h1><div class="sub">Sign in to Fyers once a day. In the morning this starts the live updates, every 5 minutes (leave this window open until 15:45); in the evening it rebuilds the dashboard.</div>
 <div class="card"><button class="btn" id="go">Sign in and start</button><div id="note" class="small" style="margin-top:10px"></div>
 <button class="btn ghost" id="startlive" style="display:none;margin-top:10px">Start live updates (today's sign-in is still valid)</button></div>
 <div class="card" id="progress" style="display:none"><ul id="steps"></ul><div id="err" class="msg" style="display:none"></div><div id="fin" class="fin" style="display:none"></div></div>
@@ -222,7 +222,7 @@ async function tick(){let d;try{d=await (await fetch('/status',{cache:'no-store'
  $('#progress').style.display=d.stage==='idle'?'none':'block';
  $('#steps').innerHTML='';d.steps.forEach(s=>{const li=document.createElement('li');li.className=s.state;const dot=document.createElement('span');dot.className='dot';dot.textContent=s.state==='done'?'\\u2713':s.state==='error'?'!':'';li.appendChild(dot);li.appendChild(document.createTextNode(s.label));$('#steps').appendChild(li)});
  const e=$('#err');e.style.display=d.error?'block':'none';e.textContent=d.error||'';
- const f=$('#fin');f.style.display=d.stage==='done'?'block':'none';f.textContent=d.mode==='live'?'Done. Live updates are running: the dashboard shows new volume-profile levels every 30 minutes. Keep this window open until about 15:45. The evening build will use today\\'s sign-in, so you do not need to sign in again.':'Done. The dashboard has been rebuilt. Reload the live page in a minute to see the new data.';
+ const f=$('#fin');f.style.display=d.stage==='done'?'block':'none';f.textContent=d.mode==='live'?'Done. Live updates are running: the dashboard shows new live levels every 5 minutes (and a Telegram message when a level moves). Keep this window open until about 15:45. The evening build will use today\\'s sign-in, so you do not need to sign in again.':'Done. The dashboard has been rebuilt. Reload the live page in a minute to see the new data.';
  $('#live').href=d.live;const r=$('#run');if(d.run_url){r.href=d.run_url;r.style.display='inline-block'}else r.style.display='none';}
 $('#go').onclick=()=>{location.href='/login'};
 $('#startlive').onclick=async()=>{try{await fetch('/startlive',{method:'POST'})}catch(e){}tick()};
@@ -304,7 +304,7 @@ def main():
         sys.exit(f"Port {PORT} is already in use. Close the other BharatPulse helper window and try again.")
     print(f"BharatPulse refresh page: {REDIRECT}   (close this window to stop it)")
     if live_loop.market_day_window() and token_info().get("valid"):
-        print("A valid sign-in is already saved: starting the 30-minute live updates.")
+        print("A valid sign-in is already saved: starting the 5-minute live updates.")
         start_live()
     if "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(REDIRECT)).start()
