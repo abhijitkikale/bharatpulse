@@ -66,8 +66,6 @@ liveColor  = input.color(#18ffff, "Colour of all live lines", group=gLive)
 enNowVol   = input.bool(true, "Work out today's volume levels from the chart (Now POC / VAH / VAL / VWAP / Weekly)", group=gLive)
 enNowVwap  = input.bool(true, "Now VWAP", group=gLive)
 liveWidth  = input.int(2, "Live line width", minval=1, maxval=4, group=gLive)
-showLiveReg = input.bool(true, "Show the live gamma regime box (from the Telegram message)", group=gLive)
-liveRegPos  = input.string("Middle right", "Live regime box position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gLive)
 
 gLook = "Appearance"
 lineWidth  = input.int(1, "Line width", minval=1, maxval=4, group=gLook)
@@ -78,7 +76,7 @@ labelGap   = input.float(0.0, "Labels: minimum gap in points (0 = automatic)", m
 showValue  = input.bool(true, "Show the value in each label", group=gLook)
 txtSize    = input.string("small", "Label text size", options=["tiny", "small", "normal"], group=gLook)
 showRegime = input.bool(true, "Show the regime box", group=gLook)
-regPos     = input.string("Top right", "Regime box position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gLook)
+regPos     = input.string("Top center", "Regime box position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gLook)
 boxTransp  = input.int(35, "Boxes: background transparency (0 = solid, 100 = clear)", minval=0, maxval=100, group=gLook)
 restrictDay = input.bool(true, "Draw levels and signals only on the trading day AFTER the close date in the pasted text", group=gLook)
 
@@ -94,7 +92,7 @@ showFailed  = input.bool(true, "Mark setups that were not confirmed (grey x)", g
 strikeIn = input.string("Auto", "Option strike step (Auto = 50 for Nifty, 100 for Bank Nifty)", options=["Auto", "50", "100"], group=gStr)
 markOnChart = input.bool(true, "Also mark CALL / PUT on the chart", group=gStr)
 showSigBox  = input.bool(true, "Show the setups table", group=gStr)
-sigPos      = input.string("Top center", "Setups table position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gStr)
+sigPos      = input.string("Top right", "Setups table position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gStr)
 sigRows     = input.int(3, "Setups table: most recent setups to list", minval=1, maxval=6, group=gStr)
 sigOnlyWhen = input.bool(false, "Show the setups table only when there is a setup", group=gStr)
 
@@ -313,9 +311,6 @@ bool inDay = not restrictDay or na(lvStartTime) or (not na(dayStartBar) and dayK
 
 // regime change: the close crosses the gamma flip
 bool flipCross = (flipXUp or flipXDn) and not na(flipLvl) and not na(posAboveFlag) and inDay
-if flipCross and barstate.isconfirmed
-    bool posAfter = flipXUp ? posAboveFlag == 1 : posAboveFlag != 1
-    label.new(bar_index, flipXUp ? low : high, (posAfter ? "POSITIVE" : "NEGATIVE") + " gamma regime\nflip " + str.tostring(flipLvl, "#.##") + (flipXUp ? " crossed up" : " crossed down"), style = flipXUp ? label.style_label_up : label.style_label_down, color = posAfter ? #2ecc9a : #ef5b5b, textcolor = color.white, size = size.small)
 alertcondition(flipCross, "BharatPulse gamma flip crossed", "BharatPulse: price crossed the gamma flip on {{ticker}} (regime changed)")
 
 autoGap = (ta.highest(high, 200) - ta.lowest(low, 200)) / 32.0
@@ -580,33 +575,24 @@ if barstate.islast
     if not na(sigBox)
         table.delete(sigBox)
         sigBox := na
-    if not na(liveRegBox)
-        table.delete(liveRegBox)
-        liveRegBox := na
-    if showLiveReg and liveRegTitle != ""
-        liveRegBox := table.new(f_pos(liveRegPos), 1, 3, bgcolor=color.new(#0b0f16, boxTransp), border_width=1, border_color=liveColor, frame_width=1, frame_color=liveColor)
-        ltc = str.contains(str.upper(liveRegTitle), "POSITIVE") ? #2ecc9a : str.contains(str.upper(liveRegTitle), "NEGATIVE") ? #ef5b5b : #e6edf3
-        table.cell(liveRegBox, 0, 0, liveRegTitle + (liveHHMM != "" ? "  " + liveHHMM : ""), width = 28, text_color = ltc, text_halign = text.align_left, text_size = size.small)
-        table.cell(liveRegBox, 0, 1, liveRegBody, width = 28, text_color = #c9d1d9, text_halign = text.align_left, text_size = size.tiny)
-        if not na(liveFlip) and not na(livePosAbove)
-            aboveL = close > liveFlip
-            posL = aboveL == (livePosAbove == 1)
-            lPos = str.contains(str.upper(liveRegTitle), "POSITIVE")
-            lNeg = str.contains(str.upper(liveRegTitle), "NEGATIVE")
-            changedL = (lPos and not posL) or (lNeg and posL)
-            table.cell(liveRegBox, 0, 2, "Now: price " + (aboveL ? "above" : "below") + " the live gamma flip " + str.tostring(liveFlip, "#.##") + ", so the " + (posL ? "POSITIVE" : "NEGATIVE") + " gamma side applies" + (changedL ? " (REGIME CHANGED since the message)" : ""), width = 28, text_color = posL ? #2ecc9a : #ef5b5b, text_halign = text.align_left, text_size = size.tiny)
-    if showRegime and regTitle != ""
-        regBox := table.new(f_pos(regPos), 1, 3, bgcolor=color.new(#0b0f16, boxTransp), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
-        tc = str.contains(str.upper(regTitle), "POSITIVE") ? #2ecc9a : str.contains(str.upper(regTitle), "NEGATIVE") ? #ef5b5b : #e6edf3
-        table.cell(regBox, 0, 0, regTitle, width = 28, text_color = tc, text_halign = text.align_left, text_size = size.small)
-        table.cell(regBox, 0, 1, regBody, width = 28, text_color = #c9d1d9, text_halign = text.align_left, text_size = size.tiny)
-        if not na(flipLvl) and not na(posAboveFlag)
-            aboveNow = close > flipLvl
-            posNow = aboveNow == (posAboveFlag == 1)
-            titlePos = str.contains(str.upper(regTitle), "POSITIVE")
-            titleNeg = str.contains(str.upper(regTitle), "NEGATIVE")
-            changed = (titlePos and not posNow) or (titleNeg and posNow)
-            table.cell(regBox, 0, 2, "Now: price " + (aboveNow ? "above" : "below") + " the gamma flip " + str.tostring(flipLvl, "#.##") + ", so the " + (posNow ? "POSITIVE" : "NEGATIVE") + " gamma side applies" + (changed ? " (REGIME CHANGED since the close)" : ""), width = 28, text_color = posNow ? #2ecc9a : #ef5b5b, text_halign = text.align_left, text_size = size.tiny)
+    if showRegime and (regTitle != "" or liveRegTitle != "")
+        regBox := table.new(f_pos(regPos), 1, 2, bgcolor=color.new(#0b0f16, boxTransp), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
+        string eodTxt = "EOD:  not pasted"
+        color eodCol = #8b97a8
+        if regTitle != ""
+            bool eodPos = str.contains(str.upper(regTitle), "POSITIVE")
+            eodTxt := "EOD:  " + (eodPos ? "POSITIVE" : "NEGATIVE") + " gamma"
+            eodCol := eodPos ? #2ecc9a : #ef5b5b
+        string nowTxt = "NOW:  no live message"
+        color nowCol = #8b97a8
+        if liveRegTitle != ""
+            bool nowPos = str.contains(str.upper(liveRegTitle), "POSITIVE")
+            if not na(liveFlip) and not na(livePosAbove)
+                nowPos := (close > liveFlip) == (livePosAbove == 1)      // today's price against the live gamma flip
+            nowTxt := "NOW:  " + (nowPos ? "POSITIVE" : "NEGATIVE") + " gamma" + (liveHHMM != "" ? "  (" + liveHHMM + ")" : "")
+            nowCol := nowPos ? #2ecc9a : #ef5b5b
+        table.cell(regBox, 0, 0, eodTxt, text_color = eodCol, text_halign = text.align_left, text_size = size.normal)
+        table.cell(regBox, 0, 1, nowTxt, text_color = nowCol, text_halign = text.align_left, text_size = size.normal)
     ns = array.size(sgWhen)
     if showSigBox and useStrat and (ns > 0 or not sigOnlyWhen)
         nr = math.min(ns, sigRows)
