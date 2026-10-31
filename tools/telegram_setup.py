@@ -2,9 +2,9 @@
 
 Before running: open https://t.me/GEXINDICATORBOT in Telegram and press Start (or send "hi"). Then run
   python tools/telegram_setup.py
-and paste the bot token (from @BotFather) when asked. The characters are hidden. The token and your chat id are saved only to
+and paste the bot token (from @BotFather) when asked (right-click pastes in a Windows terminal; the token is visible while pasted,
+or give it as an argument: python tools/telegram_setup.py <token>). The token and your chat id are saved only to
 data/telegram.json on this PC (git-ignored). A test message is sent to your chat."""
-import getpass
 import json
 import sys
 
@@ -14,7 +14,7 @@ import telegram_notify
 
 
 def main():
-    token = getpass.getpass("Bot token from @BotFather (hidden): ").strip()
+    token = (sys.argv[1] if len(sys.argv) > 1 else input("Paste the bot token from @BotFather and press Enter: ")).strip()
     if not token:
         sys.exit("No token entered.")
     try:
