@@ -70,7 +70,25 @@ def tv_text(sym, block, now):
     """The text for the 'Live levels' box of the indicator (one index)."""
     head = f"# BharatPulse {NAME.get(sym, sym)} LIVE {now.strftime('%Y-%m-%d %H:%M')} IST | expiry {block['expiry']} | spot {block['spot']:g}"
     rows = [f"{label}={block['levels'][k]:g}" for k, label in LEVELS if block["levels"].get(k) is not None]
-    return "\n".join([head, "@time=" + now.strftime("%H:%M")] + rows)
+    return "\n".join([head, "@time=" + now.strftime("%H:%M")] + regime_lines(sym, block) + rows)
+
+
+def regime_lines(sym, block):
+    """Live gamma regime for the indicator's second regime box: '@pos_above=' (which side of the flip is positive gamma) and '~' text lines."""
+    flip, spot, pos = block["levels"].get("flip"), block["spot"], block["net_cr"] > 0
+    out = []
+    if flip is not None:
+        above = spot >= flip
+        out.append("@pos_above=" + ("1" if (above if pos else not above) else "0"))
+    out.append(f"~ LIVE {'POSITIVE' if pos else 'NEGATIVE'} GAMMA REGIME ({NAME.get(sym, sym)}, current expiry {block['expiry']})")
+    out.append("~ " + ("Dealers are net long gamma: they sell rallies and buy dips, so moves tend to be dampened." if pos
+                       else "Dealers are net short gamma: they buy rallies and sell falls, so moves tend to be amplified."))
+    if flip is not None:
+        pa = "above" if (above if pos else not above) else "below"
+        out.append(f"~ Positive gamma applies {pa} {flip:g} and negative gamma {'below' if pa == 'above' else 'above'} it. Spot {spot:g} is {'above' if above else 'below'} the flip.")
+    else:
+        out.append("~ No gamma flip within 10% of spot, so the regime should hold unless positions change a lot.")
+    return out
 
 
 def moved(sym, new, old):

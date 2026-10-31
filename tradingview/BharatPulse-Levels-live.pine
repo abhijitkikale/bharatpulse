@@ -66,6 +66,8 @@ liveColor  = input.color(#18ffff, "Colour of all live lines", group=gLive)
 enNowVol   = input.bool(true, "Work out today's volume levels from the chart (Now POC / VAH / VAL / VWAP / Weekly)", group=gLive)
 enNowVwap  = input.bool(true, "Now VWAP", group=gLive)
 liveWidth  = input.int(2, "Live line width", minval=1, maxval=4, group=gLive)
+showLiveReg = input.bool(true, "Show the live gamma regime box (from the Telegram message)", group=gLive)
+liveRegPos  = input.string("Middle right", "Live regime box position", options=["Top left", "Top center", "Top right", "Middle left", "Middle right", "Bottom left", "Bottom center", "Bottom right"], group=gLive)
 
 gLook = "Appearance"
 lineWidth  = input.int(1, "Line width", minval=1, maxval=4, group=gLook)
@@ -187,6 +189,11 @@ var int[]    lvFrom  = array.new_int()      // time from which a level exists (0
 var string   liveHHMM = ""                  // time of the pasted live message, shown in the labels
 var int      liveFromTime = na
 var int      liveStartBar = na
+var string   liveRegTitle = ""          // the live gamma regime from the Telegram message
+var string   liveRegBody  = ""
+var int      livePosAbove = na
+var float    liveFlip = na
+var table    liveRegBox = na
 var int[]    awayN   = array.new_int()      // bars spent away from the level since the doji
 var string[] pendSide = array.new_string()  // Rev 1: a retest waiting for its confirmation candle (CALL / PUT / empty)
 var int[]    pendBar  = array.new_int()     // the bar on which that retest happened
@@ -253,12 +260,24 @@ if barstate.isfirst
     litems = str.split(lclean, ";")
     for it in litems
         t = str.trim(it)
-        if str.length(t) > 0 and not str.startswith(t, "#") and not str.startswith(t, "@") and not str.startswith(t, "~")
+        if str.startswith(t, "~")
+            lbody = str.trim(str.substring(t, 1))
+            if liveRegTitle == ""
+                liveRegTitle := lbody
+            else
+                liveRegBody := liveRegBody == "" ? lbody : liveRegBody + "\n" + lbody
+        else if str.startswith(t, "@pos_above")
+            lap = str.split(t, "=")
+            if array.size(lap) == 2
+                livePosAbove := int(str.tonumber(str.trim(array.get(lap, 1))))
+        else if str.length(t) > 0 and not str.startswith(t, "#") and not str.startswith(t, "@")
             parts = str.split(t, "=")
             if array.size(parts) == 2
                 nm = "Live " + str.trim(array.get(parts, 0))
                 raw = str.replace_all(str.trim(array.get(parts, 1)), ",", "")
                 v = str.tonumber(raw)
+                if not na(v) and str.contains(str.lower(nm), "flip")
+                    liveFlip := v
                 if not na(v) and f_enabled(nm)
                     array.push(lv, v)
                     array.push(ln, nm)
@@ -561,6 +580,21 @@ if barstate.islast
     if not na(sigBox)
         table.delete(sigBox)
         sigBox := na
+    if not na(liveRegBox)
+        table.delete(liveRegBox)
+        liveRegBox := na
+    if showLiveReg and liveRegTitle != ""
+        liveRegBox := table.new(f_pos(liveRegPos), 1, 3, bgcolor=color.new(#0b0f16, boxTransp), border_width=1, border_color=liveColor, frame_width=1, frame_color=liveColor)
+        ltc = str.contains(str.upper(liveRegTitle), "POSITIVE") ? #2ecc9a : str.contains(str.upper(liveRegTitle), "NEGATIVE") ? #ef5b5b : #e6edf3
+        table.cell(liveRegBox, 0, 0, liveRegTitle + (liveHHMM != "" ? "  " + liveHHMM : ""), width = 28, text_color = ltc, text_halign = text.align_left, text_size = size.small)
+        table.cell(liveRegBox, 0, 1, liveRegBody, width = 28, text_color = #c9d1d9, text_halign = text.align_left, text_size = size.tiny)
+        if not na(liveFlip) and not na(livePosAbove)
+            aboveL = close > liveFlip
+            posL = aboveL == (livePosAbove == 1)
+            lPos = str.contains(str.upper(liveRegTitle), "POSITIVE")
+            lNeg = str.contains(str.upper(liveRegTitle), "NEGATIVE")
+            changedL = (lPos and not posL) or (lNeg and posL)
+            table.cell(liveRegBox, 0, 2, "Now: price " + (aboveL ? "above" : "below") + " the live gamma flip " + str.tostring(liveFlip, "#.##") + ", so the " + (posL ? "POSITIVE" : "NEGATIVE") + " gamma side applies" + (changedL ? " (REGIME CHANGED since the message)" : ""), width = 28, text_color = posL ? #2ecc9a : #ef5b5b, text_halign = text.align_left, text_size = size.tiny)
     if showRegime and regTitle != ""
         regBox := table.new(f_pos(regPos), 1, 3, bgcolor=color.new(#0b0f16, boxTransp), border_width=1, border_color=#263040, frame_width=1, frame_color=#263040)
         tc = str.contains(str.upper(regTitle), "POSITIVE") ? #2ecc9a : str.contains(str.upper(regTitle), "NEGATIVE") ? #ef5b5b : #e6edf3

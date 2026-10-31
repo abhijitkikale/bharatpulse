@@ -73,6 +73,7 @@ def test_live_gex_levels_text_and_move_rule():
     assert b["expiry"] == "2026-11-03" and b["levels"]["oi_call"] == 24700 and b["levels"]["oi_put"] <= 24500 <= b["levels"]["oi_call"]
     text = live_gex.tv_text("NIFTY", b, now)
     assert text.startswith("# BharatPulse Nifty LIVE 2026-10-30 10:30 IST") and "@time=10:30" in text and "OI call wall=24700" in text
+    assert "@pos_above=" in text and "~ LIVE " in text and "GAMMA REGIME" in text
     assert live_gex.moved("NIFTY", b, None) and not live_gex.moved("NIFTY", b, b)
     shifted = {**b, "levels": {**b["levels"], "pain": b["levels"]["pain"] + 50}}
     assert live_gex.moved("NIFTY", shifted, b) and not live_gex.moved("BANKNIFTY", {**b, "levels": {**b["levels"], "pain": b["levels"]["pain"] + 50}}, b)
