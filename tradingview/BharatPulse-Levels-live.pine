@@ -66,6 +66,7 @@ liveColor  = input.color(#18ffff, "Colour of all live lines", group=gLive)
 enNowVol   = input.bool(true, "Work out today's volume levels from the chart (Now POC / VAH / VAL / VWAP / Weekly)", group=gLive)
 enNowVwap  = input.bool(true, "Now VWAP", group=gLive)
 liveWidth  = input.int(2, "Live line width", minval=1, maxval=4, group=gLive)
+profRows   = input.int(24, "Volume profile rows (24 = TradingView default; set the same number as your TradingView profile. 0 = fixed 5 / 10 point rows as on the dashboard)", minval=0, maxval=500, group=gLive)
 
 gLook = "Appearance"
 lineWidth  = input.int(1, "Line width", minval=1, maxval=4, group=gLook)
@@ -399,7 +400,7 @@ alertcondition(putAny, "BharatPulse PUT setup", "BharatPulse: PUT setup (touch, 
 
 // ---------------- volume levels worked out from the chart candles (same method as the dashboard) ----------------
 // nb = number of most recent candles to use (index 0 = the latest). Returns [POC, VAH, VAL, 1 if the chart had volume else 0].
-f_prof(int nb, float binSz) =>
+f_prof(int nb, float bsIn, int rows) =>
     float mn = 1.0e12
     float mx = 0.0
     float tvol = 0.0
@@ -408,22 +409,24 @@ f_prof(int nb, float binSz) =>
         mx := math.max(mx, high[i])
         tvol += nz(volume[i])
     bool useVol = tvol > 0
-    float base = math.floor(mn / binSz) * binSz
-    float top = math.max(math.ceil(mx / binSz) * binSz, base + binSz)
-    int n = int(math.round((top - base) / binSz))
+    bool byRows = rows > 0 and mx > mn
+    float bs = byRows ? (mx - mn) / rows : bsIn           // rows mode: the day's range cut into equal rows, like TradingView
+    float base = byRows ? mn : math.floor(mn / bs) * bs
+    float top = byRows ? mx : math.max(math.ceil(mx / bs) * bs, base + bs)
+    int n = byRows ? rows : int(math.round((top - base) / bs))
     float[] vol = array.new_float(n, 0.0)
     for i = 0 to nb - 1
         float a = low[i]
         float b = high[i]
         float w = useVol ? nz(volume[i]) : 1.0
         if b - a < 1.0e-9
-            int k = math.min(math.max(int(math.floor((a - base) / binSz)), 0), n - 1)
+            int k = math.min(math.max(int(math.floor((a - base) / bs)), 0), n - 1)
             array.set(vol, k, array.get(vol, k) + w)
         else
-            int k0 = math.max(int(math.floor((a - base) / binSz)), 0)
-            int k1 = math.min(int(math.floor((b - base) / binSz)), n - 1)
+            int k0 = math.max(int(math.floor((a - base) / bs)), 0)
+            int k1 = math.min(int(math.floor((b - base) / bs)), n - 1)
             for k = k0 to k1
-                float ov = math.min(b, base + (k + 1) * binSz) - math.max(a, base + k * binSz)
+                float ov = math.min(b, base + (k + 1) * bs) - math.max(a, base + k * bs)
                 if ov > 0
                     array.set(vol, k, array.get(vol, k) + w * ov / (b - a))
     float total = array.sum(vol)
@@ -451,7 +454,7 @@ f_prof(int nb, float binSz) =>
                     hiI += 1
                 else
                     loI -= 1
-    [base + (poc + 0.5) * binSz, base + (hiI + 1) * binSz, base + loI * binSz, useVol ? 1.0 : 0.0]
+    [base + (poc + 0.5) * bs, base + (hiI + 1) * bs, base + loI * bs, useVol ? 1.0 : 0.0]
 
 float vwapNow = ta.vwap(hlc3)
 float nowPoc = na
@@ -481,12 +484,12 @@ if barstate.islast and timeframe.isintraday
         nToday := nWeek
     if enNowVol and nToday > 0
         float binSz = isBank ? 10.0 : 5.0
-        [p1, h1, l1, vf] = f_prof(nToday, binSz)
+        [p1, h1, l1, vf] = f_prof(nToday, binSz, profRows)
         nowPoc := p1
         nowVah := h1
         nowVal := l1
         volFlag := vf
-        [p5, h5, l5, vf5] = f_prof(nWeek, binSz)
+        [p5, h5, l5, vf5] = f_prof(nWeek, binSz, profRows)
         wkPoc := p5
         wkVah := h5
         wkVal := l5
