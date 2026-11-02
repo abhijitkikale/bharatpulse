@@ -9,6 +9,7 @@ import compute_options
 from gex import compute_gex
 
 NAME = {"NIFTY": "Nifty", "BANKNIFTY": "Bank Nifty"}
+LIVE_SYMBOLS = ("NIFTY",)                         # live levels and Telegram messages for these indices only
 STEP = {"NIFTY": 50, "BANKNIFTY": 100}            # one strike: a level counts as moved when it shifts by at least this much
 LEVELS = [("flip", "Gamma flip"), ("gex_call", "GEX call wall"), ("gex_put", "GEX put wall"),
           ("oi_call", "OI call wall"), ("oi_put", "OI put wall"), ("pain", "Max pain")]

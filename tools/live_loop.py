@@ -118,7 +118,7 @@ def cycle(push, log=print):
         log("  no candles for today's session yet (holiday, before the open, or an old token). Fyers says:", status)
         return False, "no candles for today's session yet"
     try:                                        # live GEX is extra: a failure here must not stop the volume-profile update
-        chains, cstat = fetch_fyers.fetch_chains(current_only=True)
+        chains, cstat = fetch_fyers.fetch_chains(current_only=True, symbols=live_gex.LIVE_SYMBOLS)
         gex = live_gex.build_gex(chains, now) if chains else None
         if gex:
             payload["gex"] = gex
