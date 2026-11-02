@@ -5,6 +5,8 @@
 //   2. "Live levels (paste from Telegram)"  the message the bot GEXINDICATORBOT sends when a live level moves by a strike or more:
 //        Gamma flip, GEX call wall, GEX put wall, OI call wall, OI put wall, Max pain of the CURRENT expiry. Drawn in cyan with the
 //        prefix "Live"; the end-of-day lines stay as they are. Paste the newest message over the old one (select all, paste).
+// Setups (CALL / PUT) are given only by the end-of-day levels ticked in "Setups ..." (default: GEX call / put wall, POC, VAH, VAL,
+// weekly POC / VAH / VAL) and by today's developing VWAP. Live levels from Telegram and the other "Now" lines are for reference only.
 // The indicator also works out today's volume levels itself from the chart candles and their volume, every candle (drawn in cyan with
 // the prefix "Now"): Now POC / VAH / VAL (today so far), Now VWAP, Now Weekly POC / VAH / VAL (last 5 sessions). Same method as the
 // dashboard: bins of 5 points (Nifty) / 10 points (Bank Nifty), each candle's volume spread over its high-low range, 70% value area.
@@ -66,7 +68,23 @@ liveColor  = input.color(#18ffff, "Colour of all live lines", group=gLive)
 enNowVol   = input.bool(true, "Work out today's volume levels from the chart (Now POC / VAH / VAL / VWAP / Weekly)", group=gLive)
 enNowVwap  = input.bool(true, "Now VWAP", group=gLive)
 liveWidth  = input.int(2, "Live line width", minval=1, maxval=4, group=gLive)
-profRows   = input.int(24, "Volume profile rows (24 = TradingView default; set the same number as your TradingView profile. 0 = fixed 5 / 10 point rows as on the dashboard)", minval=0, maxval=500, group=gLive)
+profRow    = input.float(0.25, "Volume profile row size in points (0.25 is close to TradingView's very fine rows; 0 = the dashboard's 5 / 10 points)", minval=0.0, step=0.05, group=gLive)
+
+gSet = "Setups (touch > doji > retest) on these levels"
+sGexC  = input.bool(true,  "GEX call wall", group=gSet)
+sGexP  = input.bool(true,  "GEX put wall", group=gSet)
+sPoc   = input.bool(true,  "POC", group=gSet)
+sVah   = input.bool(true,  "VAH", group=gSet)
+sVal   = input.bool(true,  "VAL", group=gSet)
+sWkPoc = input.bool(true,  "Weekly POC", group=gSet)
+sWkVah = input.bool(true,  "Weekly VAH", group=gSet)
+sWkVal = input.bool(true,  "Weekly VAL", group=gSet)
+sVwap  = input.bool(true,  "VWAP (today's developing VWAP)", group=gSet)
+sSpot  = input.bool(false, "Spot", group=gSet)
+sPain  = input.bool(false, "Max pain", group=gSet)
+sFlip  = input.bool(false, "Gamma flip", group=gSet)
+sOiC   = input.bool(false, "OI call wall", group=gSet)
+sOiP   = input.bool(false, "OI put wall", group=gSet)
 
 gLook = "Appearance"
 lineWidth  = input.int(1, "Line width", minval=1, maxval=4, group=gLook)
@@ -129,6 +147,39 @@ f_enabled(string name) =>
         e := enVal
     e
 
+f_setup(string name) =>
+    s = str.lower(name)
+    bool e = false
+    if str.startswith(s, "live") or str.startswith(s, "now")
+        e := false
+    else if str.contains(s, "weekly") and str.contains(s, "poc")
+        e := sWkPoc
+    else if str.contains(s, "weekly") and str.contains(s, "vah")
+        e := sWkVah
+    else if str.contains(s, "weekly") and str.contains(s, "val")
+        e := sWkVal
+    else if str.contains(s, "spot")
+        e := sSpot
+    else if str.contains(s, "max pain")
+        e := sPain
+    else if str.contains(s, "flip")
+        e := sFlip
+    else if str.contains(s, "oi call")
+        e := sOiC
+    else if str.contains(s, "oi put")
+        e := sOiP
+    else if str.contains(s, "gex call")
+        e := sGexC
+    else if str.contains(s, "gex put")
+        e := sGexP
+    else if str.contains(s, "poc")
+        e := sPoc
+    else if str.contains(s, "vah")
+        e := sVah
+    else if str.contains(s, "val")
+        e := sVal
+    e
+
 f_color(string name) =>
     s = str.lower(name)
     color c = #8b97a8
@@ -184,6 +235,8 @@ var float[]  lv      = array.new_float()
 var string[] ln      = array.new_string()
 var int[]    stg     = array.new_int()      // 0 idle, 1 touched, 2 doji seen
 var int[]    stgBar  = array.new_int()      // bar where the current stage began
+var bool[]   stOn    = array.new_bool()     // may this level give CALL / PUT setups
+var int      vwapIdx = -1                   // position of "Now VWAP" in the level arrays (its value is refreshed on every bar)
 var int[]    lvFrom  = array.new_int()      // time from which a level exists (0 = the whole day; live levels: when the message was made)
 var string   liveHHMM = ""                  // time of the pasted live message, shown in the labels
 var int      liveFromTime = na
@@ -239,6 +292,7 @@ if barstate.isfirst
                         array.push(stg, 0)
                         array.push(stgBar, 0)
                         array.push(lvFrom, 0)
+                        array.push(stOn, f_setup(nm))
                         array.push(awayN, 0)
                         array.push(pendSide, "")
                         array.push(pendBar, 0)
@@ -277,15 +331,28 @@ if barstate.isfirst
                 v = str.tonumber(raw)
                 if not na(v) and str.contains(str.lower(nm), "flip")
                     liveFlip := v
-                if not na(v) and f_enabled(nm)
+                if not na(v) and f_enabled(nm) and not str.contains(str.lower(nm), "oi ")
                     array.push(lv, v)
                     array.push(ln, nm)
                     array.push(stg, 0)
                     array.push(stgBar, 0)
                     array.push(lvFrom, na(liveFromTime) ? 0 : liveFromTime)
+                    array.push(stOn, false)
                     array.push(awayN, 0)
                     array.push(pendSide, "")
                     array.push(pendBar, 0)
+
+    if sVwap
+        array.push(lv, 0.0)
+        array.push(ln, "Now VWAP")
+        array.push(stg, 0)
+        array.push(stgBar, 0)
+        array.push(lvFrom, 0)
+        array.push(stOn, true)
+        array.push(awayN, 0)
+        array.push(pendSide, "")
+        array.push(pendBar, 0)
+        vwapIdx := array.size(lv) - 1
 
     cp = str.pos(txt, "close 20")
     if not na(cp)
@@ -306,6 +373,9 @@ if restrictDay and not na(lvStartTime)
         dayEndBar := bar_index
 if na(liveStartBar) and not na(liveFromTime) and time >= liveFromTime
     liveStartBar := bar_index
+float vwapNow = ta.vwap(hlc3)
+if vwapIdx >= 0 and not na(vwapNow)
+    array.set(lv, vwapIdx, vwapNow)
 flipXUp = ta.crossover(close, flipLvl)
 flipXDn = ta.crossunder(close, flipLvl)
 bool inDay = not restrictDay or na(lvStartTime) or (not na(dayStartBar) and dayKeyNow == dayKey)
@@ -329,7 +399,7 @@ if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and array.siz
     for i = 0 to array.size(lv) - 1
         L = array.get(lv, i)
         tl = L * tolPct / 100.0
-        touching = high >= L - tl and low <= L + tl and time >= array.get(lvFrom, i)
+        touching = high >= L - tl and low <= L + tl and time >= array.get(lvFrom, i) and array.get(stOn, i)
         string emitSide = ""
         string emitTag = ""
         // Rev 1: this candle is the confirmation candle for a retest that happened on the previous candle
@@ -456,7 +526,6 @@ f_prof(int nb, float bsIn, int rows) =>
                     loI -= 1
     [base + (poc + 0.5) * bs, base + (hiI + 1) * bs, base + loI * bs, useVol ? 1.0 : 0.0]
 
-float vwapNow = ta.vwap(hlc3)
 float nowPoc = na
 float nowVah = na
 float nowVal = na
@@ -484,12 +553,12 @@ if barstate.islast and timeframe.isintraday
         nToday := nWeek
     if enNowVol and nToday > 0
         float binSz = isBank ? 10.0 : 5.0
-        [p1, h1, l1, vf] = f_prof(nToday, binSz, profRows)
+        [p1, h1, l1, vf] = f_prof(nToday, profRow > 0 ? profRow : binSz, 0)
         nowPoc := p1
         nowVah := h1
         nowVal := l1
         volFlag := vf
-        [p5, h5, l5, vf5] = f_prof(nWeek, binSz, profRows)
+        [p5, h5, l5, vf5] = f_prof(nWeek, profRow > 0 ? profRow : binSz, 0)
         wkPoc := p5
         wkVah := h5
         wkVal := l5
@@ -530,7 +599,10 @@ if barstate.islast
         if enWkVal
             array.push(dLv, wkVal)
             array.push(dNm, "Now Weekly VAL")
-    if enNowVwap and not na(vwapNow)
+    if vwapIdx >= 0 and not enNowVwap
+        array.remove(dLv, vwapIdx)
+        array.remove(dNm, vwapIdx)
+    else if vwapIdx < 0 and enNowVwap and not na(vwapNow)
         array.push(dLv, vwapNow)
         array.push(dNm, "Now VWAP")
     n = array.size(dLv)

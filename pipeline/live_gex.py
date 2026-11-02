@@ -12,7 +12,7 @@ NAME = {"NIFTY": "Nifty", "BANKNIFTY": "Bank Nifty"}
 LIVE_SYMBOLS = ("NIFTY",)                         # live levels and Telegram messages for these indices only
 STEP = {"NIFTY": 50, "BANKNIFTY": 100}            # one strike: a level counts as moved when it shifts by at least this much
 LEVELS = [("flip", "Gamma flip"), ("gex_call", "GEX call wall"), ("gex_put", "GEX put wall"),
-          ("oi_call", "OI call wall"), ("oi_put", "OI put wall"), ("pain", "Max pain")]
+          ("pain", "Max pain")]                  # OI walls are end-of-day only: not part of the live message
 BAND = 0.10                                       # same +-10% window around spot as the end-of-day build
 
 
