@@ -376,6 +376,8 @@ if na(liveStartBar) and not na(liveFromTime) and time >= liveFromTime
 float vwapNow = ta.vwap(hlc3)
 if vwapIdx >= 0 and not na(vwapNow)
     array.set(lv, vwapIdx, vwapNow)
+// VWAP is drawn as a curve through the day (broken at each new session), the same shape as TradingView's own VWAP; the setups use this same value
+plot(enNowVwap and not timeframe.change("D") ? vwapNow : na, "Now VWAP", color=liveColor, linewidth=liveWidth, style=plot.style_linebr)
 flipXUp = ta.crossover(close, flipLvl)
 flipXDn = ta.crossunder(close, flipLvl)
 bool inDay = not restrictDay or na(lvStartTime) or (not na(dayStartBar) and dayKeyNow == dayKey)
@@ -636,7 +638,8 @@ if barstate.islast
             string lext = (isLiveLine or isNowLine) ? extend.right : ext
             int llx = (isLiveLine or isNowLine) ? bar_index + labelBars : lx
             int lw = (isLiveLine or isNowLine) ? liveWidth : lineWidth
-            array.push(bpLines, line.new(lxs, v, lxe, v, extend = lext, color = c, style = f_style(nm), width = lw))
+            if nm != "Now VWAP"
+                array.push(bpLines, line.new(lxs, v, lxe, v, extend = lext, color = c, style = f_style(nm), width = lw))
             y = na(prev) ? v : math.min(v, prev - gap)       // two labels at one level sit one below the other
             prev := y
             if showLabels
