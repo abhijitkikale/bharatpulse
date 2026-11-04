@@ -6,7 +6,7 @@
 //        Gamma flip, GEX call wall, GEX put wall, OI call wall, OI put wall, Max pain of the CURRENT expiry. Drawn in cyan with the
 //        prefix "Live"; the end-of-day lines stay as they are. Paste the newest message over the old one (select all, paste).
 // Setups (CALL / PUT) are given only by the end-of-day levels ticked in "Setups ..." (default: GEX call / put wall, POC, VAH, VAL,
-// weekly POC / VAH / VAL) and by the developing daily and weekly VWAP. Live levels from Telegram and the other "Now" lines are for reference only.
+// weekly POC / VAH / VAL), by the developing daily and weekly VWAP and by Now VAH / Now VAL (live candles only). Live levels from Telegram and the other "Now" lines are for reference only.
 // The indicator also works out today's volume levels itself from the chart candles and their volume, every candle (drawn in cyan with
 // the prefix "Now"): Now POC / VAH / VAL (today so far), Now VWAP, Now Weekly POC / VAH / VAL (last 5 sessions). Same method as the
 // dashboard: bins of 5 points (Nifty) / 10 points (Bank Nifty), each candle's volume spread over its high-low range, 70% value area.
@@ -83,6 +83,8 @@ sWkVah = input.bool(true,  "Weekly VAH", group=gSet)
 sWkVal = input.bool(true,  "Weekly VAL", group=gSet)
 sVwap  = input.bool(true,  "VWAP (daily)", group=gSet)
 sWkVwap = input.bool(true, "Weekly VWAP", group=gSet)
+sNowVah = input.bool(true, "Now VAH (today so far; works on live candles, not on past ones)", group=gSet)
+sNowVal = input.bool(true, "Now VAL (today so far; works on live candles, not on past ones)", group=gSet)
 sSpot  = input.bool(false, "Spot", group=gSet)
 sPain  = input.bool(false, "Max pain", group=gSet)
 sFlip  = input.bool(false, "Gamma flip", group=gSet)
@@ -109,6 +111,8 @@ dojiPct  = input.float(30.0, "Doji: body at most this % of the candle range", mi
 maxWait  = input.int(12, "Give up after this many bars between the steps", minval=2, maxval=100, group=gStr)
 minAway  = input.int(1, "Bars price must leave the level before the retest", minval=0, maxval=20, group=gStr)
 sigFrom  = input.time(946684800000, "Show signals from", group=gStr)
+breakMode = input.bool(true, "A: a candle that closes through the level also counts as step 2 (no doji needed)", group=gStr)
+dojiZone  = input.float(12.0, "B: a doji counts when it forms within this many points of the level (0 = it must touch)", minval=0.0, step=1.0, group=gStr)
 confirmMode = input.string("Next candle decides: close above = CALL, close below = PUT", "Confirmation candle (Rev 1)", options=["Off (same as Rev 0)", "Next candle decides: close above = CALL, close below = PUT", "Next candle must not cross back over the level", "Next candle must close in the signal direction"], group=gStr)
 showFailed  = input.bool(true, "Mark setups that were not confirmed (grey x)", group=gStr)
 strikeIn = input.string("Auto", "Option strike step (Auto = 50 for Nifty, 100 for Bank Nifty)", options=["Auto", "50", "100"], group=gStr)
@@ -243,6 +247,8 @@ var int[]    stgBar  = array.new_int()      // bar where the current stage began
 var bool[]   stOn    = array.new_bool()     // may this level give CALL / PUT setups
 var int      vwapIdx = -1                   // position of "Now VWAP" in the level arrays (its value is refreshed on every bar)
 var int      vwapWkIdx = -1                 // the same for "Now Weekly VWAP"
+var int      nowVahIdx = -1                 // "Now VAH" / "Now VAL": refreshed only on the latest candle (the profile of today so far)
+var int      nowValIdx = -1
 var int[]    lvFrom  = array.new_int()      // time from which a level exists (0 = the whole day; live levels: when the message was made)
 var string   liveHHMM = ""                  // time of the pasted live message, shown in the labels
 var int      liveFromTime = na
@@ -370,6 +376,28 @@ if barstate.isfirst
         array.push(pendSide, "")
         array.push(pendBar, 0)
         vwapWkIdx := array.size(lv) - 1
+    if sNowVah
+        array.push(lv, float(na))
+        array.push(ln, "Now VAH")
+        array.push(stg, 0)
+        array.push(stgBar, 0)
+        array.push(lvFrom, 0)
+        array.push(stOn, true)
+        array.push(awayN, 0)
+        array.push(pendSide, "")
+        array.push(pendBar, 0)
+        nowVahIdx := array.size(lv) - 1
+    if sNowVal
+        array.push(lv, float(na))
+        array.push(ln, "Now VAL")
+        array.push(stg, 0)
+        array.push(stgBar, 0)
+        array.push(lvFrom, 0)
+        array.push(stOn, true)
+        array.push(awayN, 0)
+        array.push(pendSide, "")
+        array.push(pendBar, 0)
+        nowValIdx := array.size(lv) - 1
 
     cp = str.pos(txt, "close 20")
     if not na(cp)
@@ -413,85 +441,6 @@ autoGap = (ta.highest(high, 200) - ta.lowest(low, 200)) / 32.0
 // option strike = the retest candle's close rounded to the nearest 50 (Nifty) or 100 (Bank Nifty)
 bool isBank = str.contains(str.upper(syminfo.ticker), "BANK") or str.contains(str.upper(regTitle), "BANK NIFTY")
 float strikeStep = strikeIn == "Auto" ? (isBank ? 100.0 : 50.0) : str.tonumber(strikeIn)
-
-// ---------------- touch > doji > retest ----------------
-bool callAny = false
-bool putAny = false
-isDoji = (high - low) > 0 and math.abs(close - open) <= (high - low) * dojiPct / 100.0
-bool confirmOn = confirmMode != "Off (same as Rev 0)"
-bool decides = confirmMode == "Next candle decides: close above = CALL, close below = PUT"
-if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and array.size(lv) > 0
-    for i = 0 to array.size(lv) - 1
-        L = array.get(lv, i)
-        tl = L * tolPct / 100.0
-        touching = high >= L - tl and low <= L + tl and time >= array.get(lvFrom, i) and array.get(stOn, i)
-        string emitSide = ""
-        string emitTag = ""
-        // Rev 1: this candle is the confirmation candle for a retest that happened on the previous candle
-        string ps = array.get(pendSide, i)
-        if ps != ""
-            if bar_index == array.get(pendBar, i) + 1
-                if decides
-                    emitSide := close > L ? "CALL" : close < L ? "PUT" : ""
-                    emitTag := emitSide == "" or ps == "EQ" ? "" : emitSide == ps ? " (bounce)" : " (cross)"
-                else
-                    bool ok = confirmMode == "Next candle must close in the signal direction" ? (ps == "CALL" ? close > open : close < open) : (ps == "CALL" ? close > L : close < L)
-                    if ok
-                        emitSide := ps
-                    else if showFailed
-                        label.new(bar_index, ps == "CALL" ? low : high, "x", style = ps == "CALL" ? label.style_label_up : label.style_label_down, color = color.new(#8b97a8, 30), textcolor = color.white, size = size.tiny)
-            array.set(pendSide, i, "")
-        s = array.get(stg, i)
-        if s > 0 and bar_index - array.get(stgBar, i) > maxWait
-            s := 0
-            array.set(stg, i, 0)
-        if s == 0
-            if touching
-                array.set(stg, i, 1)
-                array.set(stgBar, i, bar_index)
-        else if s == 1
-            if touching and isDoji and bar_index > array.get(stgBar, i)
-                array.set(stg, i, 2)
-                array.set(stgBar, i, bar_index)
-                array.set(awayN, i, 0)
-        else if s == 2
-            if touching
-                if array.get(awayN, i) >= minAway
-                    string side = close > L ? "CALL" : close < L ? "PUT" : ""
-                    if decides
-                        array.set(pendSide, i, side == "" ? "EQ" : side)      // the next candle decides, even if the retest closed exactly on the level
-                        array.set(pendBar, i, bar_index)
-                    else if side != ""
-                        if confirmOn
-                            array.set(pendSide, i, side)
-                            array.set(pendBar, i, bar_index)
-                        else
-                            emitSide := side
-                    array.set(stg, i, 0)
-            else
-                array.set(awayN, i, array.get(awayN, i) + 1)
-        if emitSide != ""
-            nm = array.get(ln, i)
-            callAny := callAny or emitSide == "CALL"
-            putAny := putAny or emitSide == "PUT"
-            strike = math.round(close / strikeStep) * strikeStep
-            array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
-            array.unshift(sgSide, emitSide)
-            array.unshift(sgStrike, str.tostring(strike, "#"))
-            array.unshift(sgLevel, nm + " " + str.tostring(L, "#.##") + emitTag)
-            if array.size(sgWhen) > 6
-                array.pop(sgWhen)
-                array.pop(sgSide)
-                array.pop(sgStrike)
-                array.pop(sgLevel)
-            if markOnChart
-                if emitSide == "CALL"
-                    label.new(bar_index, low, confirmOn ? "CALL ✓" + emitTag : "CALL", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
-                else
-                    label.new(bar_index, high, confirmOn ? "PUT ✓" + emitTag : "PUT", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
-
-alertcondition(callAny, "BharatPulse CALL setup", "BharatPulse: CALL setup (touch, doji, retest closed above the level) on {{ticker}}")
-alertcondition(putAny, "BharatPulse PUT setup", "BharatPulse: PUT setup (touch, doji, retest closed below the level) on {{ticker}}")
 
 // ---------------- volume levels worked out from the chart candles (same method as the dashboard) ----------------
 // nb = number of most recent candles to use (index 0 = the latest). Returns [POC, VAH, VAL, 1 if the chart had volume else 0].
@@ -588,6 +537,98 @@ if barstate.islast and timeframe.isintraday
         wkVah := h5
         wkVal := l5
 
+if nowVahIdx >= 0 and not na(nowVah)
+    array.set(lv, nowVahIdx, nowVah)
+if nowValIdx >= 0 and not na(nowVal)
+    array.set(lv, nowValIdx, nowVal)
+
+// ---------------- touch > doji > retest ----------------
+bool callAny = false
+bool putAny = false
+isDoji = (high - low) > 0 and math.abs(close - open) <= (high - low) * dojiPct / 100.0
+bool confirmOn = confirmMode != "Off (same as Rev 0)"
+bool decides = confirmMode == "Next candle decides: close above = CALL, close below = PUT"
+if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and array.size(lv) > 0
+    for i = 0 to array.size(lv) - 1
+        L = array.get(lv, i)
+        tl = L * tolPct / 100.0
+        bool active = time >= array.get(lvFrom, i) and array.get(stOn, i)
+        touching = high >= L - tl and low <= L + tl and active
+        float dz = math.max(tl, dojiZone)
+        bool nearDoji = isDoji and high >= L - dz and low <= L + dz and active                                  // B
+        bool breaks = breakMode and touching and ((open < L and close > L) or (open > L and close < L))      // A
+        string emitSide = ""
+        string emitTag = ""
+        // Rev 1: this candle is the confirmation candle for a retest that happened on the previous candle
+        string ps = array.get(pendSide, i)
+        if ps != ""
+            if bar_index == array.get(pendBar, i) + 1
+                if decides
+                    emitSide := close > L ? "CALL" : close < L ? "PUT" : ""
+                    emitTag := emitSide == "" or ps == "EQ" ? "" : emitSide == ps ? " (bounce)" : " (cross)"
+                else
+                    bool ok = confirmMode == "Next candle must close in the signal direction" ? (ps == "CALL" ? close > open : close < open) : (ps == "CALL" ? close > L : close < L)
+                    if ok
+                        emitSide := ps
+                    else if showFailed
+                        label.new(bar_index, ps == "CALL" ? low : high, "x", style = ps == "CALL" ? label.style_label_up : label.style_label_down, color = color.new(#8b97a8, 30), textcolor = color.white, size = size.tiny)
+            array.set(pendSide, i, "")
+        s = array.get(stg, i)
+        if s > 0 and bar_index - array.get(stgBar, i) > maxWait
+            s := 0
+            array.set(stg, i, 0)
+        if s == 0
+            if touching
+                if breaks
+                    array.set(stg, i, 2)
+                    array.set(awayN, i, 0)
+                else
+                    array.set(stg, i, 1)
+                array.set(stgBar, i, bar_index)
+        else if s == 1
+            if (nearDoji or breaks) and bar_index > array.get(stgBar, i)
+                array.set(stg, i, 2)
+                array.set(stgBar, i, bar_index)
+                array.set(awayN, i, 0)
+        else if s == 2
+            if touching
+                if array.get(awayN, i) >= minAway
+                    string side = close > L ? "CALL" : close < L ? "PUT" : ""
+                    if decides
+                        array.set(pendSide, i, side == "" ? "EQ" : side)      // the next candle decides, even if the retest closed exactly on the level
+                        array.set(pendBar, i, bar_index)
+                    else if side != ""
+                        if confirmOn
+                            array.set(pendSide, i, side)
+                            array.set(pendBar, i, bar_index)
+                        else
+                            emitSide := side
+                    array.set(stg, i, 0)
+            else
+                array.set(awayN, i, array.get(awayN, i) + 1)
+        if emitSide != ""
+            nm = array.get(ln, i)
+            callAny := callAny or emitSide == "CALL"
+            putAny := putAny or emitSide == "PUT"
+            strike = math.round(close / strikeStep) * strikeStep
+            array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
+            array.unshift(sgSide, emitSide)
+            array.unshift(sgStrike, str.tostring(strike, "#"))
+            array.unshift(sgLevel, nm + " " + str.tostring(L, "#.##") + emitTag)
+            if array.size(sgWhen) > 6
+                array.pop(sgWhen)
+                array.pop(sgSide)
+                array.pop(sgStrike)
+                array.pop(sgLevel)
+            if markOnChart
+                if emitSide == "CALL"
+                    label.new(bar_index, low, confirmOn ? "CALL ✓" + emitTag : "CALL", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
+                else
+                    label.new(bar_index, high, confirmOn ? "PUT ✓" + emitTag : "PUT", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
+
+alertcondition(callAny, "BharatPulse CALL setup", "BharatPulse: CALL setup (touch, doji, retest closed above the level) on {{ticker}}")
+alertcondition(putAny, "BharatPulse PUT setup", "BharatPulse: PUT setup (touch, doji, retest closed below the level) on {{ticker}}")
+
 // ---------------- draw levels, stacked labels, regime box (last bar only) ----------------
 var line[]  bpLines  = array.new_line()
 var label[] bpLabels = array.new_label()
@@ -624,6 +665,12 @@ if barstate.islast
         if enWkVal
             array.push(dLv, wkVal)
             array.push(dNm, "Now Weekly VAL")
+    if nowValIdx >= 0
+        array.remove(dLv, nowValIdx)
+        array.remove(dNm, nowValIdx)
+    if nowVahIdx >= 0
+        array.remove(dLv, nowVahIdx)
+        array.remove(dNm, nowVahIdx)
     if vwapWkIdx >= 0
         array.remove(dLv, vwapWkIdx)
         array.remove(dNm, vwapWkIdx)
