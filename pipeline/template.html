@@ -165,6 +165,7 @@ footer th{background:none;position:static}
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="hint">Horizon</span><select id="mom-h"><option value="1M">1M</option><option value="3M">3M</option><option value="6M" selected>6M</option><option value="1Y">1Y</option><option value="3Y">3Y</option><option value="5Y">5Y</option></select>
           <span class="hint">Sector weight</span><input class="num" id="mom-ws" type="number" min="0" max="1" step="0.05"><span class="hint">Stock weight</span><input class="num" id="mom-wt" type="number" min="0" max="1" step="0.05">
           <button class="btn" id="mom-reset" title="Back to 0.6 / 0.4">Reset</button><select id="mom-sec"></select></div></div>
+        <div id="mm-box" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:2px 0 10px"></div>
         <div class="scroll" style="max-height:75vh"><table class="heat" id="tb-mom"></table></div></div>
     </div>
   </section>
@@ -383,17 +384,30 @@ function renderOverview(){
   $('#tb-globrank').onclick=e=>{const tr=e.target.closest('tr[data-n]');if(tr&&/India/.test(tr.dataset.n)){S.pp.drawer=S.pp.glob;openIndex(/500/.test(tr.dataset.n)?'Nifty 500':'Nifty 50',true)}}}
 
 /* ---------- sectors ---------- */
-// composite rank: sum of an item's ranks from 1W up to the chosen horizon (1D ignored); lowest sum = 1,
+// Composite method (shared by the Sectors and Momentum Stocks tabs, chosen on the Momentum Stocks tab).
+// 'slice' (default): each period is its own slice of time (1M = the month BEFORE the latest week, 3M = the 2 months before the latest month ...),
+// so one big day only counts in the newest slice. 'cum': the plain cumulative 1W / 1M / 3M ... returns. Skip latest week (default on) leaves
+// out the 1W period. Every period has a weight (default 1) that multiplies its rank in the sum.
+const MOMM={method:'slice',skip:true,w:{}};
+try{const m=JSON.parse(localStorage.getItem('bp_mom_m')||'null');if(m){if(m.method==='cum'||m.method==='slice')MOMM.method=m.method;if(typeof m.skip==='boolean')MOMM.skip=m.skip;
+  if(m.w&&typeof m.w==='object')for(const q of Object.keys(m.w)){const v=+m.w[q];if(isFinite(v)&&v>=0&&v<=100)MOMM.w[q]=v}}}catch(e){}
+const mommSave=()=>{try{localStorage.setItem('bp_mom_m',JSON.stringify(MOMM))}catch(e){}};
+const wOf=q=>MOMM.w[q]??1;
+const SPREV={'1M':'1W','3M':'1M','6M':'3M','1Y':'6M','3Y':'1Y','5Y':'3Y'},SYRS={'3Y':3,'5Y':5};
+const stot=(r,q)=>Math.pow(1+r/100,SYRS[q]||1);                  // 3Y / 5Y returns are annualised: back to total growth
+const sliceGet=get=>(it,q)=>{const a=get(it,q);if(a==null||!SPREV[q])return a;const b=get(it,SPREV[q]);return b==null?null:(stot(a,q)/stot(b,SPREV[q])-1)*100};
+const incFor=H=>{const O=PERIODS.filter(q=>q!=='1D'),i=O.indexOf(H);let inc=O.slice(0,i<0?0:i+1);if(MOMM.skip)inc=inc.filter(q=>q!=='1W');return inc};
+// composite rank: weighted sum of an item's ranks over the periods up to the chosen horizon (1D ignored); lowest sum = 1,
 // ties go to the better short-term rank, and an item missing any of those periods is "n/a" and ranked last
 function composite(items,get,inc){
-  const rk=ranks(items,get);
-  const comp=items.map(it=>{const rs=inc.map(q=>(rk[it.key]||{})[q]);const ok=rs.every(r=>r);return {key:it.key,ok,rs:ok?rs.map(r=>r[0]):null,sum:ok?rs.reduce((a,r)=>a+r[0],0):null}});
+  const rk=ranks(items,get),rc=MOMM.method==='slice'?ranks(items,sliceGet(get)):rk;          // rk: the cumulative ranks shown in the table, rc: the ranks the composite uses
+  const comp=items.map(it=>{const rs=inc.map(q=>(rc[it.key]||{})[q]);const ok=rs.every(r=>r);return {key:it.key,ok,rs:ok?rs.map(r=>r[0]):null,sum:ok?Math.round(inc.reduce((a,q,j)=>a+wOf(q)*rs[j][0],0)*100)/100:null}});
   comp.sort((a,b)=>{if(a.ok!==b.ok)return a.ok?-1:1;if(!a.ok)return a.key.localeCompare(b.key);if(a.sum!==b.sum)return a.sum-b.sum;for(let k=0;k<a.rs.length;k++)if(a.rs[k]!==b.rs[k])return a.rs[k]-b.rs[k];return 0});
   comp.forEach((c,k)=>c.rank=c.ok?k+1:null);
   return {rk,cr:Object.fromEntries(comp.map(c=>[c.key,c])),nOk:comp.filter(c=>c.ok).length};
 }
 function sectComposite(H){
-  const ORDER=PERIODS.filter(q=>q!=='1D'),inc=ORDER.slice(0,ORDER.indexOf(H)+1);
+  const inc=incFor(H);
   const items=SECT.map(i=>({key:i.label,i}));
   return {items,H,inc,...composite(items,(it,pp)=>it.i.ret[pp],inc)};
 }
@@ -409,7 +423,7 @@ function renderSectors(){
   const arrow=S.secSort==='asc'?' ▲':S.secSort==='desc'?' ▼':' ⇅';
   $('#secH').value=H;
   const cmpCells=k=>{const c=cr[k];return c.ok?`<td style="border-left:2px solid var(--line);text-align:center" title="ranks ${inc.map((q,j)=>q+':'+c.rs[j]).join(', ')}">${c.sum}</td><td class="h" style="background:${heatColor((c.rank-1)/Math.max(nOk-1,1))};font-size:14px">${c.rank}</td>`:`<td style="border-left:2px solid var(--line);text-align:center" class="hint">n/a</td><td class="h" style="background:var(--card2);color:var(--mut)" title="history too short for one of the periods">n/a</td>`};
-  $('#tb-secrank').innerHTML=`<thead><tr><th>Sector</th>${PERIODS.map(q=>`<th class="${q===p?'sel':''}" style="text-align:center">${q}</th>`).join('')}<th data-sort="comp" title="Click to sort" style="text-align:center;border-left:2px solid var(--line);cursor:pointer">Σ ranks${arrow}<br><span class="hint">1W→${H}</span></th><th data-sort="comp" title="Click to sort ascending / descending" style="text-align:center;cursor:pointer">Composite${arrow}<br>rank</th></tr></thead><tbody>`+
+  $('#tb-secrank').innerHTML=`<thead><tr><th>Sector</th>${PERIODS.map(q=>`<th class="${q===p?'sel':''}" style="text-align:center">${q}</th>`).join('')}<th data-sort="comp" title="Click to sort" style="text-align:center;border-left:2px solid var(--line);cursor:pointer">Σ ranks${arrow}<br><span class="hint">${inc[0]||''}→${H}${MOMM.method==='slice'?' · non-overlapping':''}</span></th><th data-sort="comp" title="Click to sort ascending / descending" style="text-align:center;cursor:pointer">Composite${arrow}<br>rank</th></tr></thead><tbody>`+
    sorted.map(i=>`<tr class="click" data-l="${esc(i.key)}"><td>${esc(i.key)}</td>${PERIODS.map(q=>{const r=(rk[i.key]||{})[q];return r?`<td class="h" style="background:${heatColor((r[0]-1)/Math.max(r[1]-1,1))}" title="${fmt(i.i.ret[q],2)}">${r[0]}</td>`:'<td class="h">–</td>'}).join('')}${cmpCells(i.key)}</tr>`).join('')+'</tbody>';
   $('#tb-secrank').onclick=e=>{
     if(e.target.closest('th[data-sort]')){S.secSort=S.secSort==null?'asc':S.secSort==='asc'?'desc':null;return renderSectors()}      // asc -> desc -> default order
@@ -632,6 +646,7 @@ function renderRisk(){
 /* ---------- info pop-outs (the small "i" buttons) ---------- */
 const INFO={
  momstk:{t:'Momentum Stocks: how the score works',h:`<p><b>Two scores, both from 0 (best) to 100 (worst).</b></p>
+  <p><b>Method.</b> By default each period is its own slice of time (1M = the month before the latest week, 3M = the two months before the latest month, and so on), so a one-day jump counts only in the newest slice instead of in every column. The latest week is skipped by default. You can switch to the plain cumulative returns, include the latest week, and give each period its own weight (default 1). The same choice drives the composite rank on the Sectors tab.</p>
   <p><b>Sector score.</b> The sector's composite rank from the Sectors tab (its ranks from 1W up to the horizon, added up; lowest sum = rank 1), turned into a 0-100 position among all sectors.</p>
   <p><b>Stock score.</b> The same method applied to the stock's own returns against the other stocks of its sector, turned into a 0-100 position within that sector. Using positions instead of raw ranks keeps a 5-stock sector and a 40-stock sector comparable.</p>
   <p><b>Weighted score = sector weight × sector score + stock weight × stock score.</b> The lowest weighted score is the top stock. If two stocks tie, the one with the bigger % rise over the horizon comes first. Change the weights in the two boxes; editing one sets the other to 1 minus it. They are remembered in your browser.</p>
@@ -1081,7 +1096,13 @@ function momRows(H){
   }
   return {rows,H};
 }
+function renderMethod(){
+  const O=PERIODS.filter(q=>q!=='1D');
+  $('#mm-box').innerHTML=`<span class="hint">Method</span><select id="mm-method"><option value="slice"${MOMM.method==='slice'?' selected':''}>Non-overlapping periods (recommended)</option><option value="cum"${MOMM.method==='cum'?' selected':''}>Cumulative returns (old)</option></select>`+
+    `<label class="hint" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="mm-skip"${MOMM.skip?' checked':''}>Skip latest week</label><span class="hint" style="margin-left:8px">Weight of each period:</span>`+
+    O.map(q=>`<span class="hint">${q}</span><input class="num" style="width:54px" data-w="${q}" type="number" min="0" max="100" step="0.5" value="${wOf(q)}">`).join('')+`<button class="btn" id="mm-reset-w" title="All weights back to 1">Reset weights</button>`}
 function renderMomentum(){
+  if(!$('#mm-box').firstChild)renderMethod();
   const H=S.secH||'6M';$('#mom-h').value=H;
   const {rows}=momRows(H);
   const ws=MOM.ws,wt=MOM.wt;
@@ -1091,11 +1112,21 @@ function renderMomentum(){
   const secs=[...new Set(rows.map(r=>r.sec))].sort();if(MOM.sec&&!secs.includes(MOM.sec))MOM.sec='';
   $('#mom-sec').innerHTML='<option value="">All sectors</option>'+secs.map(x=>`<option value="${esc(x)}"${x===MOM.sec?' selected':''}>${esc(x)}</option>`).join('');
   if(document.activeElement!==$('#mom-ws'))$('#mom-ws').value=ws;if(document.activeElement!==$('#mom-wt'))$('#mom-wt').value=wt;
-  $('#mom-sub').textContent=`Weighted score = ${ws} × sector score + ${wt} × stock score · both scores 0 (best) to 100 (worst) · lowest = top stock · horizon 1W→${H} · ${rows.length} stocks`;
+  $('#mom-sub').textContent=`Weighted score = ${ws} × sector score + ${wt} × stock score · both scores 0 (best) to 100 (worst) · lowest = top stock · horizon ${incFor(H)[0]||''}→${H}${MOMM.method==='slice'?' · non-overlapping periods':' · cumulative returns'} · ${rows.length} stocks`;
   const shown=MOM.sec?rows.filter(r=>r.sec===MOM.sec):rows,n=rows.length;
   $('#tb-mom').innerHTML=`<thead><tr><th style="text-align:left">#</th><th style="text-align:left">Stock</th><th style="text-align:left">Sector</th><th style="text-align:center">Sector<br>rank</th><th style="text-align:center">Sector<br>score</th><th style="text-align:center">Rank in<br>sector</th><th style="text-align:center">Stock<br>score</th><th style="text-align:center;border-left:2px solid var(--line)">Weighted<br>score</th>${PERIODS.map(q=>`<th class="${q===H?'sel':''}" style="text-align:center">${q}</th>`).join('')}</tr></thead><tbody>`+
    shown.map(r=>`<tr class="click" data-s="${esc(r.s.s)}"><td style="text-align:left">${r.rank}</td><td style="text-align:left" title="${esc(r.s.n)}"><b>${esc(r.s.s)}</b> <span class="hint">${esc(r.s.n)}</span></td><td style="text-align:left">${esc(r.sec)}</td><td class="h" style="background:${heatColor((r.sRank-1)/Math.max(r.nSec-1,1))}">${r.sRank}<span class="hint">/${r.nSec}</span></td><td style="text-align:center">${r.sPct.toFixed(0)}</td><td class="h" style="background:${heatColor((r.tRank-1)/Math.max(r.nIn-1,1))}">${r.tRank}<span class="hint">/${r.nIn}</span></td><td style="text-align:center">${r.tPct.toFixed(0)}</td><td class="h" style="border-left:2px solid var(--line);background:${heatColor((r.rank-1)/Math.max(n-1,1))};font-size:14px">${r.w.toFixed(1)}</td>${PERIODS.map(q=>`<td class="${cls(r.s.r[q])}" style="text-align:center">${fmt(r.s.r[q])}</td>`).join('')}</tr>`).join('')+'</tbody>';
 }
+(function(){
+  const again=()=>{mommSave();renderMethod();renderMomentum()};
+  $('#mm-box').addEventListener('change',e=>{const t=e.target;
+    if(t.id==='mm-method')MOMM.method=t.value==='cum'?'cum':'slice';
+    else if(t.id==='mm-skip')MOMM.skip=t.checked;
+    else if(t.dataset.w){const v=+t.value;if(isFinite(v)&&v>=0&&v<=100&&t.value!=='')MOMM.w[t.dataset.w]=v;else{t.value=wOf(t.dataset.w);return}}
+    else return;
+    again()});
+  $('#mm-box').addEventListener('click',e=>{if(e.target.id==='mm-reset-w'){MOMM.w={};again()}});
+})();
 (function(){
   const setW=(a,v)=>{if(!isFinite(v))return;v=Math.min(1,Math.max(0,v));if(a==='ws'){MOM.ws=v;MOM.wt=Math.round((1-v)*100)/100}else{MOM.wt=v;MOM.ws=Math.round((1-v)*100)/100}
     $('#mom-ws').value=MOM.ws;$('#mom-wt').value=MOM.wt;momSave();renderMomentum()};
