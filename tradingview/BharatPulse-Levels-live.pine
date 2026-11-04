@@ -6,7 +6,7 @@
 //        Gamma flip, GEX call wall, GEX put wall, OI call wall, OI put wall, Max pain of the CURRENT expiry. Drawn in cyan with the
 //        prefix "Live"; the end-of-day lines stay as they are. Paste the newest message over the old one (select all, paste).
 // Setups (CALL / PUT) are given only by the end-of-day levels ticked in "Setups ..." (default: GEX call / put wall, POC, VAH, VAL,
-// weekly POC / VAH / VAL) and by today's developing VWAP. Live levels from Telegram and the other "Now" lines are for reference only.
+// weekly POC / VAH / VAL) and by the developing daily and weekly VWAP. Live levels from Telegram and the other "Now" lines are for reference only.
 // The indicator also works out today's volume levels itself from the chart candles and their volume, every candle (drawn in cyan with
 // the prefix "Now"): Now POC / VAH / VAL (today so far), Now VWAP, Now Weekly POC / VAH / VAL (last 5 sessions). Same method as the
 // dashboard: bins of 5 points (Nifty) / 10 points (Bank Nifty), each candle's volume spread over its high-low range, 70% value area.
@@ -66,9 +66,11 @@ enOther = input.bool(true, "Any other level", group=gShow)
 gLive = "Live levels"
 liveColor  = input.color(#18ffff, "Colour of all live lines", group=gLive)
 enNowVol   = input.bool(true, "Work out today's volume levels from the chart (Now POC / VAH / VAL / VWAP / Weekly)", group=gLive)
-enNowVwap  = input.bool(true, "Now VWAP", group=gLive)
+enNowVwap  = input.bool(true, "Now VWAP (daily: starts again each session)", group=gLive)
 liveWidth  = input.int(2, "Live line width", minval=1, maxval=4, group=gLive)
 profRow    = input.float(0.25, "Volume profile row size in points (0.25 is close to TradingView's very fine rows; 0 = the dashboard's 5 / 10 points)", minval=0.0, step=0.05, group=gLive)
+enWkVwap   = input.bool(true, "Now Weekly VWAP (starts again each Monday, like TradingView's weekly VWAP)", group=gLive)
+wkVwapColor = input.color(#ffeb3b, "Colour of the weekly VWAP", group=gLive)
 
 gSet = "Setups (touch > doji > retest) on these levels"
 sGexC  = input.bool(true,  "GEX call wall", group=gSet)
@@ -79,7 +81,8 @@ sVal   = input.bool(true,  "VAL", group=gSet)
 sWkPoc = input.bool(true,  "Weekly POC", group=gSet)
 sWkVah = input.bool(true,  "Weekly VAH", group=gSet)
 sWkVal = input.bool(true,  "Weekly VAL", group=gSet)
-sVwap  = input.bool(true,  "VWAP (today's developing VWAP)", group=gSet)
+sVwap  = input.bool(true,  "VWAP (daily)", group=gSet)
+sWkVwap = input.bool(true, "Weekly VWAP", group=gSet)
 sSpot  = input.bool(false, "Spot", group=gSet)
 sPain  = input.bool(false, "Max pain", group=gSet)
 sFlip  = input.bool(false, "Gamma flip", group=gSet)
@@ -183,7 +186,9 @@ f_setup(string name) =>
 f_color(string name) =>
     s = str.lower(name)
     color c = #8b97a8
-    if str.startswith(s, "live") or str.startswith(s, "now")
+    if str.startswith(s, "now weekly vwap")
+        c := wkVwapColor
+    else if str.startswith(s, "live") or str.startswith(s, "now")
         c := liveColor
     else if str.contains(s, "weekly") and str.contains(s, "poc")
         c := #ff80ab
@@ -212,7 +217,7 @@ f_color(string name) =>
 f_style(string name) =>
     s = str.lower(name)
     string st = line.style_dashed
-    if str.startswith(s, "now vwap")
+    if str.contains(s, "vwap")
         st := line.style_solid
     else if str.contains(s, "weekly")
         st := str.contains(s, "poc") ? line.style_solid : line.style_dotted
@@ -237,6 +242,7 @@ var int[]    stg     = array.new_int()      // 0 idle, 1 touched, 2 doji seen
 var int[]    stgBar  = array.new_int()      // bar where the current stage began
 var bool[]   stOn    = array.new_bool()     // may this level give CALL / PUT setups
 var int      vwapIdx = -1                   // position of "Now VWAP" in the level arrays (its value is refreshed on every bar)
+var int      vwapWkIdx = -1                 // the same for "Now Weekly VWAP"
 var int[]    lvFrom  = array.new_int()      // time from which a level exists (0 = the whole day; live levels: when the message was made)
 var string   liveHHMM = ""                  // time of the pasted live message, shown in the labels
 var int      liveFromTime = na
@@ -353,6 +359,17 @@ if barstate.isfirst
         array.push(pendSide, "")
         array.push(pendBar, 0)
         vwapIdx := array.size(lv) - 1
+    if sWkVwap
+        array.push(lv, 0.0)
+        array.push(ln, "Now Weekly VWAP")
+        array.push(stg, 0)
+        array.push(stgBar, 0)
+        array.push(lvFrom, 0)
+        array.push(stOn, true)
+        array.push(awayN, 0)
+        array.push(pendSide, "")
+        array.push(pendBar, 0)
+        vwapWkIdx := array.size(lv) - 1
 
     cp = str.pos(txt, "close 20")
     if not na(cp)
@@ -373,11 +390,17 @@ if restrictDay and not na(lvStartTime)
         dayEndBar := bar_index
 if na(liveStartBar) and not na(liveFromTime) and time >= liveFromTime
     liveStartBar := bar_index
-float vwapNow = ta.vwap(hlc3)
+bool chD = timeframe.change("D")
+bool chW = timeframe.change("W")
+float vwapNow = ta.vwap(hlc3, chD)
+float vwapWk = ta.vwap(hlc3, chW)
 if vwapIdx >= 0 and not na(vwapNow)
     array.set(lv, vwapIdx, vwapNow)
+if vwapWkIdx >= 0 and not na(vwapWk)
+    array.set(lv, vwapWkIdx, vwapWk)
 // VWAP is drawn as a curve through the day (broken at each new session), the same shape as TradingView's own VWAP; the setups use this same value
-plot(enNowVwap and not timeframe.change("D") ? vwapNow : na, "Now VWAP", color=liveColor, linewidth=liveWidth, style=plot.style_linebr)
+plot(enNowVwap and not chD ? vwapNow : na, "Now VWAP", color=liveColor, linewidth=liveWidth, style=plot.style_linebr)
+plot(enWkVwap and not chW ? vwapWk : na, "Now Weekly VWAP", color=wkVwapColor, linewidth=liveWidth, style=plot.style_linebr)
 flipXUp = ta.crossover(close, flipLvl)
 flipXDn = ta.crossunder(close, flipLvl)
 bool inDay = not restrictDay or na(lvStartTime) or (not na(dayStartBar) and dayKeyNow == dayKey)
@@ -601,12 +624,18 @@ if barstate.islast
         if enWkVal
             array.push(dLv, wkVal)
             array.push(dNm, "Now Weekly VAL")
-    if vwapIdx >= 0 and not enNowVwap
+    if vwapWkIdx >= 0
+        array.remove(dLv, vwapWkIdx)
+        array.remove(dNm, vwapWkIdx)
+    if vwapIdx >= 0
         array.remove(dLv, vwapIdx)
         array.remove(dNm, vwapIdx)
-    else if vwapIdx < 0 and enNowVwap and not na(vwapNow)
+    if enNowVwap and not na(vwapNow)
         array.push(dLv, vwapNow)
         array.push(dNm, "Now VWAP")
+    if enWkVwap and not na(vwapWk)
+        array.push(dLv, vwapWk)
+        array.push(dNm, "Now Weekly VWAP")
     n = array.size(dLv)
     if n > 0
         gap = labelGap > 0 ? labelGap : autoGap
@@ -638,7 +667,7 @@ if barstate.islast
             string lext = (isLiveLine or isNowLine) ? extend.right : ext
             int llx = (isLiveLine or isNowLine) ? bar_index + labelBars : lx
             int lw = (isLiveLine or isNowLine) ? liveWidth : lineWidth
-            if nm != "Now VWAP"
+            if not str.contains(lname, "vwap")
                 array.push(bpLines, line.new(lxs, v, lxe, v, extend = lext, color = c, style = f_style(nm), width = lw))
             y = na(prev) ? v : math.min(v, prev - gap)       // two labels at one level sit one below the other
             prev := y
