@@ -5,6 +5,8 @@
 //   2. "Live levels (paste from Telegram)"  the message the bot GEXINDICATORBOT sends when a live level moves by a strike or more:
 //        Gamma flip, GEX call wall, GEX put wall, OI call wall, OI put wall, Max pain of the CURRENT expiry. Drawn in cyan with the
 //        prefix "Live"; the end-of-day lines stay as they are. Paste the newest message over the old one (select all, paste).
+// Break signal (C): on the daily and weekly VWAP, when the candles before were all on one side, a candle closes through it and the next
+// candle closes beyond it. Needs no retest. Switch it off with the setting "C".
 // Setups (CALL / PUT) are given only by the end-of-day levels ticked in "Setups ..." (default: GEX call / put wall, POC, VAH, VAL,
 // weekly POC / VAH / VAL), by the developing daily and weekly VWAP and by Now VAH / Now VAL (live candles only). Live levels from Telegram and the other "Now" lines are for reference only.
 // The indicator also works out today's volume levels itself from the chart candles and their volume, every candle (drawn in cyan with
@@ -83,6 +85,8 @@ sWkVah = input.bool(true,  "Weekly VAH", group=gSet)
 sWkVal = input.bool(true,  "Weekly VAL", group=gSet)
 sVwap  = input.bool(true,  "VWAP (daily)", group=gSet)
 sWkVwap = input.bool(true, "Weekly VWAP", group=gSet)
+bkVwap  = input.bool(true, "VWAP break signal: daily VWAP", group=gSet)
+bkWkVwap = input.bool(true, "VWAP break signal: weekly VWAP", group=gSet)
 sNowVah = input.bool(true, "Now VAH (today so far; works on live candles, not on past ones)", group=gSet)
 sNowVal = input.bool(true, "Now VAL (today so far; works on live candles, not on past ones)", group=gSet)
 sSpot  = input.bool(false, "Spot", group=gSet)
@@ -113,6 +117,8 @@ minAway  = input.int(1, "Bars price must leave the level before the retest", min
 sigFrom  = input.time(946684800000, "Show signals from", group=gStr)
 breakMode = input.bool(true, "A: a candle that closes through the level also counts as step 2 (no doji needed)", group=gStr)
 dojiZone  = input.float(12.0, "B: a doji counts when it forms within this many points of the level (0 = it must touch)", minval=0.0, step=1.0, group=gStr)
+breakSig  = input.bool(true, "C: VWAP break signal: the candles before were all on one side of the VWAP, a candle closes through it and the NEXT candle closes beyond it (no retest needed)", group=gStr)
+bkLook    = input.int(8, "C: number of candles before the break that must all be on the other side of the VWAP", minval=2, maxval=30, group=gStr)
 confirmMode = input.string("Next candle decides: close above = CALL, close below = PUT", "Confirmation candle (Rev 1)", options=["Off (same as Rev 0)", "Next candle decides: close above = CALL, close below = PUT", "Next candle must not cross back over the level", "Next candle must close in the signal direction"], group=gStr)
 showFailed  = input.bool(true, "Mark setups that were not confirmed (grey x)", group=gStr)
 strikeIn = input.string("Auto", "Option strike step (Auto = 50 for Nifty, 100 for Bank Nifty)", options=["Auto", "50", "100"], group=gStr)
@@ -640,6 +646,55 @@ if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and nBase > 0
                         label.new(bar_index, low, confirmOn ? "CALL ✓" + emitTag : "CALL", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
                     else
                         label.new(bar_index, high, confirmOn ? "PUT ✓" + emitTag : "PUT", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
+
+// ---- C: VWAP break signals (a different setup from the retest above) ----
+var string[] bkSide = array.new_string(2, "")
+var int[]    bkBar  = array.new_int(2, -1)
+if useStrat and breakSig and barstate.isconfirmed and inDay and time >= sigFrom
+    for q = 0 to 1
+        int bi = q == 0 ? vwapIdx : vwapWkIdx
+        bool want = q == 0 ? bkVwap : bkWkVwap
+        if bi >= 0 and want
+            float Lb = array.get(lv, bi)
+            float tlb = Lb * tolPct / 100.0
+            string bname = q == 0 ? "Now VWAP" : "Now Weekly VWAP"
+            string bpend = array.get(bkSide, q)
+            string bemit = ""
+            if bpend != "" and bar_index == array.get(bkBar, q) + 1
+                bool bok = bpend == "CALL" ? close > Lb + tlb : close < Lb - tlb
+                if bok
+                    bemit := bpend
+            array.set(bkSide, q, "")
+            bool wasBelow = true
+            bool wasAbove = true
+            for j = 1 to bkLook
+                float vj = q == 0 ? vwapNow[j] : vwapWk[j]
+                wasBelow := wasBelow and close[j] < vj
+                wasAbove := wasAbove and close[j] > vj
+            if close > Lb and wasBelow
+                array.set(bkSide, q, "CALL")
+                array.set(bkBar, q, bar_index)
+            else if close < Lb and wasAbove
+                array.set(bkSide, q, "PUT")
+                array.set(bkBar, q, bar_index)
+            if bemit != ""
+                callAny := callAny or bemit == "CALL"
+                putAny := putAny or bemit == "PUT"
+                float bstrike = math.round(close / strikeStep) * strikeStep
+                array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
+                array.unshift(sgSide, bemit)
+                array.unshift(sgStrike, str.tostring(bstrike, "#"))
+                array.unshift(sgLevel, bname + " " + str.tostring(Lb, "#.##") + " (break)")
+                if array.size(sgWhen) > 6
+                    array.pop(sgWhen)
+                    array.pop(sgSide)
+                    array.pop(sgStrike)
+                    array.pop(sgLevel)
+                if markOnChart
+                    if bemit == "CALL"
+                        label.new(bar_index, low, confirmOn ? "CALL ✓ (break)" : "CALL (break)", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
+                    else
+                        label.new(bar_index, high, confirmOn ? "PUT ✓ (break)" : "PUT (break)", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
 
 alertcondition(callAny, "BharatPulse CALL setup", "BharatPulse: CALL setup (touch, doji, retest closed above the level) on {{ticker}}")
 alertcondition(putAny, "BharatPulse PUT setup", "BharatPulse: PUT setup (touch, doji, retest closed below the level) on {{ticker}}")
