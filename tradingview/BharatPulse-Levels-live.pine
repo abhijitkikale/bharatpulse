@@ -247,6 +247,8 @@ var int[]    stgBar  = array.new_int()      // bar where the current stage began
 var bool[]   stOn    = array.new_bool()     // may this level give CALL / PUT setups
 var int      vwapIdx = -1                   // position of "Now VWAP" in the level arrays (its value is refreshed on every bar)
 var int      vwapWkIdx = -1                 // the same for "Now Weekly VWAP"
+var int      nBase = 0                      // number of levels; the stage arrays hold two copies (old rules, then A / B rules)
+var int[]    emBar = array.new_int()        // bar of the last setup emitted for each level (so the two copies never double-report)
 var int      nowVahIdx = -1                 // "Now VAH" / "Now VAL": refreshed only on the latest candle (the profile of today so far)
 var int      nowValIdx = -1
 var int[]    lvFrom  = array.new_int()      // time from which a level exists (0 = the whole day; live levels: when the message was made)
@@ -399,6 +401,15 @@ if barstate.isfirst
         array.push(pendBar, 0)
         nowValIdx := array.size(lv) - 1
 
+    nBase := array.size(lv)
+    for j = 0 to nBase - 1
+        array.push(stg, 0)
+        array.push(stgBar, 0)
+        array.push(awayN, 0)
+        array.push(pendSide, "")
+        array.push(pendBar, 0)
+        array.push(emBar, -1)
+
     cp = str.pos(txt, "close 20")
     if not na(cp)
         ds = str.substring(txt, cp + 6, cp + 16)
@@ -548,83 +559,87 @@ bool putAny = false
 isDoji = (high - low) > 0 and math.abs(close - open) <= (high - low) * dojiPct / 100.0
 bool confirmOn = confirmMode != "Off (same as Rev 0)"
 bool decides = confirmMode == "Next candle decides: close above = CALL, close below = PUT"
-if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and array.size(lv) > 0
-    for i = 0 to array.size(lv) - 1
-        L = array.get(lv, i)
-        tl = L * tolPct / 100.0
-        bool active = time >= array.get(lvFrom, i) and array.get(stOn, i)
-        touching = high >= L - tl and low <= L + tl and active
-        float dz = math.max(tl, dojiZone)
-        bool nearDoji = isDoji and high >= L - dz and low <= L + dz and active                                  // B
-        bool breaks = breakMode and touching and ((open < L and close > L) or (open > L and close < L))      // A
-        string emitSide = ""
-        string emitTag = ""
-        // Rev 1: this candle is the confirmation candle for a retest that happened on the previous candle
-        string ps = array.get(pendSide, i)
-        if ps != ""
-            if bar_index == array.get(pendBar, i) + 1
-                if decides
-                    emitSide := close > L ? "CALL" : close < L ? "PUT" : ""
-                    emitTag := emitSide == "" or ps == "EQ" ? "" : emitSide == ps ? " (bounce)" : " (cross)"
-                else
-                    bool ok = confirmMode == "Next candle must close in the signal direction" ? (ps == "CALL" ? close > open : close < open) : (ps == "CALL" ? close > L : close < L)
-                    if ok
-                        emitSide := ps
-                    else if showFailed
-                        label.new(bar_index, ps == "CALL" ? low : high, "x", style = ps == "CALL" ? label.style_label_up : label.style_label_down, color = color.new(#8b97a8, 30), textcolor = color.white, size = size.tiny)
-            array.set(pendSide, i, "")
-        s = array.get(stg, i)
-        if s > 0 and bar_index - array.get(stgBar, i) > maxWait
-            s := 0
-            array.set(stg, i, 0)
-        if s == 0
-            if touching
-                if breaks
-                    array.set(stg, i, 2)
-                    array.set(awayN, i, 0)
-                else
-                    array.set(stg, i, 1)
-                array.set(stgBar, i, bar_index)
-        else if s == 1
-            if (nearDoji or breaks) and bar_index > array.get(stgBar, i)
-                array.set(stg, i, 2)
-                array.set(stgBar, i, bar_index)
-                array.set(awayN, i, 0)
-        else if s == 2
-            if touching
-                if array.get(awayN, i) >= minAway
-                    string side = close > L ? "CALL" : close < L ? "PUT" : ""
+if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and nBase > 0
+    for ph = 0 to 1
+        for i = 0 to nBase - 1
+            int k = i + ph * nBase
+            L = array.get(lv, i)
+            tl = L * tolPct / 100.0
+            bool active = time >= array.get(lvFrom, i) and array.get(stOn, i)
+            touching = high >= L - tl and low <= L + tl and active
+            bool pA = ph == 1                                                                                     // second copy: A / B rules
+            float dz = pA ? math.max(tl, dojiZone) : tl
+            bool nearDoji = isDoji and high >= L - dz and low <= L + dz and active                                  // B
+            bool breaks = pA and breakMode and touching and ((open < L and close > L) or (open > L and close < L))      // A
+            string emitSide = ""
+            string emitTag = ""
+            // Rev 1: this candle is the confirmation candle for a retest that happened on the previous candle
+            string ps = array.get(pendSide, k)
+            if ps != ""
+                if bar_index == array.get(pendBar, k) + 1
                     if decides
-                        array.set(pendSide, i, side == "" ? "EQ" : side)      // the next candle decides, even if the retest closed exactly on the level
-                        array.set(pendBar, i, bar_index)
-                    else if side != ""
-                        if confirmOn
-                            array.set(pendSide, i, side)
-                            array.set(pendBar, i, bar_index)
-                        else
-                            emitSide := side
-                    array.set(stg, i, 0)
-            else
-                array.set(awayN, i, array.get(awayN, i) + 1)
-        if emitSide != ""
-            nm = array.get(ln, i)
-            callAny := callAny or emitSide == "CALL"
-            putAny := putAny or emitSide == "PUT"
-            strike = math.round(close / strikeStep) * strikeStep
-            array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
-            array.unshift(sgSide, emitSide)
-            array.unshift(sgStrike, str.tostring(strike, "#"))
-            array.unshift(sgLevel, nm + " " + str.tostring(L, "#.##") + emitTag)
-            if array.size(sgWhen) > 6
-                array.pop(sgWhen)
-                array.pop(sgSide)
-                array.pop(sgStrike)
-                array.pop(sgLevel)
-            if markOnChart
-                if emitSide == "CALL"
-                    label.new(bar_index, low, confirmOn ? "CALL ✓" + emitTag : "CALL", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
+                        emitSide := close > L ? "CALL" : close < L ? "PUT" : ""
+                        emitTag := emitSide == "" or ps == "EQ" ? "" : emitSide == ps ? " (bounce)" : " (cross)"
+                    else
+                        bool ok = confirmMode == "Next candle must close in the signal direction" ? (ps == "CALL" ? close > open : close < open) : (ps == "CALL" ? close > L : close < L)
+                        if ok
+                            emitSide := ps
+                        else if showFailed
+                            label.new(bar_index, ps == "CALL" ? low : high, "x", style = ps == "CALL" ? label.style_label_up : label.style_label_down, color = color.new(#8b97a8, 30), textcolor = color.white, size = size.tiny)
+                array.set(pendSide, k, "")
+            s = array.get(stg, k)
+            if s > 0 and bar_index - array.get(stgBar, k) > maxWait
+                s := 0
+                array.set(stg, k, 0)
+            if s == 0
+                if touching
+                    if breaks
+                        array.set(stg, k, 2)
+                        array.set(awayN, k, 0)
+                    else
+                        array.set(stg, k, 1)
+                    array.set(stgBar, k, bar_index)
+            else if s == 1
+                if (nearDoji or breaks) and bar_index > array.get(stgBar, k)
+                    array.set(stg, k, 2)
+                    array.set(stgBar, k, bar_index)
+                    array.set(awayN, k, 0)
+            else if s == 2
+                if touching
+                    if array.get(awayN, k) >= minAway
+                        string side = close > L ? "CALL" : close < L ? "PUT" : ""
+                        if decides
+                            array.set(pendSide, k, side == "" ? "EQ" : side)      // the next candle decides, even if the retest closed exactly on the level
+                            array.set(pendBar, k, bar_index)
+                        else if side != ""
+                            if confirmOn
+                                array.set(pendSide, k, side)
+                                array.set(pendBar, k, bar_index)
+                            else
+                                emitSide := side
+                        array.set(stg, k, 0)
                 else
-                    label.new(bar_index, high, confirmOn ? "PUT ✓" + emitTag : "PUT", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
+                    array.set(awayN, k, array.get(awayN, k) + 1)
+            if emitSide != "" and array.get(emBar, i) != bar_index
+                array.set(emBar, i, bar_index)
+                nm = array.get(ln, i)
+                callAny := callAny or emitSide == "CALL"
+                putAny := putAny or emitSide == "PUT"
+                strike = math.round(close / strikeStep) * strikeStep
+                array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
+                array.unshift(sgSide, emitSide)
+                array.unshift(sgStrike, str.tostring(strike, "#"))
+                array.unshift(sgLevel, nm + " " + str.tostring(L, "#.##") + emitTag)
+                if array.size(sgWhen) > 6
+                    array.pop(sgWhen)
+                    array.pop(sgSide)
+                    array.pop(sgStrike)
+                    array.pop(sgLevel)
+                if markOnChart
+                    if emitSide == "CALL"
+                        label.new(bar_index, low, confirmOn ? "CALL ✓" + emitTag : "CALL", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
+                    else
+                        label.new(bar_index, high, confirmOn ? "PUT ✓" + emitTag : "PUT", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
 
 alertcondition(callAny, "BharatPulse CALL setup", "BharatPulse: CALL setup (touch, doji, retest closed above the level) on {{ticker}}")
 alertcondition(putAny, "BharatPulse PUT setup", "BharatPulse: PUT setup (touch, doji, retest closed below the level) on {{ticker}}")
