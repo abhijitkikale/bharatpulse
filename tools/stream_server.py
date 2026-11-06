@@ -249,6 +249,11 @@ def start_in_thread(stop=None, port=None):
     stop = stop or threading.Event()
     threading.Thread(target=FEED.run, args=(stop,), daemon=True).start()
     threading.Thread(target=FEED.relay, args=(stop,), daemon=True).start()
+    try:                                                # OBS and the YouTube broadcast (only when data/obs.json is set up, see tools/obs_setup.py)
+        import obs_control
+        threading.Thread(target=obs_control.run_loop, args=(lambda: FEED.state, stop), daemon=True).start()
+    except Exception:
+        pass
     try:
         srv = http.server.ThreadingHTTPServer(("127.0.0.1", port or PORT), Handler)
         threading.Thread(target=srv.serve_forever, daemon=True).start()

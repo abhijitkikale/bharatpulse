@@ -23,6 +23,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 .body{flex:1;display:flex;min-height:0}
 .left{flex:none;width:var(--lw);box-sizing:border-box;border-right:1px solid var(--line);padding:calc(var(--fs)*.5);display:flex;flex-direction:column;gap:calc(var(--fs)*.5);overflow:hidden}
 .main{flex:1;position:relative;min-width:0}
+#cd{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;text-align:center;background:var(--card);border:2px solid var(--line);border-radius:16px;padding:calc(var(--fs)*1) calc(var(--fs)*3);display:none;box-shadow:0 8px 40px rgba(0,0,0,.25);pointer-events:none}
+#cd .a{font-size:calc(var(--fs)*1.5);color:var(--mut);font-weight:600}#cd .t{font-size:calc(var(--fs)*5);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}#cd .b{font-size:calc(var(--fs)*1.05);color:var(--mut);margin-top:calc(var(--fs)*.3)}
 #chart{position:absolute;left:0;top:0;right:0;bottom:0}
 #regime{display:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:calc(var(--fs)*.3) calc(var(--fs)*.8);font-size:calc(var(--fs)*1.35);font-weight:700;line-height:1.3}
 .sg{flex:none;display:none;gap:calc(var(--fs)*.6);align-items:center;flex-wrap:wrap;padding:calc(var(--fs)*.25) calc(var(--fs)*1);border-bottom:1px solid var(--line);font-size:calc(var(--fs)*.92)}
@@ -41,7 +43,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
   <div class="sg" id="setups" style="display:none"></div>
   <div class="body">
     <div class="left"><div id="regime"><div id="r1"></div><div id="r2"></div></div><div id="lv"></div></div>
-    <div class="main"><div id="chart"></div></div>
+    <div class="main"><div id="chart"></div><div id="cd"><div class="a" id="cd-a"></div><div class="t" id="cd-t"></div><div class="b" id="cd-b"></div></div></div>
   </div>
   <div class="ban"><span id="b2"></span></div>
 </div>
@@ -171,6 +173,21 @@ function draw(s){
   renderLevels(s);
 }
 async function poll(){try{const r=await fetch('/state.json',{cache:'no-store'});draw(await r.json())}catch(e){const c=document.getElementById('chip');c.textContent='no connection to the data feed';c.className='chip bad'}}
+// countdown to the NSE open (09:15 IST, Monday to Friday; exchange holidays are not known to the page)
+function istParts(){const p=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',weekday:'short'}).formatToParts(new Date()),o={};p.forEach(x=>o[x.type]=x.value);return o}
+function tickCountdown(){
+  const o=istParts(),wd=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(o.weekday),sec=(+o.hour)*3600+(+o.minute)*60+(+o.second),open=9*3600+15*60,close=15*3600+30*60,box=document.getElementById('cd');
+  const live=wd<5&&sec>=open&&sec<close;
+  if(live){box.style.display='none';return}
+  let add=0;                                              // days until the next weekday session
+  if(wd<5&&sec<open)add=0;else{add=1;let w=(wd+1)%7;while(w>4){add++;w=(w+1)%7}}
+  const left=add*86400+open-sec,h=Math.floor(left/3600),m=Math.floor(left%3600/60),r=left%60,pad=n=>String(n).padStart(2,'0');
+  document.getElementById('cd-a').textContent=wd<5&&sec<open?'NSE opens in':(wd<5&&sec>=close?'Market closed. Next session in':'Market closed. Next session in');
+  document.getElementById('cd-t').textContent=(h>=24?Math.floor(h/24)+'d ':'')+pad(h%24)+':'+pad(m)+':'+pad(r);
+  document.getElementById('cd-b').textContent='Levels shown: end-of-day levels and the live GEX levels · the chart goes live at 09:15 IST';
+  box.style.display='block';
+}
+tickCountdown();setInterval(tickCountdown,1000);
 applyTheme();poll();setInterval(poll,5000);
 window.addEventListener('resize',()=>chart.applyOptions({layout:{fontSize:axisFont()}}));
 </script>

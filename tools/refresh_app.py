@@ -27,6 +27,8 @@ import webbrowser
 
 import requests
 
+import pandas as pd
+
 import live_loop
 import stream_server
 
@@ -83,11 +85,13 @@ def set_stage(stage, error=None):
 def token_info():
     if not TOKEN_FILE.exists():
         return {"have": False}
-    saved = dt.datetime.fromtimestamp(TOKEN_FILE.stat().st_mtime)
+    # Fyers tokens end at 06:30 IST, whatever this PC's clock says: work in IST
+    saved = pd.Timestamp(TOKEN_FILE.stat().st_mtime, unit="s", tz="UTC").tz_convert("Asia/Kolkata")
     expires = saved.replace(hour=6, minute=30, second=0, microsecond=0)
     if expires <= saved:
-        expires += dt.timedelta(days=1)
-    return {"have": True, "saved": saved.strftime("%d %b %H:%M"), "valid": dt.datetime.now() < expires, "expires": expires.strftime("%d %b %H:%M")}
+        expires += pd.Timedelta(days=1)
+    return {"have": True, "saved": saved.strftime("%d %b %H:%M") + " IST", "valid": live_loop.now_ist() < expires, "expires": expires.strftime("%d %b %H:%M") + " IST",
+            "early": (saved.hour, saved.minute) < (6, 30)}
 
 
 def live_running():
@@ -229,7 +233,7 @@ const $=s=>document.querySelector(s);$('#logo').src="__LOGO__";
 function pill(el,ok,yes,no){el.textContent=ok?yes:no;el.className=ok?'ok':'bad'}
 async function tick(){let d;try{d=await (await fetch('/status',{cache:'no-store'})).json()}catch(e){return}
  pill($('#s-env'),d.env_ok,'ready','missing (see setup note)');pill($('#s-gh'),d.gh_ok,'signed in','not signed in');
- const t=d.token;$('#s-tok').textContent=!t.have?'none yet':(t.valid?'saved '+t.saved+', works until '+t.expires:'expired ('+t.saved+')');$('#s-tok').className=t.have&&t.valid?'ok':'warn';
+ const t=d.token;$('#s-tok').textContent=!t.have?'none yet':(t.valid?'saved '+t.saved+', works until '+t.expires+(t.early?' (SIGNED IN TOO EARLY: sign in again after 06:30 IST)':''):'expired ('+t.saved+')');$('#s-tok').className=t.have&&t.valid&&!t.early?'ok':'warn';
  const busy=!['idle','done','error'].includes(d.stage);$('#go').disabled=busy||!d.env_ok||!d.gh_ok;
  $('#go').textContent=busy?'Working...':(d.stage==='done'?'Sign in again':'Sign in and start');
  $('#s-live').textContent=d.liveloop.text;$('#s-live').className=d.liveloop.running?'ok':'warn';$('#startlive').style.display=d.liveloop.can_start?'inline-block':'none';
@@ -319,6 +323,12 @@ def main():
     except OSError:
         sys.exit(f"Port {PORT} is already in use. Close the other BharatPulse helper window and try again.")
     print(f"BharatPulse refresh page: {REDIRECT}   (close this window to stop it)")
+    if sys.platform == "win32":
+        try:                                    # keep this PC awake while the helper runs (the screen may still turn off)
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+        except Exception:
+            pass
     if live_loop.market_day_window() and token_info().get("valid"):
         print("A valid sign-in is already saved: starting the 5-minute live updates.")
         start_live()
