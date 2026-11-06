@@ -63,7 +63,7 @@ const chart=LightweightCharts.createChart(el,{layout:{background:{color:'#0b0f16
 const cs=chart.addCandlestickSeries({upColor:'#2ecc9a',downColor:'#ef5b5b',borderVisible:false,wickUpColor:'#2ecc9a',wickDownColor:'#ef5b5b'});
 const vd=chart.addLineSeries({color:'#18ffff',lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
 const vw=chart.addLineSeries({color:'#ffeb3b',lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
-const CLEAN=new URLSearchParams(location.search).get('clean')==='1';   // /?clean=1 : no setups table or CALL / PUT markers (for OBS)
+const CLEAN=new URLSearchParams(location.search).get('clean')==='1';if(CLEAN)document.getElementById('th').style.display='none';   // /?clean=1 : no setups table or CALL / PUT markers (for OBS)
 let lines=[],RANGE=null,LASTS=null;
 function applyTheme(){
   const L=THEME==='light';document.documentElement.dataset.theme=THEME;

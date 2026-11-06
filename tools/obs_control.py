@@ -155,6 +155,67 @@ def launch_obs(cfg):
     return True
 
 
+def _connect(cfg, tries=1, pause=3):
+    last = None
+    for _ in range(tries):
+        try:
+            return Obs(cfg["host"], cfg["port"], cfg["password"]).connect()
+        except Exception as e:
+            last = e
+            time.sleep(pause)
+    raise ObsError(f"could not reach OBS ({type(last).__name__}); is it open with the WebSocket server on?")
+
+
+def golive(cfg):
+    """Select the BharatPulse scene, reload its page and start the broadcast (used by the Go live button). Returns a short message."""
+    if not obs_running():
+        launch_obs(cfg)
+        time.sleep(20)
+    obs = _connect(cfg, tries=15)
+    try:
+        obs.ensure_scene(cfg["scene"], cfg["url"], configure=False)
+        if obs.streaming():
+            return "the broadcast is already live"
+        obs.call("SetCurrentProgramScene", {"sceneName": cfg["scene"]})
+        try:
+            obs.call("PressInputPropertiesButton", {"inputName": cfg["scene"] + " page", "propertyName": "refreshnocache"})
+        except ObsError:
+            pass
+        time.sleep(3)
+        obs.call("StartStream")
+        return "broadcast started (check YouTube Studio; OBS must be signed in to YouTube)"
+    finally:
+        obs.close()
+
+
+def stop_stream(cfg):
+    obs = _connect(cfg)
+    try:
+        if not obs.streaming():
+            return "the broadcast was not live"
+        obs.call("StopStream")
+        return "broadcast stopped"
+    finally:
+        obs.close()
+
+
+def snapshot(cfg):
+    """{configured, running, live} for the helper page; live is None when OBS cannot be asked."""
+    if not cfg or not cfg.get("password"):
+        return {"configured": False, "running": obs_running(), "live": None}
+    out = {"configured": True, "running": obs_running(), "live": None}
+    if out["running"]:
+        try:
+            obs = Obs(cfg["host"], cfg["port"], cfg["password"], timeout=3).connect()
+            try:
+                out["live"] = obs.streaming()
+            finally:
+                obs.close()
+        except Exception:
+            pass
+    return out
+
+
 def feed_health(state, t):
     """(ready, healthy): ready = the page has data; healthy = live Fyers candles that are not stale (market hours)."""
     if not state or not state.get("candles"):
@@ -201,6 +262,11 @@ def run_loop(get_state, stop, notify=None, log=lambda *a: None):
                     action = decide(cfg, t, streaming, ready, healthy, done_day == day, bad)
                     if action == "start":
                         obs.call("SetCurrentProgramScene", {"sceneName": cfg["scene"]})      # the broadcast shows the stream page
+                        try:                                                                     # reload it, in case it was loaded before the page was up
+                            obs.call("PressInputPropertiesButton", {"inputName": cfg["scene"] + " page", "propertyName": "refreshnocache"})
+                        except ObsError:
+                            pass
+                        stop.wait(3)
                         obs.call("StartStream")
                         done_day = day
                         notify(f"BharatPulse: YouTube broadcast STARTED ({t:%H:%M} IST, mode {cfg['mode']}).")
