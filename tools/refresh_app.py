@@ -133,7 +133,12 @@ def run_action(path):
         elif not cfg or not cfg.get("password"):
             S["obsmsg"] = "OBS is not set up yet: run  python tools/obs_setup.py"
         elif path == "/obs/start":
-            S["obsmsg"] = "OBS started" if obs_control.launch_obs(cfg) else "OBS is already running"
+            if obs_control.launch_obs(cfg, visible=True):
+                S["obsmsg"] = "OBS is starting"
+            elif obs_control.show_window():
+                S["obsmsg"] = "OBS was already running: its window is now in front"
+            else:
+                S["obsmsg"] = "OBS is running but its window was not found: click its icon in the system tray (near the clock)"
         elif path == "/obs/golive":
             S["obsmsg"] = obs_control.golive(cfg)
         elif path == "/obs/stop":

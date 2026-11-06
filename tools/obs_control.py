@@ -144,14 +144,47 @@ def obs_running():
         return False
 
 
-def launch_obs(cfg):
-    """Start OBS minimised (no 'safe mode' prompt) if it is not running. Returns True when it was started."""
+def show_window():
+    """Bring OBS's main window to the front; it may be hidden in the system tray. Returns True when a window was shown."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    from ctypes import wintypes
+    try:
+        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq obs64.exe", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=15).stdout
+        pids = {int(line.split('","')[1]) for line in out.splitlines() if line.startswith('"obs64.exe"')}
+    except Exception:
+        return False
+    user32, found = ctypes.windll.user32, []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def cb(hwnd, _):
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value in pids:
+            n = user32.GetWindowTextLengthW(hwnd)
+            if n:
+                buf = ctypes.create_unicode_buffer(n + 1)
+                user32.GetWindowTextW(hwnd, buf, n + 1)
+                if buf.value.startswith("OBS "):
+                    found.append(hwnd)
+        return True
+
+    user32.EnumWindows(cb, 0)
+    for h in found:
+        user32.ShowWindow(h, 9)                                  # SW_RESTORE
+        user32.SetForegroundWindow(h)
+    return bool(found)
+
+
+def launch_obs(cfg, visible=False):
+    """Start OBS if it is not running (no 'safe mode' prompt), minimised to the tray unless visible=True. Returns True when it was started."""
     if obs_running():
         return False
     exe = next((e for e in ([cfg.get("exe")] if cfg.get("exe") else []) + EXES if pathlib.Path(e).exists()), None)
     if not exe:
         return False
-    subprocess.Popen([exe, "--minimize-to-tray", "--disable-shutdown-check"], cwd=str(pathlib.Path(exe).parent))
+    subprocess.Popen([exe, "--disable-shutdown-check"] + ([] if visible else ["--minimize-to-tray"]), cwd=str(pathlib.Path(exe).parent))
     return True
 
 
