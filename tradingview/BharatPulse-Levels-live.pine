@@ -5,6 +5,8 @@
 //   2. "Live levels (paste from Telegram)"  the message the bot GEXINDICATORBOT sends when a live level moves by a strike or more:
 //        Gamma flip, GEX call wall, GEX put wall, OI call wall, OI put wall, Max pain of the CURRENT expiry. Drawn in cyan with the
 //        prefix "Live"; the end-of-day lines stay as they are. Paste the newest message over the old one (select all, paste).
+// Bounce signal (D): on the daily and weekly VWAP, when the candles before were all on one side, a candle touches the VWAP and closes back on
+// that side and the next candle closes beyond it; at most one per 10 candles per VWAP. Switch it off with the setting D.
 // Break signal (C): on the daily and weekly VWAP, when the candles before were all on one side, a candle closes through it and the next
 // candle closes beyond it. Needs no retest. Switch it off with the setting "C".
 // Setups (CALL / PUT) are given only by the end-of-day levels ticked in "Setups ..." (default: GEX call / put wall, POC, VAH, VAL,
@@ -123,6 +125,9 @@ breakMode = input.bool(true, "A: a candle that closes through the level also cou
 dojiZone  = input.float(12.0, "B: a doji counts when it forms within this many points of the level (0 = it must touch)", minval=0.0, step=1.0, group=gStr)
 breakSig  = input.bool(true, "C: VWAP break signal: the candles before were all on one side of the VWAP, a candle closes through it and the NEXT candle closes beyond it (no retest needed)", group=gStr)
 bkLook    = input.int(8, "C: number of candles before the break that must all be on the other side of the VWAP", minval=2, maxval=30, group=gStr)
+bounceSig = input.bool(true, "D: VWAP bounce signal: the candles before were all on one side of the VWAP, a candle touches it and closes back on that side, and the NEXT candle closes beyond it (CALL from above / PUT from below)", group=gStr)
+bnLook    = input.int(5, "D: candles before the touch that must all be on the same side of the VWAP", minval=2, maxval=30, group=gStr)
+bnCool    = input.int(10, "D: minimum candles between two bounce signals on the same VWAP", minval=1, maxval=120, group=gStr)
 confirmMode = input.string("Next candle decides: close above = CALL, close below = PUT", "Confirmation candle (Rev 1)", options=["Off (same as Rev 0)", "Next candle decides: close above = CALL, close below = PUT", "Next candle must not cross back over the level", "Next candle must close in the signal direction"], group=gStr)
 showFailed  = input.bool(true, "Mark setups that were not confirmed (grey x)", group=gStr)
 strikeIn = input.string("Auto", "Option strike step (Auto = 50 for Nifty, 100 for Bank Nifty)", options=["Auto", "50", "100"], group=gStr)
@@ -666,7 +671,7 @@ if useStrat and breakSig and barstate.isconfirmed and inDay and time >= sigFrom
             string bemit = ""
             if bpend != "" and bar_index == array.get(bkBar, q) + 1
                 bool bok = bpend == "CALL" ? close > Lb + tlb : close < Lb - tlb
-                if bok
+                if bok and array.get(emBar, bi) != bar_index
                     bemit := bpend
             array.set(bkSide, q, "")
             bool wasBelow = true
@@ -682,6 +687,7 @@ if useStrat and breakSig and barstate.isconfirmed and inDay and time >= sigFrom
                 array.set(bkSide, q, "PUT")
                 array.set(bkBar, q, bar_index)
             if bemit != ""
+                array.set(emBar, bi, bar_index)
                 callAny := callAny or bemit == "CALL"
                 putAny := putAny or bemit == "PUT"
                 float bstrike = math.round(close / strikeStep) * strikeStep
@@ -699,6 +705,58 @@ if useStrat and breakSig and barstate.isconfirmed and inDay and time >= sigFrom
                         label.new(bar_index, low, confirmOn ? "CALL ✓ (break)" : "CALL (break)", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
                     else
                         label.new(bar_index, high, confirmOn ? "PUT ✓ (break)" : "PUT (break)", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
+
+// ---- D: VWAP bounce signals (a touch of the VWAP that closes back on the same side; one per bnCool candles per VWAP) ----
+var string[] bnSide = array.new_string(2, "")
+var int[]    bnBar  = array.new_int(2, -1)
+var int[]    bnLast = array.new_int(2, -1000)
+if useStrat and bounceSig and barstate.isconfirmed and inDay and time >= sigFrom
+    for q = 0 to 1
+        int bi2 = q == 0 ? vwapIdx : vwapWkIdx
+        bool want2 = q == 0 ? bkVwap : bkWkVwap
+        if bi2 >= 0 and want2
+            float Ld = array.get(lv, bi2)
+            float tld = Ld * tolPct / 100.0
+            string dname = q == 0 ? "Now VWAP" : "Now Weekly VWAP"
+            string dpend = array.get(bnSide, q)
+            string demit = ""
+            if dpend != "" and bar_index == array.get(bnBar, q) + 1
+                bool dok = dpend == "CALL" ? close > Ld + tld : close < Ld - tld
+                if dok and bar_index - array.get(bnLast, q) >= bnCool and array.get(emBar, bi2) != bar_index
+                    demit := dpend
+            array.set(bnSide, q, "")
+            bool aboveAll = true
+            bool belowAll = true
+            for j = 1 to bnLook
+                float vj2 = q == 0 ? vwapNow[j] : vwapWk[j]
+                aboveAll := aboveAll and close[j] > vj2
+                belowAll := belowAll and close[j] < vj2
+            if aboveAll and low <= Ld + tld and close > Ld
+                array.set(bnSide, q, "CALL")
+                array.set(bnBar, q, bar_index)
+            else if belowAll and high >= Ld - tld and close < Ld
+                array.set(bnSide, q, "PUT")
+                array.set(bnBar, q, bar_index)
+            if demit != ""
+                array.set(bnLast, q, bar_index)
+                array.set(emBar, bi2, bar_index)
+                callAny := callAny or demit == "CALL"
+                putAny := putAny or demit == "PUT"
+                float dstrike = math.round(close / strikeStep) * strikeStep
+                array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
+                array.unshift(sgSide, demit)
+                array.unshift(sgStrike, str.tostring(dstrike, "#"))
+                array.unshift(sgLevel, dname + " " + str.tostring(Ld, "#.##") + " (VWAP bounce)")
+                if array.size(sgWhen) > 6
+                    array.pop(sgWhen)
+                    array.pop(sgSide)
+                    array.pop(sgStrike)
+                    array.pop(sgLevel)
+                if markOnChart
+                    if demit == "CALL"
+                        label.new(bar_index, low, confirmOn ? "CALL ✓ (VWAP bounce)" : "CALL (VWAP bounce)", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
+                    else
+                        label.new(bar_index, high, confirmOn ? "PUT ✓ (VWAP bounce)" : "PUT (VWAP bounce)", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
 
 // ---- stream feed: the opening candles go to the stream program through a TradingView webhook alert (one message per closed 1-minute candle) ----
 if sendOpen and barstate.isconfirmed and barstate.isrealtime and timeframe.isintraday and timeframe.multiplier == 1

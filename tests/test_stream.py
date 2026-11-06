@@ -133,3 +133,24 @@ def test_tradingview_opening_candles_replace_the_fyers_ones():
     assert used == 1 and merged.loc[t0, "v"] == 20414083 and merged.loc[t0, "h"] == 24518.2 and len(merged) == 5
     far = {t0: {"o": 30000, "h": 30010, "l": 29990, "c": 30000, "v": 1}}
     assert stream_levels.merge_open(fy, far)[1] == 0                                              # a wild price is ignored
+
+
+def test_vwap_bounce_needs_a_touch_and_a_confirming_candle_and_respects_the_cooldown():
+    import stream_setups
+    nan = [(np.nan, np.nan, np.nan)]
+
+    def signals(rows, tag=None):
+        df = _bars(rows)
+        out = stream_setups.find_setups(df, {}, pd.Series(100.0, index=df.index), pd.Series(1e9, index=df.index), nan * len(df))
+        return [(x["idx"], x["side"]) for x in out if x["level"].startswith("Now VWAP") and (tag is None or x["tag"] == tag)]
+
+    base = [[105, 106, 104, 105, 100]] * 6                                      # six candles above the VWAP (100)
+    touch = [[105, 105.5, 99.9, 104, 100], [104, 106, 103.5, 105, 100]]         # a wick touches 100 and closes above; the next candle closes above
+    quiet = [[105, 106, 104, 105, 100]]
+    B = " (VWAP bounce)"
+    assert signals(base + touch + quiet * 5 + touch + quiet * 3, B) == [(7, "CALL")]         # the second bounce confirms 7 candles later: inside the cooldown
+    assert signals(base + touch + quiet * 7 + touch, B) == [(7, "CALL")]                      # 9 candles later: still blocked
+    assert (17, "CALL") in signals(base + touch + quiet * 8 + touch)                         # exactly 10 candles later: a signal is allowed again
+    assert signals(base + [[105, 106, 102, 105, 100], [105, 106, 104, 105, 100]], B) == []   # never touches the VWAP: no bounce
+    below = [[95, 96, 94, 95, 100]] * 6 + [[95, 100.1, 94.5, 96, 100], [96, 96.5, 94, 95, 100]]
+    assert signals(below, B) == [(7, "PUT")]                                                 # the mirror image from below

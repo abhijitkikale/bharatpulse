@@ -4,6 +4,8 @@
   Two copies of the stage machine run side by side (original rules, and rule A: a candle closing through the level counts as step 2,
   rule B: a doji counts within ZONE points of the level), so A / B only add setups.
 * VWAP break: the previous LOOK candles all on one side of the VWAP, a candle closes through it, the next candle closes beyond it.
+* VWAP bounce: the previous BOUNCE_LOOK candles all on one side of the VWAP, a candle touches it and closes back on that side, the next candle
+  closes beyond it; at most one bounce signal per BOUNCE_COOL candles on the same VWAP.
 Levels that may give setups: end-of-day GEX call / put wall, POC, VAH, VAL, weekly POC / VAH / VAL; today's developing daily and weekly
 VWAP, Now VAH and Now VAL. Pure functions, no network."""
 import numpy as np
@@ -12,6 +14,7 @@ import pandas as pd
 import compute_options
 
 TOL, DOJI, MAXWAIT, MINAWAY, ZONE, LOOK = 0.03, 30.0, 12, 1, 12.0, 8
+BOUNCE_LOOK, BOUNCE_COOL = 5, 10          # VWAP bounce: candles before the touch on one side, and candles between two bounce signals
 WARMUP = (9, 45)             # Now VAH / Now VAL come from a profile of a few candles before this time: no setups on them yet
 SETUP_EOD = ("GEX call wall", "GEX put wall", "POC", "VAH", "VAL", "Weekly POC", "Weekly VAH", "Weekly VAL")
 STRIKE = {"NIFTY": 50, "BANKNIFTY": 100}
@@ -63,6 +66,8 @@ def find_setups(df, eod_levels, daily, weekly, va, sym="NIFTY"):
     pend = [[None] * len(levels) for _ in range(2)]            # (side, bar)
     em_bar = [-1] * len(levels)
     bk = {i: None for i in vwap_idx}                          # VWAP break waiting for its confirmation candle: (side, bar)
+    bn = {i: None for i in vwap_idx}                          # VWAP bounce waiting for its confirmation candle
+    last_bn = {i: -10 ** 6 for i in vwap_idx}
     out = []
 
     def emit(n_, i, side, tag):
@@ -121,7 +126,7 @@ def find_setups(df, eod_levels, daily, weekly, va, sym="NIFTY"):
                 tlb = tl
                 if bk[i] is not None and k == bk[i][1] + 1:
                     ok = c[k] > L + tlb if bk[i][0] == "CALL" else c[k] < L - tlb
-                    if ok:
+                    if ok and em_bar[i] != k:
                         emit(k, i, bk[i][0], " (break)")
                 bk[i] = None
                 if k >= LOOK:
@@ -132,4 +137,17 @@ def find_setups(df, eod_levels, daily, weekly, va, sym="NIFTY"):
                         bk[i] = ("CALL", k)
                     elif c[k] < L and above:
                         bk[i] = ("PUT", k)
+                # the VWAP bounce signal
+                if bn[i] is not None and k == bn[i][1] + 1:
+                    ok = c[k] > L + tlb if bn[i][0] == "CALL" else c[k] < L - tlb
+                    if ok and k - last_bn[i] >= BOUNCE_COOL and em_bar[i] != k:
+                        emit(k, i, bn[i][0], " (VWAP bounce)")
+                        last_bn[i] = k
+                bn[i] = None
+                if k >= BOUNCE_LOOK:
+                    prev = [(c[k - j], series[k - j]) for j in range(1, BOUNCE_LOOK + 1)]
+                    if all(a > b for a, b in prev) and l[k] <= L + tlb and c[k] > L:
+                        bn[i] = ("CALL", k)
+                    elif all(a < b for a, b in prev) and h[k] >= L - tlb and c[k] < L:
+                        bn[i] = ("PUT", k)
     return out
