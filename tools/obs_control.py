@@ -19,7 +19,10 @@ import time
 import uuid
 
 import pandas as pd
-import websocket                     # websocket-client
+try:
+    import websocket                 # websocket-client (only needed on the PC that runs OBS)
+except ImportError:                  # the cloud build does not have it
+    websocket = None
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CFG = ROOT / "data" / "obs.json"
@@ -39,6 +42,8 @@ class Obs:
         self.host, self.port, self.password, self.timeout, self.ws = host, int(port), password, timeout, None
 
     def connect(self):
+        if websocket is None:
+            raise ObsError("the websocket-client package is not installed (pip install websocket-client)")
         self.ws = websocket.create_connection(f"ws://{self.host}:{self.port}", timeout=self.timeout)
         hello = json.loads(self.ws.recv())
         ident = {"rpcVersion": 1, "eventSubscriptions": 0}

@@ -7,7 +7,10 @@ import sys
 import threading
 
 import pandas as pd
-import websockets
+import pytest
+
+websockets = pytest.importorskip("websockets")                          # the cloud build does not have the websocket libraries
+pytest.importorskip("websocket")
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
 import obs_control  # noqa: E402

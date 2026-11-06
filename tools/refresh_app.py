@@ -261,8 +261,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
-        self.end_headers()
-        self.wfile.write(b)
+        try:
+            self.end_headers()
+            self.wfile.write(b)
+        except (ConnectionError, OSError):
+            pass                                        # the browser closed or reloaded the page while we were answering: nothing to do
 
     def _redirect(self, where):
         self.send_response(302)
