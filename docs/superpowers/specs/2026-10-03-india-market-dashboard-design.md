@@ -21,6 +21,13 @@ Interactive, dark-themed, Power BI-style end-of-day dashboard for Indian markets
 - `run_daily.bat` + scheduled task (weekdays ~19:00 IST).
 - Fake-data mode for UI testing.
 
+## Later additions (after the first version; see README.md for the current state)
+- Hosting and refresh: GitHub Pages + GitHub Actions (`refresh.yml`), one local launcher `Refresh BharatPulse.bat` for the Fyers sign-in.
+- Fyers data-only API: 1-minute index candles with index volume, option chain (provisional F&O when NSE's file is late), live updates every 5 minutes (`tools/live_loop.py`, `live-data` branch).
+- Tabs added: Risk Monitor, Options (OI, max pain, GEX, participants, volume profile, TradingView levels text), Volume Profile, 3D Surface, Momentum Stocks.
+- Momentum / sector composite: non-overlapping periods, skip latest week, selectable method and per-period weights.
+- TradingView indicators (`tradingview/`) and a Telegram bot for live levels.
+
 ## Error handling
 Per-panel "as of" date and stale/failed badge; cached data reused when a source fails.
 

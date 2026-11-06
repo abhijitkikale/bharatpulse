@@ -1,5 +1,7 @@
 # BharatPulse Levels: TradingView publishing text
 
+> This text describes the published Rev 0 script (`BharatPulse-Levels.pine`). Later revisions in this folder are not published: `BharatPulse-Levels-rev1.pine` (the next candle after the retest decides CALL / PUT) and `BharatPulse-Levels-live.pine` (two paste boxes, live Telegram levels, self-computed volume levels and VWAPs, break signals; see `LIVE-SETUP.md`). Update this text before publishing either of them.
+
 ## Title (max 64 characters)
 BharatPulse Levels: Daily Option Levels, Gamma Regime & Retest Setups
 
