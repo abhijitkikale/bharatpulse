@@ -20,8 +20,8 @@ Times are India time (IST). Your PC clock is IST minus 2:30.
 
 ## OBS and YouTube (automatic)
 `tools/obs_control.py` runs inside the stream program (only when `data/obs.json` exists): it opens OBS minimised, makes sure the scene "BharatPulse" with the stream page (`http://127.0.0.1:8766/?clean=1`, 1920x1080) exists, starts the broadcast and stops it at 15:35 IST (or earlier if the feed has been bad for 10 minutes; it then stays off until the next day, and a broadcast you stop yourself is not restarted). Modes: **direct** (starts right after your sign-in, the chart shows a countdown to the open in the centre until 09:15 IST), **at_open** (starts at 09:31 IST when the feed is healthy), **off** (only opens OBS).
-One-time setup:
-1. OBS: Tools > WebSocket Server Settings > enable it, set a strong password. OBS: Settings > Stream > YouTube, sign in.
+The OBS side is already set up on this PC (WebSocket server on with OBS's own password, `data/obs.json`, scene "BharatPulse"; your other scenes are never touched and the runner only selects "BharatPulse" at the moment it starts the broadcast). What is left is YouTube. If you ever need to redo it:
+1. OBS: Tools > WebSocket Server Settings > enable it, set a strong password (it listens on the network, so keep the password strong). OBS: Settings > Stream > YouTube, sign in.
 2. `python tools/obs_setup.py` (or `python tools/obs_setup.py at_open`): paste the OBS password; it saves it only in `data/obs.json`, connects and creates the scene.
 3. YouTube Studio: enable live streaming on the channel (can take up to 24 hours), set the default privacy to **Private** and share it with your friends: open the live stream / video in Studio, Visibility > Private > **Share privately** and add each friend's Google account email (up to 50). They watch while signed in with that account.
 The page's countdown also shows after the close, counting to the next weekday open (exchange holidays are not known).

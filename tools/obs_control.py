@@ -76,8 +76,10 @@ class Obs:
     def streaming(self):
         return bool(self.call("GetStreamStatus").get("outputActive"))
 
-    def ensure_scene(self, scene, url):
-        """Create the scene and its Browser source (1920x1080, the stream page) if missing; update the address if it exists."""
+    def ensure_scene(self, scene, url, configure=True):
+        """Create the scene and its Browser source (1920x1080, the stream page) if missing; update the address if it exists.
+        configure=True (setup) also makes it the active scene and sets OBS's canvas to 1920x1080 at 30 fps; the runner passes False so it never
+        changes what you have selected in OBS."""
         if scene not in [x["sceneName"] for x in self.call("GetSceneList").get("scenes", [])]:
             self.call("CreateScene", {"sceneName": scene})
         name = scene + " page"
@@ -86,6 +88,8 @@ class Obs:
             self.call("CreateInput", {"sceneName": scene, "inputName": name, "inputKind": "browser_source", "inputSettings": settings, "sceneItemEnabled": True})
         else:
             self.call("SetInputSettings", {"inputName": name, "inputSettings": settings, "overlay": True})
+        if not configure:
+            return
         self.call("SetCurrentProgramScene", {"sceneName": scene})
         try:
             self.call("SetVideoSettings", {"baseWidth": 1920, "baseHeight": 1080, "outputWidth": 1920, "outputHeight": 1080, "fpsNumerator": 30, "fpsDenominator": 1})
@@ -185,7 +189,7 @@ def run_loop(get_state, stop, notify=None, log=lambda *a: None):
                     stop.wait(25)
                 obs = Obs(cfg["host"], cfg["port"], cfg["password"]).connect()
                 try:
-                    obs.ensure_scene(cfg["scene"], cfg["url"])
+                    obs.ensure_scene(cfg["scene"], cfg["url"], configure=False)
                     streaming = obs.streaming()
                     ready, healthy = feed_health(get_state(), t)
                     market = (9, 15) <= (t.hour, t.minute) < (15, 30)
@@ -196,6 +200,7 @@ def run_loop(get_state, stop, notify=None, log=lambda *a: None):
                     bad = (t - bad_since).total_seconds() / 60 if bad_since is not None else 0
                     action = decide(cfg, t, streaming, ready, healthy, done_day == day, bad)
                     if action == "start":
+                        obs.call("SetCurrentProgramScene", {"sceneName": cfg["scene"]})      # the broadcast shows the stream page
                         obs.call("StartStream")
                         done_day = day
                         notify(f"BharatPulse: YouTube broadcast STARTED ({t:%H:%M} IST, mode {cfg['mode']}).")
