@@ -32,6 +32,16 @@ import stream_server
 
 HOST, PORT = "127.0.0.1", 5050
 REDIRECT = f"http://{HOST}:{PORT}/"
+STREAM_URL = "http://127.0.0.1:8766/"
+_OPENED = {"stream": False}
+
+
+def open_stream_page():
+    """Open the stream page once per run (after the live updates start). Not with --no-browser."""
+    if "--no-browser" in sys.argv or _OPENED["stream"]:
+        return
+    _OPENED["stream"] = True
+    threading.Timer(5.0, lambda: webbrowser.open(STREAM_URL)).start()
 BASE = "https://api-t1.fyers.in/api/v3"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TOKEN_FILE = ROOT / "data" / "fyers_token.json"
@@ -94,6 +104,7 @@ def start_live():
         threading.Thread(target=live_loop.run_loop, kwargs={"push": True, "stop": S["stop"], "log": lambda *a: None}, daemon=True).start()
         try:                                     # the live stream page (http://127.0.0.1:8766/) runs alongside the live updates
             stream_server.start_in_thread()
+            open_stream_page()
         except Exception:
             pass
 
@@ -312,7 +323,10 @@ def main():
         print("A valid sign-in is already saved: starting the 5-minute live updates.")
         start_live()
     if "--no-browser" not in sys.argv:
-        threading.Timer(0.8, lambda: webbrowser.open(REDIRECT)).start()
+        if live_loop.market_day_window() and not token_info().get("valid"):
+            threading.Timer(0.8, lambda: webbrowser.open(REDIRECT + "login")).start()      # morning: straight to the Fyers sign-in
+        elif not (live_loop.market_day_window() and token_info().get("valid")):
+            threading.Timer(0.8, lambda: webbrowser.open(REDIRECT)).start()                # evening: the helper page (the stream page opens by itself in the morning)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

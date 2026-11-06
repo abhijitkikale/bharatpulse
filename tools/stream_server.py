@@ -64,6 +64,7 @@ class Feed:
         self.live = None
         self.live_at = 0.0
         self.chains = None                             # latest current-expiry chain rows (they carry the option symbols)
+        self.reported = None                           # the day the morning 'ready' check was sent to Telegram
         self.tv = {}                                   # opening 1-minute candles sent by the TradingView alert: {IST minute: bar}
         self.opt = {}                                  # (strike, "CE" / "PE") -> (fetched at, candles)
         self.state = None
@@ -129,9 +130,33 @@ class Feed:
                 trades = None
         state = stream_levels.build_state(df, self.eod, self.live, t, self.msg, setups=setups, trades=trades)
         state["open_src"] = used                        # how many opening candles came from TradingView
+        self.report(t, used)
         with self.lock:
             self.state = state
         OUT.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
+
+    def report(self, t, used):
+        """Once a day at 09:31 IST: tell Telegram whether the stream is ready (one look instead of checking every screen)."""
+        hm = (t.hour, t.minute)
+        if self.reported == str(t.date()) or t.weekday() >= 5 or not ((9, 31) <= hm < (15, 30)):
+            return
+        self.reported = str(t.date())
+        try:
+            import telegram_notify
+            fy = self.msg == "live"
+            if relay_topic():
+                tv = f"TradingView ({used} candles)" if used else "NOT received: the Fyers opening candle is used, so the VWAP may differ early (check the TradingView alert)"
+            else:
+                tv = "not set up (Fyers opening candle)"
+            lines = ["BharatPulse stream: " + ("READY" if fy else "CHECK THE FYERS SIGN-IN"),
+                     f"Fyers candles: {self.msg} (last {self.df.index.max():%H:%M})" if self.df is not None else "Fyers candles: none",
+                     "Live GEX: " + (f"ok ({self.live['time']})" if self.live else "not yet"),
+                     "Opening candles: " + tv,
+                     "End-of-day levels: " + (f"from the {self.eod['close']} close" if self.eod else "not loaded"),
+                     f"Page: http://127.0.0.1:{PORT}/"]
+            telegram_notify.send("\n".join(lines))
+        except Exception:
+            pass
 
     def option_frame(self, s):
         """1-minute candles of the contract a setup would buy (at-the-money strike of the nearest expiry), cached for 15 seconds."""

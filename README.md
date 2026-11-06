@@ -11,6 +11,13 @@ Sectors · Breadth & Trend · Market Activity · Flows & Valuation · Risk Monit
 - **Volume Profile**: POC / VAH / VAL for 1 day and the last 5 sessions from 1-minute index candles with index volume.
 - **Momentum Stocks**: dual momentum score = sector score + score within sector (0 best to 100 worst), weighted (default 0.6 sector / 0.4 stock, adjustable). Periods: by default **non-overlapping slices** of time (1M = the month before the latest week, 3M = the two months before the latest month ...), so one big day counts only in the newest slice; the latest week is skipped by default. Switchable to plain cumulative returns, with a weight per period (default 1). The same method drives the composite rank on the Sectors tab. 1D returns are never used in the scores. Ties go to the higher return over the horizon.
 
+## Monday-morning short version
+1. (One time) run `install_morning_task.bat`: Windows then opens `Refresh BharatPulse.bat` every weekday at 08:50 IST (06:20 on your PC clock; the PC must be on and you logged in).
+2. When you sit down, the **Fyers sign-in page is already open**: type your PIN / code. That is the only manual step.
+3. After the sign-in the live updates, the Telegram levels and the stream page (http://127.0.0.1:8766/) start by themselves, and the page opens in your browser (press F11 for full screen).
+4. At 09:31 IST Telegram sends one **"BharatPulse stream: READY"** message (Fyers candles, live GEX, whether the TradingView opening candles arrived, end-of-day levels). If it says CHECK, sign in again; if the TradingView line says NOT received, look at the TradingView alert (alerts expire).
+5. For YouTube: OBS is already set up with the Browser source `http://127.0.0.1:8766/?clean=1`; press Start Streaming.
+
 ## Daily routine (one interface: `Refresh BharatPulse.bat`)
 Double-click it, press **Sign in and start**, type your Fyers PIN/TOTP on Fyers' own page (this program never sees them). The helper swaps the one-time code for a one-day, data-only token and stores it as encrypted GitHub secrets.
 - **Before 15:40 IST on a weekday (morning)**: it starts the **live updates** (below). Keep the window open until about 15:45. The same token also serves the evening cloud build. If a valid token is already saved, live updates start by themselves.
