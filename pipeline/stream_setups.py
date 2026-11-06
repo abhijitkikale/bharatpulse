@@ -12,6 +12,7 @@ import pandas as pd
 import compute_options
 
 TOL, DOJI, MAXWAIT, MINAWAY, ZONE, LOOK = 0.03, 30.0, 12, 1, 12.0, 8
+WARMUP = (9, 45)             # Now VAH / Now VAL come from a profile of a few candles before this time: no setups on them yet
 SETUP_EOD = ("GEX call wall", "GEX put wall", "POC", "VAH", "VAL", "Weekly POC", "Weekly VAH", "Weekly VAL")
 STRIKE = {"NIFTY": 50, "BANKNIFTY": 100}
 
@@ -50,7 +51,10 @@ def find_setups(df, eod_levels, daily, weekly, va, sym="NIFTY"):
     dv = daily.reindex(df.index).ffill().to_numpy(float)
     wv = weekly.reindex(df.index).ffill().to_numpy(float)
     levels = [(k, np.full(n, float(eod_levels[k]))) for k in SETUP_EOD if k in eod_levels]
-    levels += [("Now VWAP", dv), ("Now Weekly VWAP", wv), ("Now VAH", np.array([x[1] for x in va], float)), ("Now VAL", np.array([x[2] for x in va], float))]
+    warm = np.array([(ts.hour, ts.minute) < WARMUP for ts in df.index])
+    vah, val = np.array([x[1] for x in va], float), np.array([x[2] for x in va], float)
+    vah[warm], val[warm] = np.nan, np.nan
+    levels += [("Now VWAP", dv), ("Now Weekly VWAP", wv), ("Now VAH", vah), ("Now VAL", val)]
     vwap_idx = [i for i, (k, _) in enumerate(levels) if k in ("Now VWAP", "Now Weekly VWAP")]
     step = STRIKE.get(sym, 50)
     stg = [[0] * len(levels) for _ in range(2)]

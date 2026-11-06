@@ -18,13 +18,15 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 .chip{margin-left:auto;font-size:calc(var(--fs)*1.05);padding:3px 12px;border-radius:12px;border:1px solid var(--line);color:var(--mut)}
 .chip.btn{cursor:pointer;margin-left:10px;color:var(--txt)}
 .chip.ok{color:var(--pos);border-color:var(--pos)}.chip.bad{color:var(--neg);border-color:var(--neg)}
+.tr{flex:none;padding:calc(var(--fs)*.3) calc(var(--fs)*1);border-bottom:1px solid var(--line);font-size:calc(var(--fs)*1.15);font-weight:700;display:flex;gap:calc(var(--fs)*1.6);align-items:baseline;flex-wrap:wrap}
+.tr.win{background:rgba(46,204,154,.16)}.tr.loss{background:rgba(239,91,91,.16)}.tr .k{color:var(--mut);font-weight:500;font-size:calc(var(--fs)*.85);margin-right:4px}.tr .big{font-size:calc(var(--fs)*1.5)}
 .body{flex:1;display:flex;min-height:0}
 .left{flex:none;width:var(--lw);box-sizing:border-box;border-right:1px solid var(--line);padding:calc(var(--fs)*.5);display:flex;flex-direction:column;gap:calc(var(--fs)*.5);overflow:hidden}
 .main{flex:1;position:relative;min-width:0}
 #chart{position:absolute;left:0;top:0;right:0;bottom:0}
 #regime{display:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:calc(var(--fs)*.3) calc(var(--fs)*.8);font-size:calc(var(--fs)*1.35);font-weight:700;line-height:1.3}
-#setups{display:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:calc(var(--fs)*.25) calc(var(--fs)*.5);font-size:calc(var(--fs)*.95)}
-#setups table{border-collapse:collapse;width:100%}#setups td,#setups th{padding:1px 6px 1px 0;text-align:left}#setups th{color:var(--mut);font-weight:500;font-size:calc(var(--fs)*.8)}
+.sg{flex:none;display:none;gap:calc(var(--fs)*.6);align-items:center;flex-wrap:wrap;padding:calc(var(--fs)*.25) calc(var(--fs)*1);border-bottom:1px solid var(--line);font-size:calc(var(--fs)*.92)}
+.sg .h{color:var(--mut);font-weight:500}.sg .c{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:1px 8px;white-space:nowrap}
 #lv{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;font-size:calc(var(--fs)*.98)}
 .row{display:flex;align-items:center;gap:6px;border-left:4px solid;padding:0 6px;font-weight:700;line-height:1.28;white-space:nowrap}
 .row .n{flex:1;overflow:hidden;text-overflow:ellipsis}.row .v{font-variant-numeric:tabular-nums}.row .d{width:4.6em;text-align:right;font-weight:500;color:var(--mut);font-variant-numeric:tabular-nums}
@@ -35,8 +37,10 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 <div class="wrap">
   <div class="ban"><span id="b1"></span></div>
   <div class="hd"><span class="t">NIFTY 50 · 1 min</span><span class="p" id="px">–</span><span class="m" id="meta"></span><span class="chip" id="chip">connecting…</span><span class="chip btn" id="th" title="Light / dark background">☀ Light</span></div>
+  <div class="tr" id="trade" style="display:none"></div>
+  <div class="sg" id="setups" style="display:none"></div>
   <div class="body">
-    <div class="left"><div id="regime"><div id="r1"></div><div id="r2"></div></div><div id="setups"></div><div id="lv"></div></div>
+    <div class="left"><div id="regime"><div id="r1"></div><div id="r2"></div></div><div id="lv"></div></div>
     <div class="main"><div id="chart"></div></div>
   </div>
   <div class="ban"><span id="b2"></span></div>
@@ -128,12 +132,38 @@ function draw(s){
   else box.style.display='none';
   // CALL / PUT setups (not shown on the clean address)
   const sb=document.getElementById('setups'),st=s.setups||{table:[],markers:[]};
-  if(CLEAN){sb.style.display='none';cs.setMarkers([])}
+  const T=s.trades,tb=document.getElementById('trade');
+  if(CLEAN){sb.style.display='none';cs.setMarkers([]);tb.style.display='none'}
   else{
-    sb.style.display='block';
+    sb.style.display='flex';
     const cc=x=>x.side==='CALL'?G():R();
-    sb.innerHTML='<table><tr><th>Time</th><th>Buy</th><th>At level</th></tr>'+(st.table.length?st.table.slice(0,3).map(x=>`<tr><td>${x.when.slice(7)}</td><td style="color:${cc(x)};font-weight:700">${x.side} ${x.strike}</td><td>${x.level}</td></tr>`).join(''):'<tr><td colspan="3" style="color:#8b97a8">No setup yet</td></tr>')+'</table>';
-    cs.setMarkers(st.markers.slice().sort((a,b)=>a.time-b.time).map(m=>({time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:cc(m),shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text})));
+    const sigs=T?T.signals.slice().reverse().slice(0,4):null;
+    const stc=x=>x.status.startsWith('TRADE')?'font-weight:700':'color:#8b97a8';
+    const chip=x=>`<span class="c"><span style="color:${cc(x)};font-weight:700">${x.side} ${x.strike}</span> · ${x.when} · ${x.level} <span style="${x.status?stc(x):''}">→ ${x.status||''}</span></span>`;
+    sb.innerHTML='<span class="h">Setups</span>'+(T&&sigs.length?sigs.slice(0,4).map(chip).join(''):(st.table.length?st.table.slice(0,3).map(x=>chip({side:x.side,strike:x.strike,when:x.when.slice(7),level:x.level,status:''})).join(''):'<span class="h">none yet</span>'));
+    // markers: trade entries and exits are bold, other setups are small and grey
+    let mk=[];
+    if(T){
+      T.signals.filter(x=>!x.status.startsWith('TRADE')).forEach(x=>mk.push({time:x.time,position:x.side==='CALL'?'belowBar':'aboveBar',color:'#8b97a8',shape:x.side==='CALL'?'arrowUp':'arrowDown',text:''}));
+      T.markers.forEach(m=>mk.push(m.kind==='entry'?{time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:cc(m),shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text}
+        :{time:m.time,position:m.side==='CALL'?'aboveBar':'belowBar',color:m.text.includes('+')?G():R(),shape:'circle',text:m.text}));
+    }else mk=st.markers.map(m=>({time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:cc(m),shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text}));
+    cs.setMarkers(mk.sort((a,b)=>a.time-b.time));
+    // trade strip: the open trade, or the latest closed one, with the day total
+    if(!T){tb.style.display='none'}
+    else{
+      tb.style.display='flex';
+      const cur=T.trades.length?T.trades[T.trades.length-1]:null,pc=v=>(v>0?'+':'')+v.toFixed(1)+'%';
+      if(!cur){tb.className='tr';tb.innerHTML=`<span>No trade yet</span><span class="k">the first setup becomes the trade · target +40% · stop −10% · no new trade after ${T.cutoff}</span>`}
+      else{
+        const open=cur.status==='OPEN',px=cur.exit!=null?cur.exit:cur.last,pnl=cur.pnl_pct,typ=cur.side==='CALL'?'CE':'PE';
+        const head=open?`▶ TRADE ${cur.n} OPEN`:cur.status==='TARGET'?`✔ TRADE ${cur.n} TARGET HIT`:cur.status==='STOP'?`✖ TRADE ${cur.n} STOP HIT`:`■ TRADE ${cur.n} CLOSED (day end)`;
+        tb.className='tr '+(pnl>=0?'win':'loss');
+        tb.innerHTML=`<span style="color:${cur.side==='CALL'?G():R()}">${head}</span><span>${cur.side} ${cur.strike} ${typ}</span><span><span class="k">in ${cur.entry_time} at</span>${cur.entry.toFixed(2)}</span>`+
+          `<span><span class="k">target +40%</span>${cur.target.toFixed(2)}</span><span><span class="k">stop −10%</span>${cur.stop.toFixed(2)}</span>`+
+          `<span><span class="k">${open?'now':'out '+cur.exit_time+' at'}</span>${px.toFixed(2)}</span><span class="big" style="color:${pnl>=0?G():R()}">${pc(pnl)}</span>`+
+          `<span style="margin-left:auto"><span class="k">day total (${T.trades.length} trade${T.trades.length>1?'s':''})</span><span class="big" style="color:${T.total_pct>=0?G():R()}">${pc(T.total_pct)}</span></span>`}
+    }
   }
   renderLevels(s);
 }

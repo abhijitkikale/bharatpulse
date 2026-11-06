@@ -24,6 +24,7 @@ import fetch_fyers  # noqa: E402
 import live_gex  # noqa: E402
 import stream_levels  # noqa: E402
 import stream_setups  # noqa: E402
+import stream_trades  # noqa: E402
 
 PAGES = "https://abhijitkikale.github.io/bharatpulse/"
 PAGE_DIR = ROOT / "tools" / "stream_page"
@@ -49,6 +50,8 @@ class Feed:
         self.eod_at = 0.0
         self.live = None
         self.live_at = 0.0
+        self.chains = None                             # latest current-expiry chain rows (they carry the option symbols)
+        self.opt = {}                                  # (strike, "CE" / "PE") -> (fetched at, candles)
         self.state = None
         self.msg = "starting"
         self.lock = threading.Lock()
@@ -81,13 +84,16 @@ class Feed:
             self.msg = "Fyers sign-in needed (data shown is the last update)" if self.df is not None else "waiting for Fyers sign-in"
         if self.df is None:
             return
-        if market_hours(t) and time.time() - self.live_at >= 300:
+        if self.chains is None or (market_hours(t) and time.time() - self.live_at >= 300):
             try:
                 chains, _ = fetch_fyers.fetch_chains(current_only=True, symbols=(SYM,))
-                g = live_gex.build_gex(chains, t) if chains else None
-                if g and SYM in g:
-                    self.live = {**g[SYM], "time": t.strftime("%H:%M")}
-                    self.live_at = time.time()
+                if chains:
+                    self.chains = chains
+                if market_hours(t) and chains:
+                    g = live_gex.build_gex(chains, t)
+                    if g and SYM in g:
+                        self.live = {**g[SYM], "time": t.strftime("%H:%M")}
+                        self.live_at = time.time()
             except Exception:
                 pass
         setups = None
@@ -98,10 +104,35 @@ class Feed:
                 setups = stream_setups.find_setups(today, self.eod["levels"], daily, weekly, stream_setups.developing_va(today), SYM)
         except Exception:
             setups = None
-        state = stream_levels.build_state(self.df, self.eod, self.live, t, self.msg, setups=setups)
+        trades = None
+        if setups:
+            try:
+                res = stream_trades.run_trades(setups, self.option_frame)
+                trades = stream_trades.to_json(res, stream_levels.SHIFT)
+            except Exception:
+                trades = None
+        state = stream_levels.build_state(self.df, self.eod, self.live, t, self.msg, setups=setups, trades=trades)
         with self.lock:
             self.state = state
         OUT.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
+
+    def option_frame(self, s):
+        """1-minute candles of the contract a setup would buy (at-the-money strike of the nearest expiry), cached for 15 seconds."""
+        typ = "CE" if s["side"] == "CALL" else "PE"
+        key = (float(s["strike"]), typ)
+        hit = self.opt.get(key)
+        if hit and time.time() - hit[0] < 15:
+            return hit[1]
+        rows = (self.chains or {}).get(SYM, {}).get("rows") or []
+        if not rows:
+            return hit[1] if hit else None
+        exp = min(r["XpryDt"] for r in rows)
+        sym = next((r.get("symbol") for r in rows if r["XpryDt"] == exp and r["StrkPric"] == key[0] and r["OptnTp"] == typ), None)
+        df = fetch_fyers.fetch_option_candles(sym) if sym else None
+        if df is None and hit:
+            df = hit[1]                                 # keep the last good candles if this call failed
+        self.opt[key] = (time.time(), df)
+        return df
 
     def run(self, stop):
         while not stop.is_set():

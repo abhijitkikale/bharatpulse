@@ -74,6 +74,20 @@ def fetch_intraday(days=10, symbols=None):
     return {}, "failed: " + "; ".join(bad) + " (token may have expired: run tools/fyers_login.py)"
 
 
+def fetch_option_candles(symbol, day=None):
+    """1-minute candles (o h l c v, IST index) of one option contract for one day, or None when Fyers cannot be used or has none."""
+    h = _auth()
+    if h is None or not symbol:
+        return None
+    day = day or dt.date.today()
+    try:
+        j = _get("history", h, symbol=symbol, resolution="1", date_format="1", cont_flag="1", range_from=day.isoformat(), range_to=day.isoformat())
+        df = candles_frame(j["candles"])
+        return df if len(df) else None
+    except Exception:
+        return None
+
+
 # ---------------- option chain: a provisional "today" while NSE's F&O file is not out yet ----------------
 FO_COLS = ["TradDt", "FinInstrmTp", "TckrSymb", "XpryDt", "StrkPric", "OptnTp", "ClsPric", "SttlmPric",
            "OpnIntrst", "ChngInOpnIntrst", "TtlTradgVol", "UndrlygPric"]
@@ -99,7 +113,7 @@ def fetch_chains(strikes=100, current_only=False, symbols=None):
                 for r in d["optionsChain"]:
                     if r.get("option_type") in ("CE", "PE") and r.get("oi") is not None:
                         rows.append({"XpryDt": xp, "StrkPric": float(r["strike_price"]), "OptnTp": r["option_type"], "ltp": float(r["ltp"]),
-                                     "oi": float(r["oi"]), "prev_oi": float(r.get("prev_oi") or 0), "volume": float(r.get("volume") or 0)})
+                                     "oi": float(r["oi"]), "prev_oi": float(r.get("prev_oi") or 0), "volume": float(r.get("volume") or 0), "symbol": r.get("symbol")})
             if not rows:
                 raise RuntimeError("empty chain")
             out[sym] = {"spot": spot, "rows": rows}
