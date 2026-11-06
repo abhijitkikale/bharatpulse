@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BharatPulse Live GEX and Volume</title>
+<style>
+:root{--bg:#0b0f16;--card:#111823;--line:#263040;--txt:#e6edf3;--mut:#8b97a8;--pos:#2ecc9a;--neg:#ef5b5b}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,"Segoe UI",Arial,sans-serif;overflow:hidden}
+.wrap{display:flex;flex-direction:column;height:100vh}
+.ban{flex:none;height:36px;background:#3a2a05;color:#ffd27a;font-weight:700;font-size:17px;overflow:hidden;white-space:nowrap;display:flex;align-items:center}
+.ban span{display:inline-block;padding-left:100%;animation:mq 55s linear infinite}
+@keyframes mq{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+.hd{flex:none;display:flex;align-items:baseline;gap:18px;padding:8px 16px;border-bottom:1px solid var(--line)}
+.hd .t{font-size:22px;font-weight:700}.hd .p{font-size:26px;font-weight:700}.hd .m{color:var(--mut);font-size:15px}
+.chip{margin-left:auto;font-size:15px;padding:3px 10px;border-radius:10px;border:1px solid var(--line);color:var(--mut)}
+.chip.ok{color:var(--pos);border-color:var(--pos)}.chip.bad{color:var(--neg);border-color:var(--neg)}
+.main{flex:1;position:relative;min-height:0}
+#chart{position:absolute;left:0;top:0;bottom:0;right:210px}
+#labels{position:absolute;right:0;top:0;bottom:0;width:210px;overflow:hidden}
+.lb{position:absolute;left:6px;white-space:nowrap;font-size:12.5px;font-weight:600;padding:1px 6px;border-radius:4px;background:rgba(11,15,22,.85);border-left:3px solid}
+#regime{position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:5;background:rgba(11,15,22,.88);border:1px solid var(--line);border-radius:6px;padding:6px 14px;font-size:20px;font-weight:700;line-height:1.35;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ban"><span id="b1"></span></div>
+  <div class="hd"><span class="t">NIFTY 50 · 1 min</span><span class="p" id="px">–</span><span class="m" id="meta"></span><span class="chip" id="chip">connecting…</span></div>
+  <div class="main">
+    <div id="chart"></div><div id="labels"></div>
+    <div id="regime"><div id="r1"></div><div id="r2"></div></div>
+  </div>
+  <div class="ban"><span id="b2"></span></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+const TXT='NOT SEBI REGISTERED  ·  THIS IS NOT FINANCIAL ADVICE OR A RECOMMENDATION TO BUY OR SELL  ·  Gamma exposure (GEX) and volume-profile data shown for education only, so the numbers can be read and interpreted by each viewer  ·  Data may be delayed or wrong  ·  Trade at your own risk and consult a SEBI-registered adviser  ·  ';
+document.getElementById('b1').textContent=TXT+TXT;document.getElementById('b2').textContent=TXT+TXT;
+
+const el=document.getElementById('chart');
+const chart=LightweightCharts.createChart(el,{layout:{background:{color:'#0b0f16'},textColor:'#c9d1d9',fontSize:13},grid:{vertLines:{color:'#141c28'},horzLines:{color:'#141c28'}},
+  rightPriceScale:{borderColor:'#263040'},timeScale:{borderColor:'#263040',timeVisible:true,secondsVisible:false,rightOffset:12},crosshair:{mode:0},handleScroll:false,handleScale:false,autoSize:true});
+const cs=chart.addCandlestickSeries({upColor:'#2ecc9a',downColor:'#ef5b5b',borderVisible:false,wickUpColor:'#2ecc9a',wickDownColor:'#ef5b5b'});
+const vd=chart.addLineSeries({color:'#18ffff',lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
+const vw=chart.addLineSeries({color:'#ffeb3b',lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
+let LV=[],LAST=null,lines=[],first=true,S=null;
+cs.applyOptions({autoscaleInfoProvider:orig=>{const r=orig();if(!r||!LAST)return r;let mn=r.priceRange.minValue,mx=r.priceRange.maxValue;
+  LV.forEach(l=>{if(Math.abs(l.value/LAST-1)<=0.016){mn=Math.min(mn,l.value);mx=Math.max(mx,l.value)}});return {priceRange:{minValue:mn,maxValue:mx},margins:r.margins}}});
+
+// colours and line styles by level name (same scheme as the TradingView indicator)
+function color(l){const s=l.name.toLowerCase();
+  if(s==='now weekly vwap')return '#ffeb3b';
+  if(l.kind==='live'||l.kind==='now')return '#18ffff';
+  if(s.includes('weekly')&&s.includes('poc'))return '#ff80ab';
+  if(s.includes('weekly'))return '#80cbc4';
+  if(s.includes('max pain'))return '#d4e157';if(s.includes('flip'))return '#f5a623';
+  if(s.includes('oi call'))return '#ef5b5b';if(s.includes('oi put'))return '#2ecc9a';
+  if(s.includes('gex call'))return '#ff9f6b';if(s.includes('gex put'))return '#66c2ff';
+  if(s.includes('poc'))return '#e8c547';return '#b388ff'}
+function style(l){const s=l.name.toLowerCase();
+  if(s.includes('poc'))return 0;if(s.includes('weekly'))return 1;if(s.includes('max pain')||s.includes('flip'))return 1;return 2}
+
+function layoutLabels(){
+  const box=document.getElementById('labels'),H=box.clientHeight;if(!S)return;
+  const items=LV.map(l=>({l,y:cs.priceToCoordinate(l.value)})).filter(o=>o.y!=null&&o.y>=0&&o.y<=H).sort((a,b)=>a.y-b.y);
+  let prev=-99;items.forEach(o=>{o.y=Math.max(o.y,prev+17);prev=o.y});
+  box.innerHTML=items.map(o=>{const l=o.l,t=l.kind==='live'&&S.regime.now_time?' · '+S.regime.now_time:'';
+    return `<div class="lb" style="top:${Math.round(o.y-9)}px;color:${color(l)};border-color:${color(l)}">${l.name} ${l.value.toFixed(2)}${t}</div>`}).join('');
+}
+function draw(s){
+  S=s;LAST=s.last||null;LV=s.levels||[];
+  const ok=s.candles&&s.candles.length;
+  document.getElementById('px').textContent=ok?s.last.toFixed(2):'–';
+  const age=s.asof?(Date.now()-Date.parse(s.asof))/1000:1e9;
+  const chip=document.getElementById('chip');
+  const live=s.status==='live';
+  chip.textContent=live?(age>120?'DATA STALE':'LIVE · candle '+s.last_candle+' IST'):(s.status||'waiting');
+  chip.className='chip '+(live&&age<=120?'ok':(live?'bad':''));
+  document.getElementById('meta').textContent=s.eod_close?'end-of-day levels from the '+s.eod_close+' close':'';
+  if(!ok)return;
+  cs.setData(s.candles);vd.setData(s.vwap.daily);vw.setData(s.vwap.weekly);
+  lines.forEach(p=>cs.removePriceLine(p));
+  lines=LV.map(l=>cs.createPriceLine({price:l.value,color:color(l),lineWidth:l.kind==='eod'?1:2,lineStyle:style(l),axisLabelVisible:false,title:''}));
+  // today's candles plus a little of the day before
+  const day=s.date;let i0=s.candles.findIndex(c=>new Date(c.time*1000).toISOString().slice(0,10)===day);if(i0<0)i0=0;
+  chart.timeScale().setVisibleLogicalRange({from:Math.max(i0-8,0),to:s.candles.length+14});
+  // regime box
+  const r=s.regime||{},box=document.getElementById('regime');
+  const col=v=>v==='POSITIVE'?'#2ecc9a':'#ef5b5b';
+  if(r.eod||r.now){box.style.display='block';
+    document.getElementById('r1').innerHTML=r.eod?`<span style="color:${col(r.eod)}">EOD: ${r.eod} gamma</span>`:'';
+    document.getElementById('r2').innerHTML=r.now?`<span style="color:${col(r.now)}">NOW: ${r.now} gamma${r.now_time?' ('+r.now_time+')':''}</span>`:''}
+  else box.style.display='none';
+  layoutLabels();
+}
+async function poll(){try{const r=await fetch('/state.json',{cache:'no-store'});draw(await r.json())}catch(e){const c=document.getElementById('chip');c.textContent='no connection to the data feed';c.className='chip bad'}}
+poll();setInterval(poll,5000);setInterval(layoutLabels,1000);window.addEventListener('resize',layoutLabels);
+</script>
+</body>
+</html>

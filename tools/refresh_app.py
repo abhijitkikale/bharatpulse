@@ -28,6 +28,7 @@ import webbrowser
 import requests
 
 import live_loop
+import stream_server
 
 HOST, PORT = "127.0.0.1", 5050
 REDIRECT = f"http://{HOST}:{PORT}/"
@@ -91,6 +92,10 @@ def start_live():
         S["stop"] = threading.Event()
         live_loop.set_state(running=True, msg="starting", last=None, next=None)        # set now so a double click cannot start two
         threading.Thread(target=live_loop.run_loop, kwargs={"push": True, "stop": S["stop"], "log": lambda *a: None}, daemon=True).start()
+        try:                                     # the live stream page (http://127.0.0.1:8766/) runs alongside the live updates
+            stream_server.start_in_thread()
+        except Exception:
+            pass
 
 
 def watch_build(t0):

@@ -1,0 +1,171 @@
+"""BharatPulse live stream: a chart page for OBS / YouTube Live, fed automatically (nothing to paste).
+
+Every 10 seconds in market hours it pulls Nifty 1-minute candles from Fyers; every 5 minutes the current-expiry option chain for the
+live GEX levels. End-of-day levels come from the published dashboard page (https://abhijitkikale.github.io/bharatpulse/), with the local
+data/dashboard.json as a fallback. The page is served on http://127.0.0.1:8766/ (this PC only): add it in OBS as a Browser source.
+
+Normally 'Refresh BharatPulse.bat' starts this together with the live updates (tools/refresh_app.py). By hand:
+  python tools/stream_server.py          run until closed
+  python tools/stream_server.py --once   build the state once, print a summary, exit"""
+import argparse
+import http.server
+import json
+import pathlib
+import sys
+import threading
+import time
+
+import pandas as pd
+import requests
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "pipeline"))
+import fetch_fyers  # noqa: E402
+import live_gex  # noqa: E402
+import stream_levels  # noqa: E402
+
+PAGES = "https://abhijitkikale.github.io/bharatpulse/"
+PAGE_DIR = ROOT / "tools" / "stream_page"
+OUT = ROOT / "data" / "stream_state.json"
+PORT = 8766
+SYM = "NIFTY"
+OPEN, CLOSE = (9, 10), (15, 40)           # IST: poll fast between these times on weekdays
+
+
+def now_ist():
+    return pd.Timestamp.now(tz="Asia/Kolkata")
+
+
+def market_hours(t=None):
+    t = t or now_ist()
+    return t.weekday() < 5 and OPEN <= (t.hour, t.minute) < CLOSE
+
+
+class Feed:
+    def __init__(self):
+        self.df = None
+        self.eod = None
+        self.eod_at = 0.0
+        self.live = None
+        self.live_at = 0.0
+        self.state = None
+        self.msg = "starting"
+        self.lock = threading.Lock()
+
+    def load_eod(self):
+        D = None
+        try:
+            D = stream_levels.parse_pages(requests.get(PAGES, timeout=40).text)
+        except Exception:
+            try:
+                D = json.loads((ROOT / "data" / "dashboard.json").read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        if D:
+            try:
+                self.eod = stream_levels.eod_levels(D, SYM)
+                self.eod_at = time.time()
+            except Exception:
+                pass
+
+    def step(self):
+        t = now_ist()
+        if self.eod is None or time.time() - self.eod_at > 900:
+            self.load_eod()
+        frames, st = fetch_fyers.fetch_intraday(days=8, symbols=(SYM,))
+        if frames.get(SYM) is not None:
+            self.df = frames[SYM]
+            self.msg = "live" if market_hours(t) else "market closed"
+        else:
+            self.msg = "Fyers sign-in needed (data shown is the last update)" if self.df is not None else "waiting for Fyers sign-in"
+        if self.df is None:
+            return
+        if market_hours(t) and time.time() - self.live_at >= 300:
+            try:
+                chains, _ = fetch_fyers.fetch_chains(current_only=True, symbols=(SYM,))
+                g = live_gex.build_gex(chains, t) if chains else None
+                if g and SYM in g:
+                    self.live = {**g[SYM], "time": t.strftime("%H:%M")}
+                    self.live_at = time.time()
+            except Exception:
+                pass
+        state = stream_levels.build_state(self.df, self.eod, self.live, t, self.msg)
+        with self.lock:
+            self.state = state
+        OUT.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
+
+    def run(self, stop):
+        while not stop.is_set():
+            try:
+                self.step()
+            except Exception as e:                     # keep serving the last good state
+                self.msg = "update failed: " + type(e).__name__
+            stop.wait(10 if market_hours() else 120)
+
+
+FEED = Feed()
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _send(self, code, body, ctype):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        path = self.path.split("?")[0]
+        if path == "/state.json":
+            with FEED.lock:
+                s = FEED.state
+            body = json.dumps(s if s else {"status": FEED.msg, "candles": [], "levels": []}, separators=(",", ":")).encode()
+            return self._send(200, body, "application/json")
+        if path in ("/", "/index.html"):
+            return self._send(200, (PAGE_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
+        self._send(404, b"not found", "text/plain")
+
+
+_STARTED = {"on": False}
+
+
+def start_in_thread(stop=None):
+    """Start the feed and the page server in background threads (safe to call twice). Used by tools/refresh_app.py."""
+    if _STARTED["on"]:
+        return
+    _STARTED["on"] = True
+    stop = stop or threading.Event()
+    threading.Thread(target=FEED.run, args=(stop,), daemon=True).start()
+    try:
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+    except OSError:
+        pass                                          # the port is already served by another copy
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--once", action="store_true")
+    a = ap.parse_args()
+    if a.once:
+        FEED.step()
+        s = FEED.state
+        print(FEED.msg, "| candles", len(s["candles"]) if s else 0, "| last", s and s["last"], "| levels", s and len(s["levels"]))
+        for l in (s or {}).get("levels", []):
+            print(f"  {l['kind']:4} {l['name']:16} {l['value']}")
+        print("regime", s and s["regime"])
+        return
+    print(f"BharatPulse stream page: http://127.0.0.1:{PORT}/   (add it in OBS as a Browser source; close this window to stop)")
+    start_in_thread()
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

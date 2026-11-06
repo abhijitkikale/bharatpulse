@@ -51,7 +51,7 @@ def candles_frame(candles):
     return d[["o", "h", "l", "c", "v"]].astype(float)
 
 
-def fetch_intraday(days=10):
+def fetch_intraday(days=10, symbols=None):
     """{sym: DataFrame(o, h, l, c, v)} of 1-minute index candles (IST index). The index's own traded volume is included,
     so no stock-by-stock sum is needed. Returns (frames, status text); frames is {} if Fyers cannot be used."""
     h = _auth()
@@ -60,6 +60,8 @@ def fetch_intraday(days=10):
     out, bad = {}, []
     today = dt.date.today()
     for sym, fy in INDEX.items():
+        if symbols and sym not in symbols:
+            continue
         try:
             j = _get("history", h, symbol=fy, resolution="1", date_format="1", cont_flag="1",
                      range_from=(today - dt.timedelta(days=days)).isoformat(), range_to=today.isoformat())
