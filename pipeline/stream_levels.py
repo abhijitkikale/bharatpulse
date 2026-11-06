@@ -131,9 +131,9 @@ def build_state(df, eod, live_block, now, status, sessions=2, setups=None, trade
 OPEN_START, OPEN_MINUTES = (9, 15), 30            # the opening candles TradingView may send: 09:15 up to 09:45
 
 
-def parse_open_bar(text, day):
+def parse_open_bar(text, day, max_days=0):
     """One message from the TradingView alert: {"t": bar open time in ms, "o","h","l","c","v"}. Returns (IST minute Timestamp, bar dict) or None when
-    it is not a sane 1-minute candle of `day` (a datetime.date) inside the opening window."""
+    it is not a sane 1-minute candle inside the opening window of a date from `day` back to `day` minus max_days (`day` is a datetime.date)."""
     try:
         j = json.loads(text)
         o, h, l, c, v = (float(j[k]) for k in ("o", "h", "l", "c", "v"))
@@ -141,7 +141,7 @@ def parse_open_bar(text, day):
     except Exception:
         return None
     mins = ts.hour * 60 + ts.minute - (OPEN_START[0] * 60 + OPEN_START[1])
-    if ts.date() != day or ts.second != 0 or not 0 <= mins < OPEN_MINUTES:
+    if not 0 <= (day - ts.date()).days <= max_days or ts.second != 0 or not 0 <= mins < OPEN_MINUTES:
         return None
     if not all(x == x and x > 0 for x in (o, h, l, c, v)) or h < max(o, c, l) or l > min(o, c, h):
         return None

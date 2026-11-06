@@ -34,6 +34,7 @@ RELAY = ROOT / "data" / "stream_relay.json"      # {"topic": "..."}: made by too
 RELAY_URL = "https://ntfy.sh/"
 PORT = 8766
 SYM = "NIFTY"
+OPEN_DIR = ROOT / "data" / "stream_open"      # the TradingView opening candles, one file per day (the relay forgets them after 12 hours)
 STORE = ROOT / "data" / "stream_eod"          # one end-of-day levels file per close date, kept so the day's trades can be replayed after the evening build
 
 
@@ -86,7 +87,7 @@ class Feed:
         self.live_at = 0.0
         self.chains = None                             # latest current-expiry chain rows (they carry the option symbols)
         self.reported = None                           # the day the morning 'ready' check was sent to Telegram
-        self.tv = {}                                   # opening 1-minute candles sent by the TradingView alert: {IST minute: bar}
+        self.tv = self.load_tv()                       # opening 1-minute candles sent by the TradingView alert: {IST minute: bar}
         self.opt = {}                                  # (strike, "CE" / "PE") -> (fetched at, candles)
         self.state = None
         self.msg = "starting"
@@ -161,6 +162,26 @@ class Feed:
             self.state = state
         OUT.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
 
+    @staticmethod
+    def load_tv():
+        """The saved opening candles of the last few days."""
+        out = {}
+        try:
+            for f in sorted(OPEN_DIR.glob("*.json"))[-6:]:
+                for hm, b in json.loads(f.read_text(encoding="utf-8")).items():
+                    out[pd.Timestamp(f"{f.stem} {hm}", tz="Asia/Kolkata")] = b
+        except Exception:
+            pass
+        return out
+
+    def save_tv(self, day):
+        try:
+            OPEN_DIR.mkdir(parents=True, exist_ok=True)
+            rows = {k.strftime("%H:%M"): v for k, v in list(self.tv.items()) if k.date() == day}
+            (OPEN_DIR / f"{day}.json").write_text(json.dumps(rows), encoding="utf-8")
+        except Exception:
+            pass
+
     def report(self, t, used):
         """Once a day at 09:31 IST: tell Telegram whether the stream is ready (one look instead of checking every screen)."""
         hm = (t.hour, t.minute)
@@ -221,9 +242,10 @@ class Feed:
                         except ValueError:
                             continue
                         if ev and ev.get("event") == "message":
-                            got = stream_levels.parse_open_bar(ev.get("message", ""), now_ist().date())
+                            got = stream_levels.parse_open_bar(ev.get("message", ""), now_ist().date(), max_days=4)
                             if got:
                                 self.tv[got[0]] = got[1]
+                                self.save_tv(got[0].date())
             except Exception:
                 pass
             stop.wait(wait)

@@ -154,3 +154,12 @@ def test_vwap_bounce_needs_a_touch_and_a_confirming_candle_and_respects_the_cool
     assert signals(base + [[105, 106, 102, 105, 100], [105, 106, 104, 105, 100]], B) == []   # never touches the VWAP: no bounce
     below = [[95, 96, 94, 95, 100]] * 6 + [[95, 100.1, 94.5, 96, 100], [96, 96.5, 94, 95, 100]]
     assert signals(below, B) == [(7, "PUT")]                                                 # the mirror image from below
+
+
+def test_opening_candles_of_the_last_few_days_are_still_accepted():
+    t0 = pd.Timestamp("2026-11-06 09:16", tz="Asia/Kolkata")
+    msg = json.dumps({"t": int(t0.timestamp() * 1000), "o": 24444.7, "h": 24452.25, "l": 24388.05, "c": 24452.25, "v": 8497542})
+    assert stream_levels.parse_open_bar(msg, pd.Timestamp("2026-11-07").date()) is None                      # strict by default
+    assert stream_levels.parse_open_bar(msg, pd.Timestamp("2026-11-07").date(), max_days=4)[0] == t0          # the relay's next-day replay
+    assert stream_levels.parse_open_bar(msg, pd.Timestamp("2026-11-12").date(), max_days=4) is None           # too old
+    assert stream_levels.parse_open_bar(msg, pd.Timestamp("2026-11-05").date(), max_days=4) is None           # from the future
