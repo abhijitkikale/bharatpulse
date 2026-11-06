@@ -6,34 +6,36 @@
 <title>BharatPulse Live GEX and Volume</title>
 <style>
 :root{--bg:#0b0f16;--card:#111823;--line:#263040;--txt:#e6edf3;--mut:#8b97a8;--pos:#2ecc9a;--neg:#ef5b5b;
-  --lw:clamp(250px,18vw,360px);--fs:clamp(14px,1vw,21px)}
+  --lw:clamp(310px,25vw,500px);--fs:clamp(13px,0.95vw,20px)}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family:system-ui,"Segoe UI",Arial,sans-serif;overflow:hidden}
 .wrap{display:flex;flex-direction:column;height:100vh}
-.ban{flex:none;height:calc(var(--fs)*2.3);background:#3a2a05;color:#ffd27a;font-weight:700;font-size:calc(var(--fs)*1.1);overflow:hidden;white-space:nowrap;display:flex;align-items:center}
+.ban{flex:none;height:calc(var(--fs)*2.2);background:#3a2a05;color:#ffd27a;font-weight:700;font-size:calc(var(--fs)*1.1);overflow:hidden;white-space:nowrap;display:flex;align-items:center}
 .ban span{display:inline-block;padding-left:100%;animation:mq 60s linear infinite}
 @keyframes mq{from{transform:translateX(0)}to{transform:translateX(-100%)}}
-.hd{flex:none;display:flex;align-items:baseline;gap:calc(var(--fs)*1.2);padding:calc(var(--fs)*.4) calc(var(--fs)*1);border-bottom:1px solid var(--line)}
-.hd .t{font-size:calc(var(--fs)*1.7);font-weight:700}.hd .p{font-size:calc(var(--fs)*2.1);font-weight:700}.hd .m{color:var(--mut);font-size:calc(var(--fs)*1.05)}
-.chip{margin-left:auto;font-size:calc(var(--fs)*1.1);padding:3px 12px;border-radius:12px;border:1px solid var(--line);color:var(--mut)}
+.hd{flex:none;display:flex;align-items:baseline;gap:calc(var(--fs)*1.2);padding:calc(var(--fs)*.35) calc(var(--fs)*1);border-bottom:1px solid var(--line)}
+.hd .t{font-size:calc(var(--fs)*1.6);font-weight:700}.hd .p{font-size:calc(var(--fs)*2);font-weight:700}.hd .m{color:var(--mut);font-size:calc(var(--fs)*1)}
+.chip{margin-left:auto;font-size:calc(var(--fs)*1.05);padding:3px 12px;border-radius:12px;border:1px solid var(--line);color:var(--mut)}
 .chip.ok{color:var(--pos);border-color:var(--pos)}.chip.bad{color:var(--neg);border-color:var(--neg)}
-.info{flex:none;display:flex;align-items:flex-start;gap:calc(var(--fs)*1.5);padding:6px 14px;border-bottom:1px solid var(--line)}
-.info:empty{display:none}
-.main{flex:1;position:relative;min-height:0}
-#chart{position:absolute;left:0;top:0;bottom:0;right:var(--lw)}
-#labels{position:absolute;right:0;top:0;bottom:0;width:var(--lw);overflow:hidden;font-size:var(--fs)}
-.lb{position:absolute;left:6px;white-space:nowrap;font-weight:700;padding:0 7px;border-radius:4px;background:rgba(11,15,22,.88);border-left:4px solid;line-height:1.25}
-#regime{background:rgba(11,15,22,.9);border:1px solid var(--line);border-radius:8px;padding:6px 16px;font-size:calc(var(--fs)*1.5);font-weight:700;line-height:1.35;display:none}
-#setups{background:rgba(11,15,22,.9);border:1px solid var(--line);border-radius:8px;padding:4px 12px;margin-left:auto;font-size:calc(var(--fs)*1.1);display:none}
-#setups table{border-collapse:collapse}#setups td,#setups th{padding:3px 10px;text-align:left;white-space:nowrap}#setups th{color:var(--mut);font-weight:500;font-size:calc(var(--fs)*.9)}
+.body{flex:1;display:flex;min-height:0}
+.left{flex:none;width:var(--lw);box-sizing:border-box;border-right:1px solid var(--line);padding:calc(var(--fs)*.5);display:flex;flex-direction:column;gap:calc(var(--fs)*.5);overflow:hidden}
+.main{flex:1;position:relative;min-width:0}
+#chart{position:absolute;left:0;top:0;right:0;bottom:0}
+#regime{display:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:calc(var(--fs)*.3) calc(var(--fs)*.8);font-size:calc(var(--fs)*1.35);font-weight:700;line-height:1.3}
+#setups{display:none;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:calc(var(--fs)*.25) calc(var(--fs)*.5);font-size:calc(var(--fs)*.95)}
+#setups table{border-collapse:collapse;width:100%}#setups td,#setups th{padding:1px 6px 1px 0;text-align:left}#setups th{color:var(--mut);font-weight:500;font-size:calc(var(--fs)*.8)}
+#lv{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;font-size:calc(var(--fs)*.98)}
+.row{display:flex;align-items:center;gap:6px;border-left:4px solid;padding:0 6px;font-weight:700;line-height:1.28;white-space:nowrap}
+.row .n{flex:1;overflow:hidden;text-overflow:ellipsis}.row .v{font-variant-numeric:tabular-nums}.row .d{width:4.6em;text-align:right;font-weight:500;color:var(--mut);font-variant-numeric:tabular-nums}
+.row.px{background:#1a2432;border-left-color:#e6edf3;color:#e6edf3}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="ban"><span id="b1"></span></div>
   <div class="hd"><span class="t">NIFTY 50 · 1 min</span><span class="p" id="px">–</span><span class="m" id="meta"></span><span class="chip" id="chip">connecting…</span></div>
-  <div class="info"><div id="regime"><div id="r1"></div><div id="r2"></div></div><div id="setups"></div></div>
-  <div class="main">
-    <div id="chart"></div><div id="labels"></div>
+  <div class="body">
+    <div class="left"><div id="regime"><div id="r1"></div><div id="r2"></div></div><div id="setups"></div><div id="lv"></div></div>
+    <div class="main"><div id="chart"></div></div>
   </div>
   <div class="ban"><span id="b2"></span></div>
 </div>
@@ -43,22 +45,20 @@ const TXT='NOT SEBI REGISTERED  ·  THIS IS NOT FINANCIAL ADVICE OR A RECOMMENDA
 document.getElementById('b1').textContent=TXT+TXT;document.getElementById('b2').textContent=TXT+TXT;
 
 const el=document.getElementById('chart');
-const fs=()=>parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fs'))||16;
-const chart=LightweightCharts.createChart(el,{layout:{background:{color:'#0b0f16'},textColor:'#c9d1d9',fontSize:Math.round(Math.max(14,window.innerWidth*0.0095))},grid:{vertLines:{color:'#141c28'},horzLines:{color:'#141c28'}},
-  rightPriceScale:{borderColor:'#263040'},timeScale:{borderColor:'#263040',timeVisible:true,secondsVisible:false,rightOffset:6},crosshair:{mode:0},handleScroll:false,handleScale:false,autoSize:true});
+const axisFont=()=>Math.round(Math.max(13,window.innerWidth*0.0098));
+const chart=LightweightCharts.createChart(el,{layout:{background:{color:'#0b0f16'},textColor:'#c9d1d9',fontSize:axisFont()},grid:{vertLines:{color:'#141c28'},horzLines:{color:'#141c28'}},
+  rightPriceScale:{borderColor:'#263040',scaleMargins:{top:0.03,bottom:0.03}},timeScale:{borderColor:'#263040',timeVisible:true,secondsVisible:false,rightOffset:6},crosshair:{mode:0},handleScroll:false,handleScale:false,autoSize:true});
 const cs=chart.addCandlestickSeries({upColor:'#2ecc9a',downColor:'#ef5b5b',borderVisible:false,wickUpColor:'#2ecc9a',wickDownColor:'#ef5b5b'});
 const vd=chart.addLineSeries({color:'#18ffff',lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
 const vw=chart.addLineSeries({color:'#ffeb3b',lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
 const CLEAN=new URLSearchParams(location.search).get('clean')==='1';   // /?clean=1 : no setups table or CALL / PUT markers (for OBS)
-let LV=[],LAST=null,lines=[],S=null,RANGE=null;
+let lines=[],RANGE=null;
 
-// the price axis follows the day's high and low (plus levels that sit close to that range), so the candles always fill the screen
+// the price axis follows the day's high and low only, so the candles fill the screen; every level is listed in the table on the left
 function dayRange(s){
-  const day=s.date,cs_=s.candles.filter(c=>new Date(c.time*1000).toISOString().slice(0,10)===day);
-  const arr=cs_.length?cs_:s.candles;let lo=Math.min(...arr.map(c=>c.low)),hi=Math.max(...arr.map(c=>c.high));
-  const r=Math.max(hi-lo,1),ext=0.3*r;
-  (s.levels||[]).forEach(l=>{if(l.value>=lo-ext&&l.value<=hi+ext){lo=Math.min(lo,l.value);hi=Math.max(hi,l.value)}});
-  const pad=0.04*(hi-lo);return {lo:lo-pad,hi:hi+pad}}
+  const day=s.date,c_=s.candles.filter(c=>new Date(c.time*1000).toISOString().slice(0,10)===day);
+  const arr=c_.length?c_:s.candles,lo=Math.min(...arr.map(c=>c.low)),hi=Math.max(...arr.map(c=>c.high)),pad=0.03*Math.max(hi-lo,1);
+  return {lo:lo-pad,hi:hi+pad}}
 cs.applyOptions({autoscaleInfoProvider:()=>RANGE?{priceRange:{minValue:RANGE.lo,maxValue:RANGE.hi}}:null});
 
 // colours and line styles by level name (same scheme as the TradingView indicator)
@@ -74,23 +74,17 @@ function color(l){const s=l.name.toLowerCase();
 function style(l){const s=l.name.toLowerCase();
   if(s.includes('poc'))return 0;if(s.includes('weekly'))return 1;if(s.includes('max pain')||s.includes('flip'))return 1;return 2}
 
-function layoutLabels(){
-  const box=document.getElementById('labels'),H=box.clientHeight;if(!S||!RANGE)return;
-  const f=fs(),gap=Math.round(f*1.45);
-  const all=LV.map(l=>({l,y:cs.priceToCoordinate(l.value)})).filter(o=>o.y!=null);
-  const inn=all.filter(o=>o.y>=0&&o.y<=H).sort((a,b)=>a.y-b.y),up=all.filter(o=>o.y<0).sort((a,b)=>b.l.value-a.l.value),dn=all.filter(o=>o.y>H).sort((a,b)=>b.l.value-a.l.value);
-  // keep the in-range labels clear of the arrow lists at the top and bottom: push down from the top edge, then back up from the bottom edge
-  let prev=gap*up.length-gap/2;inn.forEach(o=>{o.y=Math.max(o.y,prev+gap);prev=o.y});
-  let lim=H-gap*dn.length-gap/2;for(let k=inn.length-1;k>=0;k--){if(inn[k].y>lim)inn[k].y=lim;lim=inn[k].y-gap}
-  // levels far outside the day's range wait at the top / bottom edge with an arrow instead of squashing the chart
-  up.forEach((o,i)=>{o.y=gap*(up.length-1-i)+4;o.arrow='▲ '});
-  dn.forEach((o,i)=>{o.y=H-gap*(dn.length-i)-2;o.arrow='▼ '});
-  const mk=o=>{const l=o.l,t=l.kind==='live'&&S.regime.now_time?' · '+S.regime.now_time:'';
-    return `<div class="lb" style="top:${Math.round(o.y-gap/2)}px;color:${color(l)};border-color:${color(l)}">${o.arrow||''}${l.name} ${l.value.toFixed(2)}${t}</div>`};
-  box.innerHTML=[...up,...inn,...dn].map(mk).join('');
+function renderLevels(s){
+  const t=s.regime&&s.regime.now_time,rows=(s.levels||[]).slice();
+  rows.push({name:'PRICE',value:s.last,kind:'px'});
+  rows.sort((a,b)=>b.value-a.value);
+  document.getElementById('lv').innerHTML=rows.map(l=>{
+    if(l.kind==='px')return `<div class="row px"><span class="n">▶ Price</span><span class="v">${l.value.toFixed(2)}</span><span class="d"></span></div>`;
+    const d=l.value-s.last,c=color(l),tag=l.kind==='live'&&t?` <span style="color:var(--mut);font-weight:500">${t}</span>`:'';
+    return `<div class="row" style="border-left-color:${c};color:${c}"><span class="n">${l.name}${tag}</span><span class="v">${l.value.toFixed(2)}</span><span class="d">${d>0?'+':''}${d.toFixed(0)}</span></div>`}).join('');
 }
 function draw(s){
-  S=s;LAST=s.last||null;LV=s.levels||[];
+  const LV=s.levels||[];
   const ok=s.candles&&s.candles.length;
   document.getElementById('px').textContent=ok?s.last.toFixed(2):'–';
   const age=s.asof?(Date.now()-Date.parse(s.asof))/1000:1e9;
@@ -120,14 +114,15 @@ function draw(s){
   if(CLEAN){sb.style.display='none';cs.setMarkers([])}
   else{
     sb.style.display='block';
-    sb.innerHTML='<table><tr><th>Confirmed</th><th>Buy</th><th>Strike</th><th>At level</th></tr>'+(st.table.length?st.table.slice(0,3).map(x=>`<tr><td>${x.when}</td><td style="color:${x.side==='CALL'?'#2ecc9a':'#ef5b5b'};font-weight:700">${x.side}</td><td style="color:${x.side==='CALL'?'#2ecc9a':'#ef5b5b'}">${x.strike}</td><td>${x.level}</td></tr>`).join(''):'<tr><td colspan="4" style="color:#8b97a8">No setup yet</td></tr>')+'</table>';
-    cs.setMarkers(st.markers.slice().sort((a,b)=>a.time-b.time).map(m=>({time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:m.side==='CALL'?'#2ecc9a':'#ef5b5b',shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text})));
+    const cc=x=>x.side==='CALL'?'#2ecc9a':'#ef5b5b';
+    sb.innerHTML='<table><tr><th>Time</th><th>Buy</th><th>At level</th></tr>'+(st.table.length?st.table.slice(0,3).map(x=>`<tr><td>${x.when.slice(7)}</td><td style="color:${cc(x)};font-weight:700">${x.side} ${x.strike}</td><td>${x.level}</td></tr>`).join(''):'<tr><td colspan="3" style="color:#8b97a8">No setup yet</td></tr>')+'</table>';
+    cs.setMarkers(st.markers.slice().sort((a,b)=>a.time-b.time).map(m=>({time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:cc(m),shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text})));
   }
-  layoutLabels();
+  renderLevels(s);
 }
 async function poll(){try{const r=await fetch('/state.json',{cache:'no-store'});draw(await r.json())}catch(e){const c=document.getElementById('chip');c.textContent='no connection to the data feed';c.className='chip bad'}}
-poll();setInterval(poll,5000);setInterval(layoutLabels,1000);
-window.addEventListener('resize',()=>{chart.applyOptions({layout:{fontSize:Math.round(Math.max(14,window.innerWidth*0.0095))}});layoutLabels()});
+poll();setInterval(poll,5000);
+window.addEventListener('resize',()=>chart.applyOptions({layout:{fontSize:axisFont()}}));
 </script>
 </body>
 </html>
