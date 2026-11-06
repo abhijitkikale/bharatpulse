@@ -27,7 +27,7 @@ except ImportError:                  # the cloud build does not have it
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CFG = ROOT / "data" / "obs.json"
 EXES = [r"C:\Program Files\obs-studio\bin\64bit\obs64.exe", r"C:\Program Files (x86)\obs-studio\bin\64bit\obs64.exe"]
-DEFAULTS = {"host": "127.0.0.1", "port": 4455, "password": "", "mode": "off", "scene": "BharatPulse", "url": "http://127.0.0.1:8766/?clean=1",
+DEFAULTS = {"host": "127.0.0.1", "port": 4455, "password": "", "mode": "off", "scene": "BharatPulse", "url": "http://127.0.0.1:8766/?clean=1&theme=dark",
             "stop_at": "15:35", "exe": ""}
 
 
