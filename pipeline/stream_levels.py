@@ -90,7 +90,7 @@ def live_levels(block):
     return {"Live " + label: block["levels"][k] for k, label in LIVE_LEVELS if block["levels"].get(k) is not None}
 
 
-def build_state(df, eod, live_block, now, status, sessions=2):
+def build_state(df, eod, live_block, now, status, sessions=2, setups=None):
     """The dict the page draws. df: 1-minute candles (several sessions); eod: eod_levels() or None; live_block: one live_gex block or None."""
     days = sorted(set(df.index.date))
     view = df[[x in set(days[-sessions:]) for x in df.index.date]]
@@ -118,7 +118,11 @@ def build_state(df, eod, live_block, now, status, sessions=2):
             pos = (last > flip) == pos_above                      # today's price against the live gamma flip
         regime["now"] = "POSITIVE" if pos else "NEGATIVE"
         regime["now_time"] = live_block.get("time")
-    return {"asof": now.isoformat(timespec="seconds"), "last": round(last, 2), "last_candle": df.index.max().strftime("%H:%M"),
+    sg = setups or []
+    setup_out = {"table": [{"when": x["time"].strftime("%d %b %H:%M"), "side": x["side"], "strike": f"{x['strike']} {'CE' if x['side'] == 'CALL' else 'PE'}",
+                            "level": x["level"] + x["tag"]} for x in reversed(sg[-6:])],
+                 "markers": [{"time": int(x["time"].timestamp()) + SHIFT, "side": x["side"], "text": f"{x['side']}{x['tag'] or ' ✓'}"} for x in sg]}
+    return {"asof": now.isoformat(timespec="seconds"), "setups": setup_out, "last": round(last, 2), "last_candle": df.index.max().strftime("%H:%M"),
             "date": str(days[-1]), "status": status, "eod_close": eod["close"] if eod else None,
             "candles": [{"time": int(t.timestamp()) + SHIFT, "open": float(r.o), "high": float(r.h), "low": float(r.l), "close": float(r.c)} for t, r in view.iterrows()],
             "vwap": {"daily": ser(daily), "weekly": ser(weekly)}, "levels": levels, "regime": regime}

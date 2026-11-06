@@ -74,3 +74,44 @@ def test_now_levels_and_state_regime():
     live["levels"]["flip"] = last - 50.0
     st2 = stream_levels.build_state(df, eod, live, pd.Timestamp("2026-11-06 10:30", tz="Asia/Kolkata"), "live")
     assert st2["regime"]["now"] == "POSITIVE"
+
+
+def _bars(rows):
+    idx = pd.date_range("2026-11-06 09:15", periods=len(rows), freq="min", tz="Asia/Kolkata")
+    return pd.DataFrame(rows, columns=["o", "h", "l", "c", "v"], index=idx)
+
+
+def test_setup_touch_doji_retest_then_next_candle_decides():
+    import stream_setups
+    df = _bars([[110, 111, 109, 110, 100],            # above the level
+                [105, 105, 99.9, 104, 100],           # touches 100
+                [100.01, 100.5, 99.5, 100.02, 100],   # doji at the level
+                [103, 105, 103, 105, 100],            # price leaves
+                [103, 103, 99.9, 101, 100],           # retest: touches again
+                [101, 103, 101, 102, 100]])           # the next candle closes above 100: CALL
+    far = pd.Series(1e9, index=df.index)
+    out = stream_setups.find_setups(df, {"POC": 100.0}, far, far, [(np.nan, np.nan, np.nan)] * len(df))
+    poc = [x for x in out if x["level"].startswith("POC")]
+    assert len(poc) == 1 and poc[0]["side"] == "CALL" and poc[0]["idx"] == 5 and poc[0]["tag"] == " (bounce)" and poc[0]["strike"] == 100
+
+
+def test_vwap_break_signal_needs_the_next_candle_to_confirm():
+    import stream_setups
+    rows = [[90, 91, 89, 90, 100]] * 9 + [[95, 102, 94, 101, 100], [101.5, 103, 101.2, 102, 100]]
+    df = _bars(rows)
+    vw = pd.Series(100.0, index=df.index)
+    far = pd.Series(1e9, index=df.index)
+    out = stream_setups.find_setups(df, {}, vw, far, [(np.nan, np.nan, np.nan)] * len(df))
+    br = [x for x in out if x["tag"] == " (break)"]
+    assert len(br) == 1 and br[0]["side"] == "CALL" and br[0]["idx"] == 10 and br[0]["level"].startswith("Now VWAP")
+    rows[10] = [101, 101.2, 98, 99.5, 100]                  # the next candle falls back below the VWAP: no signal
+    out = stream_setups.find_setups(_bars(rows), {}, vw, far, [(np.nan, np.nan, np.nan)] * len(df))
+    assert not [x for x in out if x["tag"] == " (break)"]
+
+
+def test_developing_profile_is_ordered():
+    import stream_setups
+    df = _frame(["2026-11-06"], minutes=120)
+    va = stream_setups.developing_va(df)
+    poc, vah, val = va[-1]
+    assert val <= poc <= vah and len(va) == 120

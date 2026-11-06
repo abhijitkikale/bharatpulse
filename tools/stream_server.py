@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT / "pipeline"))
 import fetch_fyers  # noqa: E402
 import live_gex  # noqa: E402
 import stream_levels  # noqa: E402
+import stream_setups  # noqa: E402
 
 PAGES = "https://abhijitkikale.github.io/bharatpulse/"
 PAGE_DIR = ROOT / "tools" / "stream_page"
@@ -89,7 +90,15 @@ class Feed:
                     self.live_at = time.time()
             except Exception:
                 pass
-        state = stream_levels.build_state(self.df, self.eod, self.live, t, self.msg)
+        setups = None
+        try:                                           # CALL / PUT setups on today's candles (only once the end-of-day levels are for today)
+            today = self.df[self.df.index.date == self.df.index.max().date()]
+            if self.eod and str(today.index.max().date()) > self.eod["close"]:
+                daily, weekly = stream_levels.vwaps(self.df)
+                setups = stream_setups.find_setups(today, self.eod["levels"], daily, weekly, stream_setups.developing_va(today), SYM)
+        except Exception:
+            setups = None
+        state = stream_levels.build_state(self.df, self.eod, self.live, t, self.msg, setups=setups)
         with self.lock:
             self.state = state
         OUT.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
@@ -132,7 +141,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 _STARTED = {"on": False}
 
 
-def start_in_thread(stop=None):
+def start_in_thread(stop=None, port=None):
     """Start the feed and the page server in background threads (safe to call twice). Used by tools/refresh_app.py."""
     if _STARTED["on"]:
         return
@@ -140,7 +149,7 @@ def start_in_thread(stop=None):
     stop = stop or threading.Event()
     threading.Thread(target=FEED.run, args=(stop,), daemon=True).start()
     try:
-        srv = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", port or PORT), Handler)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
     except OSError:
         pass                                          # the port is already served by another copy
@@ -149,6 +158,7 @@ def start_in_thread(stop=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true")
+    ap.add_argument("--port", type=int, default=PORT)
     a = ap.parse_args()
     if a.once:
         FEED.step()
@@ -158,8 +168,8 @@ def main():
             print(f"  {l['kind']:4} {l['name']:16} {l['value']}")
         print("regime", s and s["regime"])
         return
-    print(f"BharatPulse stream page: http://127.0.0.1:{PORT}/   (add it in OBS as a Browser source; close this window to stop)")
-    start_in_thread()
+    print(f"BharatPulse stream page: http://127.0.0.1:{a.port}/   (add it in OBS as a Browser source; close this window to stop)")
+    start_in_thread(port=a.port)
     try:
         while True:
             time.sleep(3600)

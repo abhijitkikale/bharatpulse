@@ -19,7 +19,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 #chart{position:absolute;left:0;top:0;bottom:0;right:210px}
 #labels{position:absolute;right:0;top:0;bottom:0;width:210px;overflow:hidden}
 .lb{position:absolute;left:6px;white-space:nowrap;font-size:12.5px;font-weight:600;padding:1px 6px;border-radius:4px;background:rgba(11,15,22,.85);border-left:3px solid}
-#regime{position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:5;background:rgba(11,15,22,.88);border:1px solid var(--line);border-radius:6px;padding:6px 14px;font-size:20px;font-weight:700;line-height:1.35;display:none}
+#setups{position:absolute;right:222px;top:8px;z-index:5;background:rgba(11,15,22,.88);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:14px;display:none}
+#setups table{border-collapse:collapse}#setups td,#setups th{padding:2px 8px;text-align:left;white-space:nowrap}#setups th{color:var(--mut);font-weight:500;font-size:12px}
+#regime{position:absolute;left:38%;top:8px;transform:translateX(-50%);z-index:5;background:rgba(11,15,22,.88);border:1px solid var(--line);border-radius:6px;padding:6px 14px;font-size:20px;font-weight:700;line-height:1.35;display:none}
 </style>
 </head>
 <body>
@@ -29,6 +31,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
   <div class="main">
     <div id="chart"></div><div id="labels"></div>
     <div id="regime"><div id="r1"></div><div id="r2"></div></div>
+    <div id="setups"></div>
   </div>
   <div class="ban"><span id="b2"></span></div>
 </div>
@@ -43,6 +46,7 @@ const chart=LightweightCharts.createChart(el,{layout:{background:{color:'#0b0f16
 const cs=chart.addCandlestickSeries({upColor:'#2ecc9a',downColor:'#ef5b5b',borderVisible:false,wickUpColor:'#2ecc9a',wickDownColor:'#ef5b5b'});
 const vd=chart.addLineSeries({color:'#18ffff',lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
 const vw=chart.addLineSeries({color:'#ffeb3b',lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
+const CLEAN=new URLSearchParams(location.search).get('clean')==='1';   // /?clean=1 : no setups table or CALL / PUT markers (for OBS)
 let LV=[],LAST=null,lines=[],first=true,S=null;
 cs.applyOptions({autoscaleInfoProvider:orig=>{const r=orig();if(!r||!LAST)return r;let mn=r.priceRange.minValue,mx=r.priceRange.maxValue;
   LV.forEach(l=>{if(Math.abs(l.value/LAST-1)<=0.016){mn=Math.min(mn,l.value);mx=Math.max(mx,l.value)}});return {priceRange:{minValue:mn,maxValue:mx},margins:r.margins}}});
@@ -91,6 +95,14 @@ function draw(s){
     document.getElementById('r1').innerHTML=r.eod?`<span style="color:${col(r.eod)}">EOD: ${r.eod} gamma</span>`:'';
     document.getElementById('r2').innerHTML=r.now?`<span style="color:${col(r.now)}">NOW: ${r.now} gamma${r.now_time?' ('+r.now_time+')':''}</span>`:''}
   else box.style.display='none';
+  // CALL / PUT setups (not shown on the clean address)
+  const sb=document.getElementById('setups'),st=s.setups||{table:[],markers:[]};
+  if(CLEAN){sb.style.display='none';cs.setMarkers([])}
+  else{
+    sb.style.display='block';
+    sb.innerHTML='<table><tr><th>Confirmed</th><th>Buy</th><th>Strike</th><th>At level</th></tr>'+(st.table.length?st.table.slice(0,5).map(x=>`<tr><td>${x.when}</td><td style="color:${x.side==='CALL'?'#2ecc9a':'#ef5b5b'};font-weight:700">${x.side}</td><td style="color:${x.side==='CALL'?'#2ecc9a':'#ef5b5b'}">${x.strike}</td><td>${x.level}</td></tr>`).join(''):'<tr><td colspan="4" style="color:#8b97a8">No setup yet</td></tr>')+'</table>';
+    cs.setMarkers(st.markers.slice().sort((a,b)=>a.time-b.time).map(m=>({time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:m.side==='CALL'?'#2ecc9a':'#ef5b5b',shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text})));
+  }
   layoutLabels();
 }
 async function poll(){try{const r=await fetch('/state.json',{cache:'no-store'});draw(await r.json())}catch(e){const c=document.getElementById('chip');c.textContent='no connection to the data feed';c.className='chip bad'}}
