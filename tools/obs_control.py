@@ -105,6 +105,16 @@ def load_config():
         return None
 
 
+def _trading_day(t):
+    """Is t's date an NSE session day (holidays and special sessions from the calendar)? Falls back to Monday to Friday."""
+    try:
+        sys.path.insert(0, str(ROOT / "pipeline"))
+        import nse_calendar
+        return nse_calendar.is_trading_day(t.date())
+    except Exception:
+        return t.weekday() < 5
+
+
 def now_ist():
     return pd.Timestamp.now(tz="Asia/Kolkata")
 
@@ -114,12 +124,14 @@ def _hm(text):
     return int(h), int(m)
 
 
-def decide(cfg, t, streaming, ready, healthy, done, bad_minutes):
+def decide(cfg, t, streaming, ready, healthy, done, bad_minutes, trading_day=None):
     """The next action: 'start', 'stop', 'stale-stop' or None.
     ready: the stream page has data; healthy: the market-hours feed is fine; done: a broadcast was already started or stopped today;
     bad_minutes: how long the feed has been bad during market hours."""
     hm, stop_hm = (t.hour, t.minute), _hm(cfg["stop_at"])
-    if t.weekday() >= 5:
+    if trading_day is None:
+        trading_day = t.weekday() < 5
+    if not trading_day:
         return None
     if streaming:
         if hm >= stop_hm:
@@ -292,7 +304,7 @@ def run_loop(get_state, stop, notify=None, log=lambda *a: None):
                     else:
                         bad_since = None
                     bad = (t - bad_since).total_seconds() / 60 if bad_since is not None else 0
-                    action = decide(cfg, t, streaming, ready, healthy, done_day == day, bad)
+                    action = decide(cfg, t, streaming, ready, healthy, done_day == day, bad, trading_day=_trading_day(t))
                     if action == "start":
                         obs.call("SetCurrentProgramScene", {"sceneName": cfg["scene"]})      # the broadcast shows the stream page
                         try:                                                                     # reload it, in case it was loaded before the page was up

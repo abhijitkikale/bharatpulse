@@ -22,6 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "pipeline"))
 import fetch_fyers  # noqa: E402
 import live_gex  # noqa: E402
+import nse_calendar  # noqa: E402
 import stream_levels  # noqa: E402
 import stream_setups  # noqa: E402
 import stream_trades  # noqa: E402
@@ -33,7 +34,7 @@ RELAY = ROOT / "data" / "stream_relay.json"      # {"topic": "..."}: made by too
 RELAY_URL = "https://ntfy.sh/"
 PORT = 8766
 SYM = "NIFTY"
-OPEN, CLOSE = (9, 10), (15, 40)           # IST: poll fast between these times on weekdays
+STORE = ROOT / "data" / "stream_eod"          # one end-of-day levels file per close date, kept so the day's trades can be replayed after the evening build
 
 
 def now_ist():
@@ -52,8 +53,28 @@ def relay_topic():
 
 
 def market_hours(t=None):
+    """Poll fast from 5 minutes before the open to 10 minutes after the close of an NSE session (holidays and special sessions from the calendar)."""
     t = t or now_ist()
-    return t.weekday() < 5 and OPEN <= (t.hour, t.minute) < CLOSE
+    return nse_calendar.in_session(t, lead=5, tail=10)
+
+
+def save_eod(eod):
+    try:
+        STORE.mkdir(parents=True, exist_ok=True)
+        f = STORE / (eod["close"] + ".json")
+        if not f.exists():
+            f.write_text(json.dumps(eod), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def eod_for(day):
+    """The newest saved end-of-day levels whose close date is before `day` (what was valid during that session), or None."""
+    try:
+        files = sorted(f for f in STORE.glob("*.json") if f.stem < str(day))
+        return json.loads(files[-1].read_text(encoding="utf-8")) if files else None
+    except Exception:
+        return None
 
 
 class Feed:
@@ -84,6 +105,7 @@ class Feed:
             try:
                 self.eod = stream_levels.eod_levels(D, SYM)
                 self.eod_at = time.time()
+                save_eod(self.eod)
             except Exception:
                 pass
 
@@ -113,12 +135,15 @@ class Feed:
                         self.live_at = time.time()
             except Exception:
                 pass
-        setups = None
+        setups, replay = None, None
         try:                                           # CALL / PUT setups on today's candles (only once the end-of-day levels are for today)
             today = df[df.index.date == df.index.max().date()]
-            if self.eod and str(today.index.max().date()) > self.eod["close"]:
+            sday = today.index.max().date()
+            # the levels that were valid during that session: the newest ones if they are older than the session, else (after the evening build) the saved ones
+            replay = self.eod if self.eod and self.eod["close"] < str(sday) else eod_for(sday)
+            if replay:
                 daily, weekly = stream_levels.vwaps(df)
-                setups = stream_setups.find_setups(today, self.eod["levels"], daily, weekly, stream_setups.developing_va(today), SYM)
+                setups = stream_setups.find_setups(today, replay["levels"], daily, weekly, stream_setups.developing_va(today), SYM)
         except Exception:
             setups = None
         trades = None
@@ -130,6 +155,7 @@ class Feed:
                 trades = None
         state = stream_levels.build_state(df, self.eod, self.live, t, self.msg, setups=setups, trades=trades)
         state["open_src"] = used                        # how many opening candles came from TradingView
+        state["replay_eod"] = replay["close"] if setups is not None and replay is not self.eod else None   # the trades use the levels of this older close
         self.report(t, used)
         with self.lock:
             self.state = state
@@ -232,6 +258,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with FEED.lock:
                 s = FEED.state
             body = json.dumps(s if s else {"status": FEED.msg, "candles": [], "levels": []}, separators=(",", ":")).encode()
+            return self._send(200, body, "application/json")
+        if path == "/calendar.json":
+            try:
+                body = json.dumps(nse_calendar.to_json(), separators=(",", ":")).encode()
+            except Exception:
+                body = b"{}"
             return self._send(200, body, "application/json")
         if path in ("/", "/index.html"):
             return self._send(200, (PAGE_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")

@@ -38,8 +38,9 @@ def problems():
 
 
 def main():
+    import nse_calendar
     t = live_loop.now_ist()
-    if t.weekday() >= 5:
+    if not nse_calendar.is_trading_day(t.date()):          # weekends and NSE holidays: nothing to check
         return
     p = problems()
     if p:

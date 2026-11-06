@@ -115,7 +115,7 @@ function draw(s){
   const live=s.status==='live';
   chip.textContent=live?(age>120?'DATA STALE':'LIVE · candle '+s.last_candle+' IST'):(s.status||'waiting');
   chip.className='chip '+(live&&age<=120?'ok':(live?'bad':''));
-  document.getElementById('meta').textContent=(s.eod_close?'end-of-day levels from the '+s.eod_close+' close':'')+(s.open_src?' · opening candles: TradingView ('+s.open_src+')':'');
+  document.getElementById('meta').textContent=(s.eod_close?'end-of-day levels from the '+s.eod_close+' close':'')+(s.replay_eod?' · today\'s trades use the levels of the '+s.replay_eod+' close':'')+(s.open_src?' · opening candles: TradingView ('+s.open_src+')':'');
   if(!ok)return;
   RANGE=dayRange(s);
   cs.setData(s.candles);vd.setData(s.vwap.daily);vw.setData(s.vwap.weekly);
@@ -173,20 +173,31 @@ function draw(s){
   renderLevels(s);
 }
 async function poll(){try{const r=await fetch('/state.json',{cache:'no-store'});draw(await r.json())}catch(e){const c=document.getElementById('chip');c.textContent='no connection to the data feed';c.className='chip bad'}}
-// countdown to the NSE open (09:15 IST, Monday to Friday; exchange holidays are not known to the page)
-function istParts(){const p=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',weekday:'short'}).formatToParts(new Date()),o={};p.forEach(x=>o[x.type]=x.value);return o}
+// countdown to the next NSE session from the NSE holiday calendar (served at /calendar.json): holidays, weekends and special sessions such as Muhurat trading
+let CAL={holidays:{},special:{},pending:{}};
+async function loadCal(){try{CAL=await (await fetch('/calendar.json',{cache:'no-store'})).json()}catch(e){}}
+function istParts(){const p=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(new Date()),o={};p.forEach(x=>o[x.type]=x.value);return o}
+const nowIst=()=>{const o=istParts();return Date.UTC(+o.year,+o.month-1,+o.day,+o.hour,+o.minute,+o.second)};      // the IST wall clock written as a UTC time
+const atTime=(key,t)=>Date.parse(key+'T'+t+':00Z');
+function sessionsOn(ms){const d=new Date(ms),key=d.toISOString().slice(0,10),wd=(d.getUTCDay()+6)%7,sp=(CAL.special||{})[key];
+  if(sp)return [{o:atTime(key,sp.open),c:atTime(key,sp.close),name:sp.name||'Special session'}];
+  if(wd<5&&!(CAL.holidays||{})[key])return [{o:atTime(key,'09:15'),c:atTime(key,'15:30'),name:'NSE'}];
+  return []}
 function tickCountdown(){
-  const o=istParts(),wd=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(o.weekday),sec=(+o.hour)*3600+(+o.minute)*60+(+o.second),open=9*3600+15*60,close=15*3600+30*60,box=document.getElementById('cd');
-  const live=wd<5&&sec>=open&&sec<close;
-  if(live){box.style.display='none';return}
-  let add=0;                                              // days until the next weekday session
-  if(wd<5&&sec<open)add=0;else{add=1;let w=(wd+1)%7;while(w>4){add++;w=(w+1)%7}}
-  const left=add*86400+open-sec,h=Math.floor(left/3600),m=Math.floor(left%3600/60),r=left%60,pad=n=>String(n).padStart(2,'0');
-  document.getElementById('cd-a').textContent=wd<5&&sec<open?'NSE opens in':(wd<5&&sec>=close?'Market closed. Next session in':'Market closed. Next session in');
-  document.getElementById('cd-t').textContent=(h>=24?Math.floor(h/24)+'d ':'')+pad(h%24)+':'+pad(m)+':'+pad(r);
-  document.getElementById('cd-b').textContent='Levels shown: end-of-day levels and the live GEX levels · the chart goes live at 09:15 IST';
+  const now=nowIst(),box=document.getElementById('cd'),todayKey=new Date(now).toISOString().slice(0,10);
+  let live=false,next=null;
+  for(let i=0;i<15&&!next&&!live;i++){for(const s of sessionsOn(now+i*86400000)){if(now>=s.o&&now<s.c){live=true;break}if(s.o>now&&!next)next=s}}
+  if(live||!next){box.style.display='none';return}
+  const nd=new Date(next.o).toISOString().slice(0,10),sameDay=nd===todayKey,hol=(CAL.holidays||{})[todayKey],wd=(new Date(now).getUTCDay()+6)%7;
+  const label=next.name==='NSE'?'':' ('+next.name+')';
+  document.getElementById('cd-a').textContent=sameDay?(next.name==='NSE'?'NSE opens in':next.name+' opens in'):((hol&&wd<5?'NSE holiday ('+hol+'). ':'Market closed. ')+'Next session'+label+' in');
+  const left=Math.max(0,Math.floor((next.o-now)/1000)),d=Math.floor(left/86400),h=Math.floor(left%86400/3600),m=Math.floor(left%3600/60),r=left%60,pad=n=>String(n).padStart(2,'0');
+  document.getElementById('cd-t').textContent=(d>0?d+'D ':'')+pad(h)+':'+pad(m)+':'+pad(r);
+  const pend=Object.keys(CAL.pending||{}).filter(k=>k>=todayKey).sort()[0];
+  document.getElementById('cd-b').textContent=pend?(CAL.pending[pend]+' on '+new Date(pend+'T00:00:00Z').toUTCString().slice(0,11)):'Levels shown: end-of-day levels and the live GEX levels · the chart goes live when the session opens';
   box.style.display='block';
 }
+loadCal();setInterval(loadCal,3600000);
 tickCountdown();setInterval(tickCountdown,1000);
 applyTheme();poll();setInterval(poll,5000);
 window.addEventListener('resize',()=>chart.applyOptions({layout:{fontSize:axisFont()}}));
