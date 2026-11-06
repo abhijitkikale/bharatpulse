@@ -33,3 +33,14 @@ One small box, two lines: `EOD: POSITIVE/NEGATIVE gamma` (from the end-of-day te
 ## One-time Telegram setup (on the PC that runs Refresh BharatPulse.bat)
 1. Open https://t.me/GEXINDICATORBOT in Telegram and press Start.
 2. In the BharatPulse folder run `python tools/telegram_setup.py`, paste the bot token from @BotFather (right-click pastes; it is shown on screen) and press Enter. It saves the token and your chat id only in `data/telegram.json` on this PC (not published) and sends a test message.
+
+## Opening candles from TradingView (for the stream page)
+The stream page's Fyers feed has a slightly different 09:15 candle from TradingView's (open, high and above all volume). That candle dominates the VWAP, so VWAP-based setups near the open can differ from your TradingView chart. To fix it, your TradingView sends its own opening candles to the stream program every morning; the page uses them for 09:15 to 09:30 (as sent) and Fyers afterwards.
+
+One-time setup (needs a TradingView plan with webhook alerts, and two-factor sign-in enabled on your TradingView account):
+1. On the PC that runs the helper: `python tools/stream_relay_setup.py`. It makes a private topic for the free ntfy.sh relay and prints the webhook URL (`https://ntfy.sh/<topic>`). Keep that URL private. Only the opening 1-minute Nifty candles go through it, about 15 messages a day.
+2. In TradingView open **NSE:NIFTY on a 1-minute chart** with the live indicator on it. In the indicator settings tick **Send the opening 1-minute candles to the stream program** (group "Stream feed (webhook alert)"; the default is the first 15 minutes after 09:15).
+3. Create an alert (clock icon): **Condition** = BharatPulse Levels Live > **Any alert() function call**; **Notifications** > tick **Webhook URL** and paste the URL from step 1; leave the message as it is (the indicator supplies it). Expiration: as long as your plan allows (TradingView alerts expire; recreate when it does). Create.
+4. Restart the helper so it listens (it starts listening when the stream starts). After 09:16 the page shows "opening candles: TradingView (N)" in the header. If it does not, the alert is not firing or the topic differs.
+
+The connector used inside Claude cannot create webhook alerts, so this alert has to be made by you on tradingview.com.

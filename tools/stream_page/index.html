@@ -113,7 +113,7 @@ function draw(s){
   const live=s.status==='live';
   chip.textContent=live?(age>120?'DATA STALE':'LIVE · candle '+s.last_candle+' IST'):(s.status||'waiting');
   chip.className='chip '+(live&&age<=120?'ok':(live?'bad':''));
-  document.getElementById('meta').textContent=s.eod_close?'end-of-day levels from the '+s.eod_close+' close':'';
+  document.getElementById('meta').textContent=(s.eod_close?'end-of-day levels from the '+s.eod_close+' close':'')+(s.open_src?' · opening candles: TradingView ('+s.open_src+')':'');
   if(!ok)return;
   RANGE=dayRange(s);
   cs.setData(s.candles);vd.setData(s.vwap.daily);vw.setData(s.vwap.weekly);

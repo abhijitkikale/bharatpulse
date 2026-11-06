@@ -126,3 +126,39 @@ def build_state(df, eod, live_block, now, status, sessions=2, setups=None, trade
             "date": str(days[-1]), "status": status, "eod_close": eod["close"] if eod else None,
             "candles": [{"time": int(t.timestamp()) + SHIFT, "open": float(r.o), "high": float(r.h), "low": float(r.l), "close": float(r.c)} for t, r in view.iterrows()],
             "vwap": {"daily": ser(daily), "weekly": ser(weekly)}, "levels": levels, "regime": regime}
+
+
+OPEN_START, OPEN_MINUTES = (9, 15), 30            # the opening candles TradingView may send: 09:15 up to 09:45
+
+
+def parse_open_bar(text, day):
+    """One message from the TradingView alert: {"t": bar open time in ms, "o","h","l","c","v"}. Returns (IST minute Timestamp, bar dict) or None when
+    it is not a sane 1-minute candle of `day` (a datetime.date) inside the opening window."""
+    try:
+        j = json.loads(text)
+        o, h, l, c, v = (float(j[k]) for k in ("o", "h", "l", "c", "v"))
+        ts = pd.Timestamp(int(j["t"]), unit="ms", tz="UTC").tz_convert("Asia/Kolkata")
+    except Exception:
+        return None
+    mins = ts.hour * 60 + ts.minute - (OPEN_START[0] * 60 + OPEN_START[1])
+    if ts.date() != day or ts.second != 0 or not 0 <= mins < OPEN_MINUTES:
+        return None
+    if not all(x == x and x > 0 for x in (o, h, l, c, v)) or h < max(o, c, l) or l > min(o, c, h):
+        return None
+    return ts, {"o": o, "h": h, "l": l, "c": c, "v": v}
+
+
+def merge_open(df, bars, max_dev=0.05):
+    """Replace / add the opening candles in the Fyers candles df with TradingView's own (bars: {Timestamp: bar}). Bars further than max_dev
+    from the day's typical price are ignored. Returns (new frame, number of TradingView candles used)."""
+    if not bars:
+        return df, 0
+    out = df.copy()
+    ref = float(df["c"].median())
+    used = 0
+    for ts, b in sorted(bars.items()):
+        if abs(b["c"] / ref - 1) > max_dev:
+            continue
+        out.loc[ts, ["o", "h", "l", "c", "v"]] = [b["o"], b["h"], b["l"], b["c"], b["v"]]
+        used += 1
+    return out.sort_index(), used

@@ -115,3 +115,21 @@ def test_developing_profile_is_ordered():
     va = stream_setups.developing_va(df)
     poc, vah, val = va[-1]
     assert val <= poc <= vah and len(va) == 120
+
+
+def test_tradingview_opening_candles_replace_the_fyers_ones():
+    day = pd.Timestamp("2026-11-06").date()
+    t0 = pd.Timestamp("2026-11-06 09:15", tz="Asia/Kolkata")
+    ms = int(t0.timestamp() * 1000)
+    ok = stream_levels.parse_open_bar(json.dumps({"t": ms, "o": 24516.65, "h": 24518.2, "l": 24407.45, "c": 24440.05, "v": 20414083}), day)
+    assert ok[0] == t0 and ok[1]["v"] == 20414083
+    bad = [{"t": ms, "o": 1, "h": 0.5, "l": 1, "c": 1, "v": 5},                                  # high below the open
+           {"t": ms + 3600 * 1000, "o": 24500, "h": 24510, "l": 24490, "c": 24500, "v": 5},      # outside the opening window
+           {"t": ms + 1000, "o": 24500, "h": 24510, "l": 24490, "c": 24500, "v": 5}]             # not on a minute
+    assert all(stream_levels.parse_open_bar(json.dumps(b), day) is None for b in bad) and stream_levels.parse_open_bar("junk", day) is None
+    fy = _frame(["2026-11-06"], minutes=5, start=24500.0)
+    fy.index = pd.date_range(t0, periods=5, freq="min")
+    merged, used = stream_levels.merge_open(fy, {ok[0]: ok[1]})
+    assert used == 1 and merged.loc[t0, "v"] == 20414083 and merged.loc[t0, "h"] == 24518.2 and len(merged) == 5
+    far = {t0: {"o": 30000, "h": 30010, "l": 29990, "c": 30000, "v": 1}}
+    assert stream_levels.merge_open(fy, far)[1] == 0                                              # a wild price is ignored

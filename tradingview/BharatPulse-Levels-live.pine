@@ -74,6 +74,10 @@ profRow    = input.float(0.25, "Volume profile row size in points (0.25 is close
 enWkVwap   = input.bool(true, "Now Weekly VWAP (starts again each Monday, like TradingView's weekly VWAP)", group=gLive)
 wkVwapColor = input.color(#ffeb3b, "Colour of the weekly VWAP", group=gLive)
 
+gFeed = "Stream feed (webhook alert)"
+sendOpen = input.bool(false, "Send the opening 1-minute candles to the stream program (needs one webhook alert, see LIVE-SETUP.md)", group=gFeed)
+openMins = input.int(15, "Send the first N minutes after 09:15", minval=1, maxval=30, group=gFeed)
+
 gSet = "Setups (touch > doji > retest) on these levels"
 sGexC  = input.bool(true,  "GEX call wall", group=gSet)
 sGexP  = input.bool(true,  "GEX put wall", group=gSet)
@@ -695,6 +699,12 @@ if useStrat and breakSig and barstate.isconfirmed and inDay and time >= sigFrom
                         label.new(bar_index, low, confirmOn ? "CALL ✓ (break)" : "CALL (break)", style=label.style_label_up, color=#2ecc9a, textcolor=color.white, size=size.small)
                     else
                         label.new(bar_index, high, confirmOn ? "PUT ✓ (break)" : "PUT (break)", style=label.style_label_down, color=#ef5b5b, textcolor=color.white, size=size.small)
+
+// ---- stream feed: the opening candles go to the stream program through a TradingView webhook alert (one message per closed 1-minute candle) ----
+if sendOpen and barstate.isconfirmed and barstate.isrealtime and timeframe.isintraday and timeframe.multiplier == 1
+    int sinceOpen = hour * 60 + minute - (9 * 60 + 15)
+    if sinceOpen >= 0 and sinceOpen < openMins
+        alert('{"t":' + str.tostring(time) + ',"o":' + str.tostring(open, "#.##") + ',"h":' + str.tostring(high, "#.##") + ',"l":' + str.tostring(low, "#.##") + ',"c":' + str.tostring(close, "#.##") + ',"v":' + str.tostring(volume, "#") + '}', alert.freq_once_per_bar_close)
 
 alertcondition(callAny, "BharatPulse CALL setup", "BharatPulse: CALL setup (touch, doji, retest closed above the level) on {{ticker}}")
 alertcondition(putAny, "BharatPulse PUT setup", "BharatPulse: PUT setup (touch, doji, retest closed below the level) on {{ticker}}")

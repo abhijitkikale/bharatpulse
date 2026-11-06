@@ -29,6 +29,8 @@ import stream_trades  # noqa: E402
 PAGES = "https://abhijitkikale.github.io/bharatpulse/"
 PAGE_DIR = ROOT / "tools" / "stream_page"
 OUT = ROOT / "data" / "stream_state.json"
+RELAY = ROOT / "data" / "stream_relay.json"      # {"topic": "..."}: made by tools/stream_relay_setup.py
+RELAY_URL = "https://ntfy.sh/"
 PORT = 8766
 SYM = "NIFTY"
 OPEN, CLOSE = (9, 10), (15, 40)           # IST: poll fast between these times on weekdays
@@ -36,6 +38,17 @@ OPEN, CLOSE = (9, 10), (15, 40)           # IST: poll fast between these times o
 
 def now_ist():
     return pd.Timestamp.now(tz="Asia/Kolkata")
+
+
+def relay_topic():
+    import os
+    t = os.environ.get("BHARATPULSE_RELAY_TOPIC")
+    if not t and RELAY.exists():
+        try:
+            t = json.loads(RELAY.read_text(encoding="utf-8")).get("topic")
+        except Exception:
+            t = None
+    return t if t and 12 <= len(t) <= 80 and all(ch.isalnum() or ch in "-_" for ch in t) else None
 
 
 def market_hours(t=None):
@@ -51,6 +64,7 @@ class Feed:
         self.live = None
         self.live_at = 0.0
         self.chains = None                             # latest current-expiry chain rows (they carry the option symbols)
+        self.tv = {}                                   # opening 1-minute candles sent by the TradingView alert: {IST minute: bar}
         self.opt = {}                                  # (strike, "CE" / "PE") -> (fetched at, candles)
         self.state = None
         self.msg = "starting"
@@ -84,6 +98,8 @@ class Feed:
             self.msg = "Fyers sign-in needed (data shown is the last update)" if self.df is not None else "waiting for Fyers sign-in"
         if self.df is None:
             return
+        day = self.df.index.max().date()
+        df, used = stream_levels.merge_open(self.df, {k: v for k, v in list(self.tv.items()) if k.date() == day})
         if self.chains is None or (market_hours(t) and time.time() - self.live_at >= 300):
             try:
                 chains, _ = fetch_fyers.fetch_chains(current_only=True, symbols=(SYM,))
@@ -98,9 +114,9 @@ class Feed:
                 pass
         setups = None
         try:                                           # CALL / PUT setups on today's candles (only once the end-of-day levels are for today)
-            today = self.df[self.df.index.date == self.df.index.max().date()]
+            today = df[df.index.date == df.index.max().date()]
             if self.eod and str(today.index.max().date()) > self.eod["close"]:
-                daily, weekly = stream_levels.vwaps(self.df)
+                daily, weekly = stream_levels.vwaps(df)
                 setups = stream_setups.find_setups(today, self.eod["levels"], daily, weekly, stream_setups.developing_va(today), SYM)
         except Exception:
             setups = None
@@ -111,7 +127,8 @@ class Feed:
                 trades = stream_trades.to_json(res, stream_levels.SHIFT)
             except Exception:
                 trades = None
-        state = stream_levels.build_state(self.df, self.eod, self.live, t, self.msg, setups=setups, trades=trades)
+        state = stream_levels.build_state(df, self.eod, self.live, t, self.msg, setups=setups, trades=trades)
+        state["open_src"] = used                        # how many opening candles came from TradingView
         with self.lock:
             self.state = state
         OUT.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
@@ -133,6 +150,33 @@ class Feed:
             df = hit[1]                                 # keep the last good candles if this call failed
         self.opt[key] = (time.time(), df)
         return df
+
+    def relay(self, stop):
+        """Listen for the TradingView alert messages on the relay topic (outbound connection only) and keep the opening candles."""
+        topic = relay_topic()
+        if not topic:
+            return
+        wait = 5
+        while not stop.is_set():
+            try:
+                with requests.get(RELAY_URL + topic + "/json", params={"since": "14h"}, stream=True, timeout=(10, 120)) as r:
+                    r.raise_for_status()
+                    wait = 5
+                    for line in r.iter_lines():
+                        if stop.is_set():
+                            break
+                        try:
+                            ev = json.loads(line) if line else None
+                        except ValueError:
+                            continue
+                        if ev and ev.get("event") == "message":
+                            got = stream_levels.parse_open_bar(ev.get("message", ""), now_ist().date())
+                            if got:
+                                self.tv[got[0]] = got[1]
+            except Exception:
+                pass
+            stop.wait(wait)
+            wait = min(wait * 2, 120)
 
     def run(self, stop):
         while not stop.is_set():
@@ -179,6 +223,7 @@ def start_in_thread(stop=None, port=None):
     _STARTED["on"] = True
     stop = stop or threading.Event()
     threading.Thread(target=FEED.run, args=(stop,), daemon=True).start()
+    threading.Thread(target=FEED.relay, args=(stop,), daemon=True).start()
     try:
         srv = http.server.ThreadingHTTPServer(("127.0.0.1", port or PORT), Handler)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
