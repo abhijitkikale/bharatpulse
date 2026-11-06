@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT / "pipeline"))
 import fetch_fyers  # noqa: E402
 import live_gex  # noqa: E402
 import nse_calendar  # noqa: E402
+import stream_journal  # noqa: E402
 import stream_levels  # noqa: E402
 import stream_setups  # noqa: E402
 import stream_trades  # noqa: E402
@@ -35,6 +36,7 @@ RELAY_URL = "https://ntfy.sh/"
 PORT = 8766
 SYM = "NIFTY"
 OPEN_DIR = ROOT / "data" / "stream_open"      # the TradingView opening candles, one file per day (the relay forgets them after 12 hours)
+JOURNAL = ROOT / "data" / "journal"            # trading journal backup: one file per day plus trades.csv (this PC only)
 STORE = ROOT / "data" / "stream_eod"          # one end-of-day levels file per close date, kept so the day's trades can be replayed after the evening build
 
 
@@ -89,6 +91,8 @@ class Feed:
         self.reported = None                           # the day the morning 'ready' check was sent to Telegram
         self.tv = self.load_tv()                       # opening 1-minute candles sent by the TradingView alert: {IST minute: bar}
         self.opt = {}                                  # (strike, "CE" / "PE") -> (fetched at, candles)
+        self.meta = {}                                 # (strike, "CE" / "PE") -> {"symbol", "expiry"} of the contract used
+        self._jkey, self._jat = None, 0.0               # the last journal content written and when
         self.state = None
         self.msg = "starting"
         self.lock = threading.Lock()
@@ -147,13 +151,14 @@ class Feed:
                 setups = stream_setups.find_setups(today, replay["levels"], daily, weekly, stream_setups.developing_va(today), SYM)
         except Exception:
             setups = None
-        trades = None
+        trades, res = None, None
         if setups:
             try:
                 res = stream_trades.run_trades(setups, self.option_frame)
                 trades = stream_trades.to_json(res, stream_levels.SHIFT)
             except Exception:
                 trades = None
+            self.journal(sday, replay, today, res, used, state_regime=None)
         state = stream_levels.build_state(df, self.eod, self.live, t, self.msg, setups=setups, trades=trades)
         state["open_src"] = used                        # how many opening candles came from TradingView
         state["replay_eod"] = replay["close"] if setups is not None and replay is not self.eod else None   # the trades use the levels of this older close
@@ -179,6 +184,22 @@ class Feed:
             OPEN_DIR.mkdir(parents=True, exist_ok=True)
             rows = {k.strftime("%H:%M"): v for k, v in list(self.tv.items()) if k.date() == day}
             (OPEN_DIR / f"{day}.json").write_text(json.dumps(rows), encoding="utf-8")
+        except Exception:
+            pass
+
+    def journal(self, sday, replay, today, res, used, state_regime=None):
+        """Keep the trading journal of this session up to date (at most once a minute while the market is open, and whenever it changes after that)."""
+        if not res or (not res["trades"] and not res["signals"]):
+            return
+        try:
+            doc = stream_journal.build_day(sday, res, replay, today, {k: v[1] for k, v in self.opt.items() if v[1] is not None}, self.meta,
+                                           {"opening_candles": f"TradingView ({used} candles)" if used else "Fyers", "live_gex_last": self.live,
+                                            "eod_levels_close_shown_on_page": self.eod["close"] if self.eod else None})
+            key = json.dumps(doc, sort_keys=True, default=str)
+            if key == self._jkey or (market_hours() and time.time() - self._jat < 60):
+                return
+            stream_journal.write(doc, JOURNAL)
+            self._jkey, self._jat = key, time.time()
         except Exception:
             pass
 
@@ -217,6 +238,7 @@ class Feed:
             return hit[1] if hit else None
         exp = min(r["XpryDt"] for r in rows)
         sym = next((r.get("symbol") for r in rows if r["XpryDt"] == exp and r["StrkPric"] == key[0] and r["OptnTp"] == typ), None)
+        self.meta[key] = {"symbol": sym, "expiry": exp}
         df = fetch_fyers.fetch_option_candles(sym) if sym else None
         if df is None and hit:
             df = hit[1]                                 # keep the last good candles if this call failed
