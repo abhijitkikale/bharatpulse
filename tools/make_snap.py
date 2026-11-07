@@ -1,4 +1,4 @@
-"""BharatPulse daily snap: a silent 30-second vertical video (1080x1920) of the day's market, made from the dashboard data after the end-of-day build.
+"""BharatPulse daily snap: a silent 56-second vertical video (1080x1920) of the day's market, made from the dashboard data after the end-of-day build.
 
   python tools/make_snap.py                 make today's video from the published dashboard (data/dashboard.json if the page cannot be read)
   python tools/make_snap.py --source local  use data/dashboard.json
@@ -26,8 +26,8 @@ import stream_levels  # noqa: E402
 PAGE_DIR = ROOT / "tools" / "snap_page"
 PAGES = "https://abhijitkikale.github.io/bharatpulse/"
 HISTORY = ROOT / "data" / "snap_history"
-FPS, DUR = 30, 30.0
-SCENES = [("Hook", 0, 3.2), ("Market", 3, 8.2), ("Sectors", 8, 13.2), ("Momentum leaders", 13, 18.2), ("Something unusual", 18, 23.2), ("Levels to watch", 23, 27.2), ("Dashboard link", 27, 30)]
+FPS, DUR = 30, snap_data.DUR
+SCENES = [(name, a, b) for _, name, a, b in snap_data.TIMELINE]
 
 
 def load_data(source):
@@ -72,7 +72,7 @@ def music_credit(path):
 
 
 def mix_music(video, music, out, start=0.0):
-    """Copy the video as it is and add the music: looped if shorter than 30 s, faded in over 0.6 s and out over the last 1.7 s."""
+    """Copy the video as it is and add the music: looped if shorter than the video, faded in over 0.6 s and out over the last 1.7 s."""
     import imageio_ffmpeg
     subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", "-i", str(video), "-ss", str(start), "-stream_loop", "-1", "-i", str(music), "-t", str(DUR),
                     "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-af", f"afade=t=in:st=0:d=0.6,afade=t=out:st={DUR - 1.7}:d=1.7", "-shortest",
@@ -108,12 +108,12 @@ def render(out_dir, preview=False):
             page.goto(url)
             page.wait_for_function("window.snapReady === true", timeout=30000)
             page.wait_for_timeout(400)
-            page.evaluate("t => window.snapSetT(t)", 1.6)
+            page.evaluate("t => window.snapSetT(t)", 1.8)
             page.screenshot(path=str(out_dir / "cover.png"), type="png")
             if preview:
-                for t in (4.5, 10.5, 15.5, 20.5, 25.0, 28.5):
+                for t in [round(a + 3.4, 1) for _, a, _ in SCENES[:-1]] + [55.0]:
                     page.evaluate("t => window.snapSetT(t)", t)
-                    page.screenshot(path=str(out_dir / f"frame_{t:04.1f}.png"), type="png")
+                    page.screenshot(path=str(out_dir / f"frame_{t:05.1f}.png"), type="png")
             else:
                 import imageio_ffmpeg
                 out = out_dir / "snap.mp4"
@@ -160,7 +160,7 @@ def main():
     else:
         music = None
     (out_dir / "caption.txt").write_text(f"{title}\n\n{desc}\n\n{tags}\n", encoding="utf-8")
-    (out_dir / "timing.txt").write_text("Scene timings (seconds), total 30.0, 30 fps, no audio\n" + "\n".join(f"{n:<20} {s:>5.1f} - {e:>5.1f}" for n, s, e in SCENES) + "\n", encoding="utf-8")
+    (out_dir / "timing.txt").write_text(f"Scene timings (seconds), total {DUR:.1f}, {FPS} fps, no audio track in snap.mp4\n" + "\n".join(f"{n:<20} {s:>5.1f} - {e:>5.1f}" for n, s, e in SCENES) + "\n", encoding="utf-8")
     print(f"data: {src} | session {snap['label']} | headline: {snap['hook']['sub']}")
     render(out_dir, preview=a.preview)
     if a.preview:

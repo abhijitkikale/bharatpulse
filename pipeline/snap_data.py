@@ -8,6 +8,11 @@ import datetime as dt
 import stream_levels
 
 HORIZON, WS, WT = "6M", 0.6, 0.4
+# one timeline shared by the page and the video maker: (scene id, name, start s, end s); scenes overlap a little for the fades
+TIMELINE = [("s1", "Hook", 0.0, 4.3), ("s2", "Indices", 3.9, 9.9), ("s3", "Breadth, volatility, valuation", 9.5, 15.9), ("s4", "Sector heat map", 15.5, 22.4),
+            ("s5", "Nifty 50 movers", 22.0, 27.9), ("s6", "Momentum leaders", 27.5, 34.9), ("s7", "Flows and global markets", 34.5, 41.4), ("s8", "Something unusual", 41.0, 46.4),
+            ("s9", "Levels to watch", 46.0, 52.4), ("s10", "Dashboard link", 52.0, 56.0)]
+DUR = 56.0
 SPREV = {"1M": "1W", "3M": "1M", "6M": "3M", "1Y": "6M", "3Y": "1Y", "5Y": "3Y"}
 SYRS = {"3Y": 3, "5Y": 5}
 
@@ -201,12 +206,71 @@ def _fmt_date(D):
     return dt.date.fromisoformat(d) if d else dt.datetime.strptime(D["asof"], "%d %b %Y").date()
 
 
+def _short(name):
+    return name.split(" (")[0]
+
+
+def extras(D, nifty):
+    """The series for the charts. Every part is optional: a missing series only means that chart is left out."""
+    out = {}
+    try:
+        wk = nifty["wk"]
+        out["nifty_weekly"] = {"d": wk["d"][-52:], "c": wk["c"][-52:]}
+    except Exception:
+        pass
+    try:
+        out["index_returns"] = {i["label"]: {p: i["ret"].get(p) for p in ("1D", "1W", "1M", "3M", "6M", "1Y")} for i in D["indices"] if i["group"] == "benchmark" or i["label"] in ("Bank", "Nifty Bank")}
+    except Exception:
+        pass
+    try:
+        b = D["activity"]["breadth"]
+        out["breadth_hist"] = [{"d": d, "adv": a, "dec": c} for d, a, c in zip(b["d"][-25:], b["adv"][-25:], b["dec"][-25:])]
+    except Exception:
+        pass
+    try:
+        v = D["options"]["vix"]
+        out["vix_hist"] = {"d": v["d"][-60:], "v": v["v"][-60:]}
+    except Exception:
+        pass
+    try:
+        pes = nifty["pes"]["pe"]
+        out["pe"] = {"now": nifty["pe"], "pb": nifty.get("pb"), "dy": nifty.get("dy"), "min": min(pes), "max": max(pes), "pct": round(sum(1 for x in pes if x <= nifty["pe"]) / len(pes) * 100)}
+    except Exception:
+        pass
+    out["heat"] = sorted(({"name": i["label"], "chg": i["chg"]} for i in D["indices"] if i["group"] == "sector"), key=lambda x: -x["chg"])
+    try:
+        stk = {s["s"]: s for s in D["stocks"]}
+        mem = [stk[m] for m in D["members"]["Nifty 50"] if m in stk and stk[m].get("d1") is not None]
+        mem.sort(key=lambda x: -x["d1"])
+        out["n50"] = {"up": sum(1 for x in mem if x["d1"] > 0), "n": len(mem), "gainers": [{"s": x["s"], "d1": x["d1"]} for x in mem[:4]], "losers": [{"s": x["s"], "d1": x["d1"]} for x in reversed(mem[-4:])]}
+    except Exception:
+        pass
+    try:
+        out["flows_hist"] = [{"d": f["date"], "FII": f["FII"], "DII": f["DII"]} for f in D["flows"][-10:]]
+    except Exception:
+        pass
+    try:
+        want = ["S&P 500", "NASDAQ", "Dow Jones", "FTSE 100", "DAX", "Nikkei 225", "Hang Seng", "KOSPI", "ASX 200"]
+        g = {_short(x["name"]): x["local"].get("1D") for x in D["global"]}
+        out["global"] = [{"name": n, "chg": g[n]} for n in want if g.get(n)][:8]
+    except Exception:
+        pass
+    try:
+        o = D["options"]["symbols"]["NIFTY"]
+        gx, spot = o["gex"]["nearest"], o["chain"]["spot"]
+        pr = [(a, b) for a, b in zip(gx["profile"]["s"], gx["profile"]["g"]) if abs(a / spot - 1) <= 0.035]
+        out["gex"] = {"s": [a for a, _ in pr], "g": [b for _, b in pr], "flip": gx["flip"], "spot": spot, "call": gx["walls"].get("call_gex"), "put": gx["walls"].get("put_gex")}
+    except Exception:
+        pass
+    return out
+
+
 def build(D, snap_prev=None):
     day = _fmt_date(D)
     nifty = _idx(D, "Nifty 50")
     bank = next((i for i in D["indices"] if i["label"] in ("Bank", "Nifty Bank")), None)
     names = [("Nifty 50", nifty), ("Bank Nifty", bank), ("Midcap 150", _idx(D, "Nifty Midcap 150")), ("Smallcap 250", _idx(D, "Nifty Smallcap 250"))]
-    indices = [{"name": n, "close": i["close"], "chg": i["chg"]} for n, i in names if i]
+    indices = [{"name": n, "close": i["close"], "chg": i["chg"], "ret": {p: i["ret"].get(p) for p in ("1D", "1W", "1M", "3M", "6M", "1Y")}} for n, i in names if i]
     b = (D.get("activity") or {}).get("breadth") or {}
     adv, dec = (b["adv"][-1], b["dec"][-1]) if b.get("adv") else (0, 0)
     pct_adv = adv / (adv + dec) * 100 if adv + dec else 50.0
@@ -215,7 +279,11 @@ def build(D, snap_prev=None):
     sect = sorted(({"name": i["label"], "chg": i["chg"], "week": i["ret"].get("1W")} for i in D["indices"] if i["group"] == "sector"), key=lambda x: -x["chg"])
     sectors = {"best": sect[:3], "worst": list(reversed(sect[-3:]))}
     mom = momentum_rows(D)
-    leaders = [{k: r[k] for k in ("s", "n", "sector", "d1", "r1m", "ret", "p")} for r in mom[:3]]
+    stk_by = {s["s"]: s for s in D["stocks"]}
+    leaders = []
+    for r in mom[:3]:
+        st = stk_by[r["s"]]
+        leaders.append({**{k: r[k] for k in ("s", "n", "sector", "d1", "r1m", "ret", "p")}, "r3m": st["r"].get("3M"), "r6m": st["r"].get("6M"), "ser": [round(x, 2) for x in (st.get("ser") or [])[-120:]]})
     ins = insights(D, nifty, pct_adv, sectors, snap_prev)
     levels = None
     try:
@@ -229,7 +297,8 @@ def build(D, snap_prev=None):
     snap = {"date": str(day), "label": day.strftime("%d %b %Y").lstrip("0"), "weekday": day.strftime("%A"),
             "hook": {"title": "Nifty 50", "close": nifty["close"], "chg": nifty["chg"], "sub": hook_sub},
             "indices": indices, "breadth": {"adv": adv, "dec": dec, "pct_adv": round(pct_adv, 1)}, "vix": vix, "sectors": sectors, "leaders": leaders,
-            "insights": ins[:2], "all_insights": ins[:6], "levels": levels, "link": "abhijitkikale.github.io/bharatpulse"}
+            "insights": ins[:3], "all_insights": ins[:6], "levels": levels, "link": "abhijitkikale.github.io/bharatpulse",
+            "duration": DUR, "timeline": TIMELINE, **extras(D, nifty)}
     return snap
 
 

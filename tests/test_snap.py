@@ -46,7 +46,7 @@ def test_build_summary_picks_the_breadth_divergence_and_stays_factual():
     text = " ".join(i["line"] + " " + i["sub"] for i in snap["all_insights"]).lower()
     for word in ("buy ", "sell ", "target", "recommend"):
         assert word not in text                                                                           # facts only, no advice words
-    assert snap["hook"]["sub"] == first["line"] and len(snap["insights"]) == 2
+    assert snap["hook"]["sub"] == first["line"] and len(snap["insights"]) == 3
 
 
 def test_quiet_day_has_a_plain_headline_and_the_caption_carries_the_disclaimer():

@@ -13,29 +13,29 @@ html,body{margin:0;width:1080px;height:1920px;background:var(--bg);color:var(--t
 .top img{height:110px}.top .d{text-align:right;font-size:40px;color:var(--mut);font-weight:600;line-height:1.25}.top .d b{color:var(--txt);font-size:46px}
 #bar{position:absolute;left:0;top:0;height:10px;width:0;background:linear-gradient(90deg,var(--acc),var(--pos))}
 .foot{position:absolute;left:56px;right:56px;top:1566px;font-size:30px;color:var(--mut);text-align:center;line-height:1.35}
-.scene{position:absolute;left:56px;right:56px;top:260px;height:1280px;opacity:0}
-.h{font-size:58px;font-weight:800;letter-spacing:2px;color:var(--acc);margin-bottom:10px}
-.sub{font-size:36px;color:var(--mut);margin-bottom:40px;line-height:1.3}
-.big{font-weight:800;line-height:1.05}
+.scene{position:absolute;left:56px;right:56px;top:250px;height:1300px;opacity:0}
+.h{font-size:56px;font-weight:800;letter-spacing:2px;color:var(--acc);margin-bottom:6px}
+.sub{font-size:34px;color:var(--mut);margin-bottom:26px;line-height:1.3}
+.lab{font-size:34px;font-weight:800;letter-spacing:2px;color:var(--mut);margin:0 0 8px}
 .pill{display:inline-block;border-radius:60px;padding:6px 34px;font-weight:800}
 .pos{color:var(--pos)}.neg{color:var(--neg)}.bgpos{background:rgba(46,204,154,.18);color:var(--pos)}.bgneg{background:rgba(239,91,91,.18);color:var(--neg)}
-.row{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:2px solid var(--line);border-radius:26px;padding:26px 34px;margin-bottom:22px;font-size:54px;font-weight:700}
-.row .n{flex:1}.row .c{width:270px;text-align:right;color:var(--mut);font-size:46px;font-weight:600}
-.bw{position:relative;height:60px;border-radius:30px;overflow:hidden;background:rgba(239,91,91,.9);margin:10px 0 14px}
-.bw i{position:absolute;left:0;top:0;bottom:0;background:var(--pos)}
-.lr{display:flex;justify-content:space-between;font-size:44px;font-weight:700}
-.sec{margin-bottom:20px}.sec .t{display:flex;justify-content:space-between;font-size:48px;font-weight:700;margin-bottom:8px}.sec .t small{color:var(--mut);font-size:34px;font-weight:600}
-.sec .tr{height:44px;border-radius:22px;background:rgba(255,255,255,.06);overflow:hidden}.sec .tr i{display:block;height:100%;border-radius:22px}
-.card{background:var(--card);border:2px solid var(--line);border-radius:28px;padding:20px 34px;margin-bottom:18px}
-.card .rk{font-size:34px;color:var(--gold);font-weight:800}.card .tk{font-size:70px;font-weight:800;line-height:1.02}.card .nm{font-size:30px;color:var(--mut);margin:2px 0 8px}
-.chip{display:inline-block;background:rgba(76,201,240,.15);color:var(--acc);border-radius:40px;padding:2px 20px;font-size:30px;font-weight:700;margin-right:12px}
-.card .st{display:flex;gap:44px;margin-top:6px;font-size:42px;font-weight:700}.card .st small{display:block;color:var(--mut);font-size:26px;font-weight:600}
-.ins{background:var(--card);border:2px solid var(--line);border-radius:30px;padding:36px 40px;margin-bottom:30px}
-.ins .k{font-size:36px;font-weight:800;letter-spacing:3px;color:var(--gold);margin-bottom:12px}.ins .l{font-size:60px;font-weight:800;line-height:1.15}.ins .s{font-size:38px;color:var(--mut);margin-top:14px}
-.lv{display:flex;justify-content:space-between;align-items:center;border-radius:24px;padding:22px 34px;margin-bottom:16px;font-size:52px;font-weight:700;border:2px solid var(--line);background:var(--card)}
-.lv span:last-child{font-variant-numeric:tabular-nums}.lv.spot{border-color:var(--txt);background:#1a2432}
-.reg{font-size:44px;font-weight:800;margin-bottom:24px}
+.panel{background:var(--card);border:2px solid var(--line);border-radius:28px;padding:20px 30px;margin-bottom:18px}
 .center{text-align:center}
+svg{display:block;width:100%;overflow:visible}
+.stat{display:flex;gap:18px;margin-top:22px}.stat>div{flex:1;background:var(--card);border:2px solid var(--line);border-radius:24px;padding:22px 10px;text-align:center;font-size:52px;font-weight:800}.stat small{display:block;font-size:28px;color:var(--mut);font-weight:600}
+.ic{display:flex;align-items:center;justify-content:space-between}.ic .n{font-size:48px;font-weight:800}.ic .c{font-size:34px;color:var(--mut);margin-left:14px;font-weight:600}
+.heat{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.tile{border-radius:18px;padding:8px 14px;border:3px solid transparent;min-height:104px;display:flex;flex-direction:column;justify-content:center}
+.tile .t{font-size:30px;font-weight:700;line-height:1.1}.tile .v{font-size:42px;font-weight:800}
+.hb{display:flex;align-items:center;gap:14px;margin:var(--hbm,9px) 0}.hb .n{width:270px;font-size:40px;font-weight:700}.hb .tr{flex:1;height:var(--hbh,44px);background:rgba(255,255,255,.06);border-radius:30px;overflow:hidden}.hb .tr i{display:block;height:100%;border-radius:30px;transform-origin:0 50%}.hb .v{width:160px;text-align:right;font-size:40px;font-weight:800}
+.mc{background:var(--card);border:2px solid var(--line);border-radius:28px;padding:22px 30px;margin-bottom:20px}
+.mc .tk{font-size:68px;font-weight:800;line-height:1}.mc .nm{font-size:28px;color:var(--mut)}
+.chip{display:inline-block;background:rgba(76,201,240,.15);color:var(--acc);border-radius:40px;padding:2px 20px;font-size:28px;font-weight:700}
+.ms{display:flex;gap:34px;font-size:42px;font-weight:800;margin-top:14px}.ms small{display:block;color:var(--mut);font-size:24px;font-weight:600}
+.ins{background:var(--card);border:2px solid var(--line);border-radius:30px;padding:34px 40px;margin-bottom:30px}
+.ins .k{font-size:38px;font-weight:800;letter-spacing:3px;color:var(--gold);margin-bottom:14px}.ins .l{font-size:62px;font-weight:800;line-height:1.15}.ins .s{font-size:40px;color:var(--mut);margin-top:16px}
+.lv{display:flex;justify-content:space-between;align-items:center;border-radius:20px;padding:10px 30px;margin-bottom:10px;font-size:44px;font-weight:700;border:2px solid var(--line);background:var(--card)}
+.lv.spot{border-color:var(--txt);background:#1a2432}
 .url{font-size:56px;font-weight:800;color:var(--acc);word-break:break-all;margin:30px 0}
 .fine{font-size:34px;color:var(--mut);line-height:1.4}
 </style>
@@ -44,78 +44,112 @@ html,body{margin:0;width:1080px;height:1920px;background:var(--bg);color:var(--t
 <div id="stage">
   <div id="bar"></div>
   <div class="top"><img src="logo.png" alt="BharatPulse"><div class="d"><b id="d1"></b><br><span id="d2"></span></div></div>
-
-  <div class="scene" id="s1"><div class="center" style="padding-top:230px"><div class="h" style="font-size:64px;color:var(--mut)" id="h-t"></div>
-    <div class="big" style="font-size:190px" id="h-c"></div><div style="margin-top:34px"><span class="pill big" style="font-size:130px" id="h-p"></span></div>
-    <div class="big" style="font-size:62px;line-height:1.2;margin-top:90px;padding:0 20px" id="h-s"></div></div></div>
-
-  <div class="scene" id="s2"><div class="h">MARKET</div><div class="sub" id="s2-sub"></div><div id="s2-rows"></div>
-    <div style="margin-top:34px" id="s2-b"><div class="bw" id="bw"><i id="bwi"></i></div><div class="lr"><span class="pos" id="bu"></span><span class="neg" id="bd"></span></div></div>
-    <div style="margin-top:30px;font-size:50px;font-weight:700" id="s2-v"></div></div>
-
-  <div class="scene" id="s3"><div class="h">SECTORS</div><div class="sub">Day's change, with the weekly move beside it</div>
-    <div style="font-size:38px;font-weight:800;color:var(--pos);margin:6px 0 14px">LEADING</div><div id="s3-b"></div>
-    <div style="font-size:38px;font-weight:800;color:var(--neg);margin:26px 0 14px">LAGGING</div><div id="s3-w"></div></div>
-
-  <div class="scene" id="s4"><div class="h">MOMENTUM LEADERS</div><div class="sub" style="margin-bottom:26px">Top of our sector + stock momentum ranking. A factual list, not advice.</div><div id="s4-c"></div></div>
-
-  <div class="scene" id="s5"><div class="h">SOMETHING UNUSUAL</div><div class="sub">What stood out in today's data</div><div id="s5-i"></div></div>
-
-  <div class="scene" id="s6"><div class="h">LEVELS TO WATCH</div><div class="sub">Nifty options data for the next session. Information only.</div><div class="reg" id="s6-r"></div><div id="s6-l"></div></div>
-
-  <div class="scene center" id="s7" style="padding-top:60px"><img src="logo.png" style="width:760px" alt=""><div class="h" style="font-size:54px;color:var(--txt);margin-top:40px">FULL DASHBOARD</div>
-    <div class="url" id="s7-u"></div><div class="fine" style="font-size:42px;color:var(--txt)">Sectors · Momentum · Options · Flows</div>
-    <div class="fine" style="margin-top:70px">Not SEBI registered. This is not investment advice or a recommendation to buy or sell anything. Data is for education only and may be delayed or wrong.</div></div>
-
+  <div id="scenes"></div>
   <div class="foot">Not SEBI registered · Not financial advice · Education only</div>
 </div>
 <script>
 const $=id=>document.getElementById(id);
-const DUR=30;
-const SC=[['s1',0,3.2],['s2',3,8.2],['s3',8,13.2],['s4',13,18.2],['s5',18,23.2],['s6',23,27.2],['s7',27,30]];
 const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
 const ease=x=>1-Math.pow(1-clamp(x),3);
-const prog=(t,t0,d)=>ease((t-t0)/d);
 const fmt=(x,n=2)=>Number(x).toLocaleString('en-IN',{minimumFractionDigits:n,maximumFractionDigits:n});
-const sgn=x=>(x>0?'+':'')+fmt(x,2)+'%';
+const sgn=(x,n=2)=>(x>0?'+':'')+fmt(x,n)+'%';
 const cl=x=>x>=0?'pos':'neg';
-let S=null;
+const col=x=>x>=0?'#2ecc9a':'#ef5b5b';
+let S=null,TL=[],DUR=56;
+
+// ---------- chart helpers (inline SVG; animated by data-kind attributes) ----------
+function path(vals,w,h,pad=6,lo=null,hi=null){lo=lo??Math.min(...vals);hi=hi??Math.max(...vals);const sp=(hi-lo)||1;
+  return vals.map((v,i)=>[pad+i*(w-2*pad)/Math.max(vals.length-1,1),pad+(1-(v-lo)/sp)*(h-2*pad)])}
+function spark(vals,w,h,color,opts={}){const pts=path(vals,w,h,10),d='M'+pts.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L'),area=d+` L${pts[pts.length-1][0]} ${h} L${pts[0][0]} ${h} Z`,last=pts[pts.length-1];
+  return `<svg viewBox="0 0 ${w} ${h}" style="height:${h}px"><defs><linearGradient id="g${color.slice(1)}${w}${h}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".35"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+   <path d="${area}" fill="url(#g${color.slice(1)}${w}${h})" data-kind="fade" data-delay="${opts.delay??0.5}" data-dur="1.2"/>
+   <path d="${d}" fill="none" stroke="${color}" stroke-width="${opts.sw??5}" stroke-linejoin="round" stroke-linecap="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" data-kind="draw" data-delay="${opts.delay??0.5}" data-dur="${opts.dur??1.6}"/>
+   <circle cx="${last[0]}" cy="${last[1]}" r="${opts.r??9}" fill="${color}" data-kind="fade" data-delay="${(opts.delay??0.5)+(opts.dur??1.6)-0.2}" data-dur="0.3"/></svg>`}
+function vbars(items,w,h,delay=0.4){const mx=Math.max(...items.map(i=>Math.abs(i.v)),0.1),zero=h/2,bw=w/items.length;
+  return `<svg viewBox="0 0 ${w} ${h+50}" style="height:${h+50}px"><line x1="0" x2="${w}" y1="${zero}" y2="${zero}" stroke="#263040" stroke-width="2"/>`+items.map((it,k)=>{const bh=Math.max(Math.abs(it.v)/mx*(h/2-26),3),x=k*bw+bw*0.2,y=it.v>=0?zero-bh:zero;
+    return `<rect x="${x}" y="${y}" width="${bw*0.6}" height="${bh}" rx="8" fill="${col(it.v)}" style="transform-box:fill-box;transform-origin:50% ${it.v>=0?'100%':'0%'}" data-kind="growy" data-delay="${delay+k*0.12}" data-dur="0.7"/>
+    <text x="${x+bw*0.3}" y="${it.v>=0?y-8:y+bh+26}" text-anchor="middle" font-size="26" font-weight="700" fill="${col(it.v)}" data-kind="fade" data-delay="${delay+0.4+k*0.12}" data-dur="0.4">${it.v==null?'':(it.v>0?'+':'')+it.v.toFixed(1)}</text>
+    <text x="${x+bw*0.3}" y="${h+40}" text-anchor="middle" font-size="26" font-weight="600" fill="#8b97a8">${it.l}</text>`}).join('')+'</svg>'}
+function cols(vals,w,h,hl,delay=0.4){const bw=w/vals.length;
+  return `<svg viewBox="0 0 ${w} ${h}" style="height:${h}px"><line x1="0" x2="${w}" y1="${h/2}" y2="${h/2}" stroke="#4a5568" stroke-width="2" stroke-dasharray="8 8"/>`+vals.map((v,k)=>{const bh=Math.max(v/100*h,4),last=k===vals.length-1;
+    return `<rect x="${k*bw+bw*0.12}" y="${h-bh}" width="${bw*0.76}" height="${bh}" rx="6" fill="${v>=50?'#2ecc9a':'#ef5b5b'}" opacity="${last?1:0.55}" style="transform-box:fill-box;transform-origin:50% 100%" data-kind="growy" data-delay="${delay+k*0.04}" data-dur="0.5"/>`}).join('')+`<text x="${w}" y="${h/2-10}" text-anchor="end" font-size="26" fill="#8b97a8">50%</text></svg>`}
+function range(now,lo,hi,pct,w=940){const x=(now-lo)/(hi-lo)*w;
+  return `<svg viewBox="0 0 ${w} 110" style="height:110px"><rect x="0" y="40" width="${w}" height="30" rx="15" fill="url(#rg)"/><defs><linearGradient id="rg"><stop offset="0" stop-color="#2ecc9a"/><stop offset=".5" stop-color="#f5c542"/><stop offset="1" stop-color="#ef5b5b"/></linearGradient></defs>
+   <g data-kind="left" data-delay="1.2" data-dur="0.8"><polygon points="${x-14},20 ${x+14},20 ${x},46" fill="#e6edf3"/><circle cx="${x}" cy="55" r="22" fill="#0b0f16" stroke="#e6edf3" stroke-width="6"/></g>
+   <text x="0" y="104" font-size="28" fill="#8b97a8">${fmt(lo,1)} low</text><text x="${w}" y="104" text-anchor="end" font-size="28" fill="#8b97a8">${fmt(hi,1)} high</text></svg>`}
+function flowsChart(f,w,h){const mx=Math.max(...f.flatMap(x=>[Math.abs(x.FII),Math.abs(x.DII)]),1),zero=h/2,gw=w/f.length;
+  return `<svg viewBox="0 0 ${w} ${h+40}" style="height:${h+40}px"><line x1="0" x2="${w}" y1="${zero}" y2="${zero}" stroke="#4a5568" stroke-width="2"/>`+f.map((x,k)=>['FII','DII'].map((key,j)=>{const v=x[key],bh=Math.max(Math.abs(v)/mx*(h/2-8),3),bx=k*gw+gw*0.1+j*gw*0.4,y=v>=0?zero-bh:zero;
+    return `<rect x="${bx}" y="${y}" width="${gw*0.36}" height="${bh}" rx="5" fill="${key==='FII'?'#4cc9f0':'#f5c542'}" opacity="${v>=0?1:0.55}" style="transform-box:fill-box;transform-origin:50% ${v>=0?'100%':'0%'}" data-kind="growy" data-delay="${0.4+k*0.08}" data-dur="0.6"/>`}).join('')+`<text x="${k*gw+gw/2}" y="${h+32}" text-anchor="middle" font-size="24" fill="#8b97a8">${x.d.slice(8)}</text>`).join('')+'</svg>'}
+function gexChart(g,w,h){const sx=Math.min(...g.s),ex=Math.max(...g.s),ymx=Math.max(...g.g.map(Math.abs),1),X=v=>(v-sx)/(ex-sx)*w,Y=v=>h/2-v/ymx*(h/2-12);
+  const pts=g.s.map((s,i)=>[X(s),Y(g.g[i])]),line='M'+pts.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L');
+  const mk=(v,c,t,dy)=>v==null||v<sx||v>ex?'':`<line x1="${X(v)}" x2="${X(v)}" y1="10" y2="${h}" stroke="${c}" stroke-width="4" stroke-dasharray="10 8"/><text x="${X(v)}" y="${dy}" text-anchor="middle" font-size="26" font-weight="800" fill="${c}">${t}</text>`;
+  return `<svg viewBox="0 0 ${w} ${h+10}" style="height:${h+10}px"><defs><clipPath id="up"><rect x="0" y="0" width="${w}" height="${h/2}"/></clipPath><clipPath id="dn"><rect x="0" y="${h/2}" width="${w}" height="${h/2}"/></clipPath></defs>
+   <path d="${line} L${w} ${h/2} L0 ${h/2} Z" fill="rgba(46,204,154,.30)" clip-path="url(#up)" data-kind="fade" data-delay="0.4" data-dur="1"/><path d="${line} L${w} ${h/2} L0 ${h/2} Z" fill="rgba(239,91,91,.30)" clip-path="url(#dn)" data-kind="fade" data-delay="0.4" data-dur="1"/>
+   <line x1="0" x2="${w}" y1="${h/2}" y2="${h/2}" stroke="#4a5568" stroke-width="2"/><path d="${line}" fill="none" stroke="#e6edf3" stroke-width="5" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" data-kind="draw" data-delay="0.3" data-dur="1.6"/>
+   <g data-kind="fade" data-delay="1.8" data-dur="0.5">${mk(g.flip,'#f5a623','FLIP',34)}${mk(g.put,'#66c2ff','PUT',66)}${mk(g.call,'#ff9f6b','CALL',98)}${mk(g.spot,'#e6edf3','CLOSE',h-6)}</g></svg>`}
+function hbars(items,key,fmtv,delay=0.4){const mx=Math.max(...items.map(i=>Math.abs(i[key])),0.1);
+  return items.map((it,k)=>`<div class="hb"><span class="n">${it.name||it.s}</span><span class="tr"><i style="width:${Math.abs(it[key])/mx*100}%;background:${col(it[key])}" data-kind="growx" data-delay="${delay+k*0.18}" data-dur="0.7"></i></span><span class="v ${cl(it[key])}">${fmtv(it[key])}</span></div>`).join('')}
+
+// ---------- build the scenes ----------
 function build(s){
-  S=s;$('d1').textContent=s.weekday;$('d2').textContent=s.label;
-  $('h-t').textContent=s.hook.title.toUpperCase()+' CLOSED AT';$('h-c').textContent=fmt(s.hook.close,0);
-  const p=$('h-p');p.textContent=sgn(s.hook.chg);p.className='pill big '+(s.hook.chg>=0?'bgpos':'bgneg');$('h-s').textContent=s.hook.sub;
-  $('s2-sub').textContent=s.breadth.adv.toLocaleString('en-IN')+' stocks up, '+s.breadth.dec.toLocaleString('en-IN')+' down';
-  $('s2-rows').innerHTML=s.indices.map(i=>`<div class="row sr"><span class="n">${i.name}</span><span class="c">${fmt(i.close,0)}</span><span class="pill ${i.chg>=0?'bgpos':'bgneg'}" style="font-size:50px">${sgn(i.chg)}</span></div>`).join('');
-  $('bwi').style.width=s.breadth.pct_adv+'%';$('bu').textContent=s.breadth.adv.toLocaleString('en-IN')+' advancing';$('bd').textContent=s.breadth.dec.toLocaleString('en-IN')+' declining';
-  $('s2-v').innerHTML=s.vix?`India VIX <b>${fmt(s.vix.value,2)}</b> <span class="${cl(-s.vix.chg)}">(${s.vix.chg>0?'+':''}${s.vix.chg}%)</span>`:'';
-  const mx=Math.max(...[...s.sectors.best,...s.sectors.worst].map(x=>Math.abs(x.chg)),0.5);
-  const sec=(x,i,k)=>`<div class="sec ${k}"><div class="t"><span>${x.name}</span><span class="${cl(x.chg)}">${sgn(x.chg)} <small>wk ${x.week==null?'-':sgn(x.week)}</small></span></div><div class="tr"><i data-w="${Math.abs(x.chg)/mx*100}" style="width:0;background:${x.chg>=0?'var(--pos)':'var(--neg)'}"></i></div></div>`;
-  $('s3-b').innerHTML=s.sectors.best.map((x,i)=>sec(x,i,'sb')).join('');$('s3-w').innerHTML=s.sectors.worst.map((x,i)=>sec(x,i,'sw')).join('');
-  $('s4-c').innerHTML=s.leaders.map((l,i)=>`<div class="card sc"><div class="rk">#${i+1}</div><div class="tk">${l.s}</div><div class="nm">${l.n}</div><span class="chip">${l.sector}</span>
-    <div class="st"><div><small>TODAY</small><span class="${cl(l.d1)}">${sgn(l.d1||0)}</span></div><div><small>1 MONTH</small><span class="${cl(l.r1m)}">${sgn(l.r1m||0)}</span></div></div></div>`).join('');
-  $('s5-i').innerHTML=(s.insights.length?s.insights:[{title:'TODAY',line:s.breadth.adv.toLocaleString('en-IN')+' stocks advanced and '+s.breadth.dec.toLocaleString('en-IN')+' declined',sub:''}]).map(i=>`<div class="ins si"><div class="k">${i.title}</div><div class="l">${i.line}</div>${i.sub?`<div class="s">${i.sub}</div>`:''}</div>`).join('');
-  const L=s.levels;
-  if(L){const pos=L.regime==='POSITIVE';$('s6-r').innerHTML=L.regime?`<span class="${pos?'pos':'neg'}">${L.regime} GAMMA REGIME</span><br><span style="font-size:36px;color:var(--mut);font-weight:600">${pos?'Dealers net long gamma: moves tend to be dampened':'Dealers net short gamma: moves tend to be amplified'}</span>`:'';
-    const rows=[['Call wall',L.call_wall,'#ff9f6b'],['Gamma flip',L.flip,'#f5a623'],['Put wall',L.put_wall,'#66c2ff'],['Max pain',L.max_pain,'#d4e157'],['Close',L.spot,'#e6edf3']].filter(r=>r[1]!=null).sort((a,b)=>b[1]-a[1]);
-    $('s6-l').innerHTML=rows.map(r=>`<div class="lv ${r[0]==='Close'?'spot':''} sl"><span style="color:${r[2]}">${r[0]}</span><span>${fmt(r[1],0)}</span></div>`).join('')}
-  $('s7-u').textContent=s.link;
+  S=s;TL=s.timeline;DUR=s.duration;$('d1').textContent=s.weekday;$('d2').textContent=s.label;
+  const sc={};
+  const wk=s.nifty_weekly,r1y=wk?(wk.c[wk.c.length-1]/wk.c[0]-1)*100:null;
+  sc.s1=`<div class="center" style="padding-top:20px"><div class="lab" style="font-size:44px">NIFTY 50 CLOSED AT</div>
+    <div style="font-size:176px;font-weight:800;line-height:1.05" data-kind="pop" data-delay="0.1" data-dur="0.8">${fmt(s.hook.close,0)}</div>
+    <div style="margin-top:10px"><span class="pill bg${s.hook.chg>=0?'pos':'neg'}" style="font-size:110px" data-kind="up" data-delay="0.5" data-dur="0.6">${sgn(s.hook.chg)}</span></div>
+    <div style="margin-top:36px;text-align:left">${wk?`<div class="lab">PAST YEAR, WEEKLY CLOSES</div>`+spark(wk.c,968,470,s.hook.chg>=0?'#2ecc9a':'#ef5b5b',{delay:0.8,dur:2}):''}</div>
+    <div class="stat">${[['1 WEEK',s.index_returns&&s.index_returns['Nifty 50']?s.index_returns['Nifty 50']['1W']:null],['1 MONTH',s.index_returns&&s.index_returns['Nifty 50']?s.index_returns['Nifty 50']['1M']:null],['1 YEAR',r1y]].map((x,i)=>x[1]==null?'':`<div data-kind="up" data-delay="${2+i*0.25}" data-dur="0.5"><small>${x[0]}</small><span class="${cl(x[1])}">${sgn(x[1],1)}</span></div>`).join('')}</div>
+    <div style="font-size:54px;font-weight:800;line-height:1.2;margin-top:44px;padding:0 20px" data-kind="up" data-delay="2.6" data-dur="0.6">${s.hook.sub}</div></div>`;
+  sc.s2=`<div class="h">INDICES</div><div class="sub">Day's change, and how each index did over longer periods</div>`+s.indices.map((i,k)=>`<div class="panel" data-kind="left" data-delay="${0.3+k*0.5}" data-dur="0.6">
+    <div class="ic"><span><span class="n">${i.name}</span><span class="c">${fmt(i.close,0)}</span></span><span class="pill bg${i.chg>=0?'pos':'neg'}" style="font-size:44px">${sgn(i.chg)}</span></div>
+    ${vbars(['1D','1W','1M','3M','6M','1Y'].filter(p=>i.ret[p]!=null).map(p=>({l:p,v:i.ret[p]})),900,104,0.6+k*0.5)}</div>`).join('');
+  const bh=s.breadth_hist||[],pcts=bh.map(x=>x.adv/(x.adv+x.dec)*100),vx=s.vix_hist,pe=s.pe;
+  sc.s3=`<div class="h">BREADTH · VIX · VALUATION</div>`+
+    (pcts.length?`<div class="panel"><div class="lab">SHARE OF STOCKS ADVANCING, LAST ${pcts.length} DAYS <span style="float:right;color:${pcts[pcts.length-1]>=50?'#2ecc9a':'#ef5b5b'}">TODAY ${pcts[pcts.length-1].toFixed(0)}%</span></div>${cols(pcts,900,300,true,0.4)}</div>`:'')+
+    (vx?`<div class="panel"><div class="lab">INDIA VIX, LAST 60 SESSIONS <span style="float:right;color:#f5c542">${fmt(vx.v[vx.v.length-1],1)}</span></div>${spark(vx.v,900,300,'#f5c542',{delay:1.2,dur:1.6,sw:5})}</div>`:'')+
+    (pe?`<div class="panel"><div class="lab">NIFTY P/E ${fmt(pe.now,1)} AGAINST ITS 6-YEAR RANGE</div>${range(pe.now,pe.min,pe.max,pe.pct)}<div style="font-size:36px;color:#8b97a8;margin-top:6px" data-kind="fade" data-delay="2" data-dur="0.5">Higher than only ${pe.pct}% of the last 6 years · P/B ${fmt(pe.pb,2)} · dividend yield ${fmt(pe.dy,2)}%</div></div>`:'');
+  const heat=s.heat||[],mxh=Math.max(...heat.map(x=>Math.abs(x.chg)),1);
+  sc.s4=`<div class="h">ALL SECTORS TODAY</div><div class="sub">Sorted from strongest to weakest</div><div class="heat">`+heat.map((x,k)=>{const a=0.18+0.62*Math.abs(x.chg)/mxh,c=x.chg>=0?'46,204,154':'239,91,91';
+    return `<div class="tile" style="background:rgba(${c},${a.toFixed(2)});border-color:rgba(${c},.7)" data-kind="pop" data-delay="${0.3+k*0.12}" data-dur="0.5"><span class="t">${x.name}</span><span class="v">${sgn(x.chg,1)}</span></div>`}).join('')+'</div>';
+  const n5=s.n50;
+  sc.s5=`<div class="h">NIFTY 50: BIGGEST MOVERS</div>`+(n5?`<div class="sub">${n5.up} of ${n5.n} Nifty 50 stocks closed higher</div>
+    <div class="lab" style="color:#2ecc9a;margin-top:14px;font-size:40px">GAINERS</div><div style="--hbm:20px;--hbh:64px">${hbars(n5.gainers,'d1',v=>sgn(v,1),0.4)}</div>
+    <div class="lab" style="color:#ef5b5b;margin-top:44px;font-size:40px">LOSERS</div><div style="--hbm:20px;--hbh:64px">${hbars(n5.losers,'d1',v=>sgn(v,1),1.6)}</div>
+    <div class="panel" style="margin-top:50px" data-kind="up" data-delay="2.8" data-dur="0.6"><div class="lab">NIFTY 50 STOCKS UP TODAY</div><div style="height:46px;border-radius:23px;background:rgba(239,91,91,.9);overflow:hidden"><i style="display:block;height:100%;width:${n5.up/n5.n*100}%;background:#2ecc9a"></i></div></div>`:'');
+  sc.s6=`<div class="h">MOMENTUM LEADERS</div><div class="sub">Top of our sector + stock momentum ranking. A factual list, not advice.</div>`+s.leaders.map((l,k)=>`<div class="mc" data-kind="up" data-delay="${0.3+k*0.9}" data-dur="0.6">
+    <div style="display:flex;gap:20px"><div style="flex:1"><div style="font-size:34px;color:#f5c542;font-weight:800">#${k+1}</div><div class="tk">${l.s}</div><div class="nm">${l.n}</div><div style="margin-top:8px"><span class="chip">${l.sector}</span></div></div>
+    <div style="width:480px">${l.ser&&l.ser.length?spark(l.ser,480,160,col(l.r6m??1),{delay:0.6+k*0.9,dur:1.4,sw:4,r:7}):''}<div style="font-size:24px;color:#8b97a8;text-align:right">last ~6 months</div></div></div>
+    <div class="ms">${[['TODAY',l.d1],['1 MONTH',l.r1m],['3 MONTHS',l.r3m],['6 MONTHS',l.r6m]].map(x=>x[1]==null?'':`<div><small>${x[0]}</small><span class="${cl(x[1])}">${sgn(x[1],1)}</span></div>`).join('')}</div></div>`).join('');
+  const fh=s.flows_hist,gl=s.global;
+  sc.s7=`<div class="h">FLOWS · GLOBAL CUES</div>`+(fh?`<div class="panel"><div class="lab">FII <span style="color:#4cc9f0">■</span> AND DII <span style="color:#f5c542">■</span> NET BUYING, LAST ${fh.length} SESSIONS (₹ CR)</div>${flowsChart(fh,900,420)}
+    <div style="font-size:36px;font-weight:700;margin-top:4px"><span style="color:#4cc9f0">FII ${fh[fh.length-1].FII>0?'bought':'sold'} ₹${fmt(Math.abs(fh[fh.length-1].FII),0)} cr</span> · <span style="color:#f5c542">DII ${fh[fh.length-1].DII>0?'bought':'sold'} ₹${fmt(Math.abs(fh[fh.length-1].DII),0)} cr</span></div></div>`:'')+
+    (gl&&gl.length?`<div class="panel"><div class="lab">GLOBAL MARKETS, LATEST DAILY CHANGE</div><div style="--hbm:14px;--hbh:50px">${hbars(gl,'chg',v=>sgn(v,1),1.4)}</div></div>`:'');
+  sc.s8=`<div class="h">SOMETHING UNUSUAL</div><div class="sub">What stood out in today's data</div>`+(s.insights.length?s.insights:[{title:'TODAY',line:s.breadth.adv.toLocaleString('en-IN')+' stocks advanced and '+s.breadth.dec.toLocaleString('en-IN')+' declined',sub:''}]).map((i,k)=>`<div class="ins" data-kind="left" data-delay="${0.4+k*1.1}" data-dur="0.6"><div class="k">${i.title}</div><div class="l">${i.line}</div>${i.sub?`<div class="s">${i.sub}</div>`:''}</div>`).join('');
+  const L=s.levels,g=s.gex;
+  sc.s9=`<div class="h">LEVELS TO WATCH</div><div class="sub">Nifty options data for the next session. Information only.</div>`+(L?`<div style="font-size:42px;font-weight:800;margin-bottom:8px" data-kind="fade" data-delay="0.2" data-dur="0.5"><span class="${L.regime==='POSITIVE'?'pos':'neg'}">${L.regime||''} GAMMA REGIME</span><br><span style="font-size:32px;color:#8b97a8;font-weight:600">${L.regime==='POSITIVE'?'dealers net long gamma: moves tend to be dampened':'dealers net short gamma: moves tend to be amplified'}</span></div>`:'')+
+    (g?`<div class="panel"><div class="lab">GAMMA EXPOSURE BY INDEX LEVEL</div>${gexChart(g,900,340)}</div>`:'')+
+    (L?[['Call wall',L.call_wall,'#ff9f6b'],['Gamma flip',L.flip,'#f5a623'],['Put wall',L.put_wall,'#66c2ff'],['Max pain',L.max_pain,'#d4e157'],['Close',L.spot,'#e6edf3']].filter(r=>r[1]!=null).sort((a,b)=>b[1]-a[1]).map((r,k)=>`<div class="lv ${r[0]==='Close'?'spot':''}" data-kind="left" data-delay="${1.2+k*0.3}" data-dur="0.5"><span style="color:${r[2]}">${r[0]}</span><span>${fmt(r[1],0)}</span></div>`).join(''):'');
+  sc.s10=`<div class="center" style="padding-top:90px"><img src="logo.png" style="width:760px" alt=""><div class="h" style="font-size:54px;color:var(--txt);margin-top:40px">FULL DASHBOARD</div><div class="url">${s.link}</div>
+    <div class="fine" style="font-size:42px;color:var(--txt)">Sectors · Momentum · Options · Flows</div><div class="fine" style="margin-top:70px">Not SEBI registered. This is not investment advice or a recommendation to buy or sell anything. Data is for education only and may be delayed or wrong.</div></div>`;
+  $('scenes').innerHTML=TL.map(([id,,a,b])=>`<div class="scene" id="${id}" data-start="${a}" data-end="${b}">${sc[id]||''}</div>`).join('');
 }
-function set(el,a,y=0){el.style.opacity=a;el.style.transform=`translateY(${y}px)`}
+// ---------- animation: every scene fades in and out; [data-kind] elements animate from their delay ----------
 function render(t){
   $('bar').style.width=(clamp(t/DUR)*100)+'%';
-  SC.forEach(([id,a,b])=>{const e=$(id),fi=clamp((t-a)/0.45),fo=id==='s7'?1:clamp((b-t)/0.45);e.style.opacity=Math.min(fi,fo).toFixed(3);e.style.transform=`translateY(${(1-ease(fi))*40}px)`});
-  // scene-internal animations
-  const rel=(a,t0,d)=>prog(t,a+t0,d);
-  const hc=$('h-c');hc.style.transform=`scale(${0.85+0.15*rel(0,0.1,0.8)})`;
-  document.querySelectorAll('.sr').forEach((e,i)=>{const p=rel(3,0.4+i*0.35,0.6);e.style.opacity=p;e.style.transform=`translateX(${(1-p)*120}px)`});
-  const bp=rel(3,1.9,1.2);$('bwi').style.width=(S?S.breadth.pct_adv*bp:0)+'%';$('s2-b').style.opacity=rel(3,1.7,0.5);$('s2-v').style.opacity=rel(3,3.3,0.5);
-  document.querySelectorAll('.sec').forEach((e,i)=>{const p=rel(8,0.5+i*0.35,0.7);e.style.opacity=p;e.querySelector('i').style.width=(parseFloat(e.querySelector('i').dataset.w)*p)+'%'});
-  document.querySelectorAll('.sc').forEach((e,i)=>{const p=rel(13,0.5+i*0.5,0.6);e.style.opacity=p;e.style.transform=`translateY(${(1-p)*80}px)`});
-  document.querySelectorAll('.si').forEach((e,i)=>{const p=rel(18,0.5+i*0.9,0.6);e.style.opacity=p;e.style.transform=`translateX(${(1-p)*-120}px)`});
-  $('s6-r').style.opacity=rel(23,0.4,0.5);
-  document.querySelectorAll('.sl').forEach((e,i)=>{const p=rel(23,0.8+i*0.3,0.5);e.style.opacity=p;e.style.transform=`translateX(${(1-p)*100}px)`});
+  TL.forEach(([id,,a,b])=>{const e=$(id),fi=clamp((t-a)/0.45),fo=id==='s10'?1:clamp((b-t)/0.45);e.style.opacity=Math.min(fi,fo).toFixed(3);e.style.transform=`translateY(${(1-ease(fi))*36}px)`});
+  document.querySelectorAll('[data-kind]').forEach(el=>{
+    const a=parseFloat(el.closest('.scene').dataset.start)+parseFloat(el.dataset.delay||0),p=ease((t-a)/parseFloat(el.dataset.dur||0.6)),k=el.dataset.kind;
+    if(k==='draw')el.setAttribute('stroke-dashoffset',(1-p).toFixed(4));
+    else if(k==='fade')el.style.opacity=p;
+    else if(k==='growy'){el.style.transform=`scaleY(${p})`}
+    else if(k==='growx'){el.style.transform=`scaleX(${p})`}
+    else if(k==='up'){el.style.opacity=p;el.style.transform=`translateY(${(1-p)*50}px)`}
+    else if(k==='left'){el.style.opacity=p;el.style.transform=`translateX(${(1-p)*-110}px)`}
+    else if(k==='pop'){el.style.opacity=p;el.style.transform=`scale(${0.8+0.2*p})`}
+  });
 }
-window.snapSetT=t=>{render(t)};
+window.snapSetT=t=>render(t);
 fetch('snap.json',{cache:'no-store'}).then(r=>r.json()).then(s=>{build(s);window.snapReady=true;
   const q=new URLSearchParams(location.search);
   if(q.get('t')!=null)render(parseFloat(q.get('t')));
