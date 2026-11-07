@@ -13,3 +13,6 @@ __pycache__/
 Screenshot*.png
 *.log
 Bharat Pulse Finance Logo.png
+
+# third-party music for the snap video (not part of the repository)
+*.mp3

@@ -38,3 +38,19 @@ def send(text):
         return False, "Telegram refused: " + str(r.json().get("description", r.status_code))[:100]
     except Exception as e:
         return False, "Telegram failed: " + type(e).__name__
+
+
+def send_video(path, caption=""):
+    """Send a video file to your own chat (Telegram allows up to 50 MB for bots). Returns (ok, short message)."""
+    token, chat = config()
+    if not token:
+        return False, "Telegram not set up"
+    try:
+        with open(path, "rb") as f:
+            r = requests.post(f"https://api.telegram.org/bot{token}/sendVideo", timeout=180,
+                              data={"chat_id": chat, "caption": caption[:1000], "supports_streaming": "true"}, files={"video": f})
+        if r.status_code == 200 and r.json().get("ok"):
+            return True, "sent"
+        return False, "Telegram refused: " + str(r.json().get("description", r.status_code))[:100]
+    except Exception as e:
+        return False, "Telegram failed: " + type(e).__name__

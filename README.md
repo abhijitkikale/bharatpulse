@@ -13,9 +13,10 @@ Times below are India time (IST). The PC this runs on has its clock at IST minus
 4. [Live updates and Telegram](#live-updates-and-telegram)
 5. [The live stream page](#the-live-stream-page)
 6. [OBS and YouTube](#obs-and-youtube)
-7. [TradingView indicators](#tradingview-indicators)
-8. [What is saved on this PC](#what-is-saved-on-this-pc)
-9. [Other commands, data, notes](#other-commands-data-notes)
+7. [Daily snap video](#daily-snap-video-30-seconds-vertical-for-mobile)
+8. [TradingView indicators](#tradingview-indicators)
+9. [What is saved on this PC](#what-is-saved-on-this-pc)
+10. [Other commands, data, notes](#other-commands-data-notes)
 
 ## Tabs
 Sectors · Breadth & Trend · Market Activity · Flows & Valuation · Risk Monitor · Options · Volume Profile · 3D Surface · Momentum Stocks
@@ -71,6 +72,13 @@ Runs `tools/refresh_app.py` and opens a page at http://127.0.0.1:5050/ (this PC 
 - A test broadcast was run successfully on 2026-11-07 (the stream reached YouTube).
 - Check SEBI rules (investment advice / research analyst registration) and the NSE, Fyers and TradingView data-redistribution terms before sharing widely: a disclaimer banner does not replace registration or a data licence.
 
+## Daily snap video (30 seconds, vertical, for mobile)
+`tools/make_snap.py` turns the day's dashboard data into a 30-second 1080x1920 video (H.264, 30 fps). It is made automatically after the evening build (the helper waits about 2.5 minutes for the dashboard page to update, then runs it and sends the video to your Telegram for a quick look), or any time with the helper page's **Make today's snap video now** button, or `python tools/make_snap.py [--telegram] [--preview] [--source local] [--music FILE | --no-music]`. Nothing is uploaded: you upload it yourself (YouTube Shorts, Instagram Reels, WhatsApp status).
+- **Scenes** (the exact times are in `timing.txt`): hook (Nifty close, change and the day's headline) 0-3 s, market (Nifty, Bank Nifty, Midcap, Smallcap, advance / decline bar, India VIX) 3-8 s, sectors (top 3 and bottom 3 with the weekly move) 8-13 s, momentum leaders (top 3 of the Momentum Stocks ranking, same scoring as the dashboard) 13-18 s, something unusual (the strongest one or two automatic insights) 18-23 s, levels to watch (Nifty gamma regime, flip, call and put wall, max pain, close: "information only") 23-27 s, and the last slide with the dashboard link (abhijitkikale.github.io/bharatpulse) and the disclaimer 27-30 s. A "not SEBI registered, not financial advice, education only" line stays on screen all the time.
+- **Insights** are scored from the data and worded from fixed templates (facts only, never "buy", "sell" or "target"): breadth against the index, smallcaps against the Nifty, a sector far from the Nifty, FII / DII flows and streaks, India VIX moves, a big move on very large volume, the gamma regime against the flip (and a regime change from yesterday), 52-week highs / lows counts, and sector momentum-rank moves (from the second day on, using `data/snap_history/`).
+- **Files** in `data/snap/YYYY-MM-DD/`: `snap_music.mp4` (with the music) and `snap.mp4` (silent), `cover.png` (thumbnail), `caption.txt` (title, description, hashtags, disclaimer and the music credit), `timing.txt`, `snap.json` (the day's summary). Music: the first `.mp3` in the project folder is used (currently "Langoos" by Moavii from Free To Use; keep the credit line in the description and check the licence terms on freetouse.com). The music file is not part of the repository.
+- Made with headless Chrome (Playwright) frame by frame and `imageio-ffmpeg` (`pip install imageio-ffmpeg`); about 90 seconds on this PC. Holidays and weekends: run it only after a real session.
+
 ## TradingView indicators
 Pine v6, nothing is fetched: the indicators draw text you paste into Settings > Inputs. Details in `tradingview/LIVE-SETUP.md`.
 - `tradingview/BharatPulse-Levels.pine` (Rev 0), `BharatPulse-Levels-rev1.pine` (Rev 1: the next candle after the retest decides CALL / PUT).
@@ -87,6 +95,7 @@ All under `data/`, which is **not** part of the public repository.
 | `nse_calendar.json`, `nse_special_sessions.json` | NSE holidays (cached) and your own special-session times |
 | `obs.json`, `telegram.json`, `stream_relay.json`, `fyers_token.json` | settings and secrets for OBS, Telegram, the TradingView relay and Fyers |
 | `stream_state.json`, `live.json` | the latest stream page state and live snapshot |
+| `snap/YYYY-MM-DD/`, `snap_history/` | the daily snap video, cover, caption, timing sheet and summary; the small daily record the next video compares with |
 
 ## Other commands, data, notes
 - Tests: `python -m pytest tests` (the OBS tests skip when the websocket libraries are not installed, which is the case on GitHub's build machine; the cloud build runs the tests first, so a test that needs a missing library blocks publishing).

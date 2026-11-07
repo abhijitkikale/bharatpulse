@@ -148,6 +148,22 @@ def run_action(path):
     _OBS["t"] = 0.0
 
 
+def make_snap_video(wait=0):
+    """Make the day's 30-second snap video (tools/make_snap.py) and send it to Telegram for a look. Runs in the background; the page shows the result."""
+    def go():
+        try:
+            if wait:
+                S["snapmsg"] = f"the snap video starts in {wait // 60} minutes (the dashboard page needs a moment to update)"
+                time.sleep(wait)
+            S["snapmsg"] = "making the snap video (about 90 seconds) ..."
+            p = subprocess.run([sys.executable, str(ROOT / "tools" / "make_snap.py"), "--telegram"], capture_output=True, text=True, timeout=900, encoding="utf-8", errors="replace")
+            tail = (p.stdout or p.stderr or "").strip().splitlines()[-2:]
+            S["snapmsg"] = ("snap video done and sent to Telegram: " if p.returncode == 0 else "snap video FAILED: ") + " | ".join(tail)[:300]
+        except Exception as e:
+            S["snapmsg"] = "snap video failed: " + type(e).__name__
+    threading.Thread(target=go, daemon=True).start()
+
+
 def live_running():
     return live_loop.get_state()["running"]
 
@@ -225,6 +241,7 @@ def finish_login(code):
         set_stage("build")
         watch_build(t0)
         set_stage("done")
+        make_snap_video(wait=150)                  # after the evening build: the day's snap video (GitHub Pages needs a couple of minutes to show the new data)
     except Fail as e:
         set_stage("error", str(e))
     except Exception as e:
@@ -247,7 +264,7 @@ def status():
     return {"stage": stage, "error": err, "run_url": url, "steps": steps, "live": LIVE, "mode": S["mode"],
             "liveloop": {"running": ls["running"], "text": liveline, "can_start": (not ls["running"]) and live_loop.market_day_window() and token_info().get("valid", False)},
             "env_ok": bool(env("FYERS_APP_ID") and env("FYERS_APP_SECRET")), "gh_ok": gh_ok(), "token": token_info(),
-            "stream": {"up": stream_up()}, "obs": obs_info(), "obsmsg": S.get("obsmsg", "")}
+            "stream": {"up": stream_up()}, "obs": obs_info(), "obsmsg": S.get("obsmsg", ""), "snapmsg": S.get("snapmsg", "")}
 
 
 def logo():
@@ -285,6 +302,8 @@ ul{list-style:none;margin:0;padding:0}li{display:flex;align-items:center;gap:12p
 <div class="row"><span class="k">YouTube broadcast</span><span id="s-brd"></span></div>
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn ghost" id="b-str">Open the live dashboard</button><button class="btn ghost" id="b-obs">Start OBS</button><button class="btn ghost" id="b-live">Go live on YouTube</button><button class="btn ghost" id="b-stop">Stop broadcast</button></div>
 <div id="obsnote" class="small" style="margin-top:8px"></div></div>
+<div class="card"><div class="row"><span class="k">Daily snap video (30 s, for mobile)</span><span class="small">made after the evening build</span></div>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn ghost" id="b-snap">Make today's snap video now</button></div><div id="snapnote" class="small" style="margin-top:8px"></div></div>
 <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn ghost" id="live" target="_blank" rel="noopener noreferrer">Open the dashboard website</a>
 <a class="btn ghost" id="run" target="_blank" rel="noopener noreferrer" style="display:none">Open the build page</a><button class="btn ghost" id="quit">Close this helper</button></div>
 <p class="small">Your PIN and one-time code are typed on Fyers' own page. This helper runs only on this PC and never shows or sends your login details anywhere except GitHub's encrypted secret store (a one-day, data-only token).</p>
@@ -302,7 +321,7 @@ async function tick(){let d;try{d=await (await fetch('/status',{cache:'no-store'
  $('#s-str').textContent=d.stream.up?'running':'not running (starts after the sign-in, or press the button)';$('#s-str').className=d.stream.up?'ok':'warn';
  const o=d.obs;$('#s-obs').textContent=!o.configured?'not set up (run tools/obs_setup.py)':(o.running?'running':'not running');$('#s-obs').className=o.running?'ok':'warn';
  $('#s-brd').textContent=o.live===true?'LIVE':(o.live===false?'off':'unknown');$('#s-brd').className=o.live?'ok':'warn';
- ['#b-obs','#b-live','#b-stop'].forEach(i=>{$(i).disabled=!o.configured});$('#obsnote').textContent=d.obsmsg||'';
+ ['#b-obs','#b-live','#b-stop'].forEach(i=>{$(i).disabled=!o.configured});$('#obsnote').textContent=d.obsmsg||'';$('#snapnote').textContent=d.snapmsg||'';
  $('#progress').style.display=d.stage==='idle'?'none':'block';
  $('#steps').innerHTML='';d.steps.forEach(s=>{const li=document.createElement('li');li.className=s.state;const dot=document.createElement('span');dot.className='dot';dot.textContent=s.state==='done'?'\\u2713':s.state==='error'?'!':'';li.appendChild(dot);li.appendChild(document.createTextNode(s.label));$('#steps').appendChild(li)});
  const e=$('#err');e.style.display=d.error?'block':'none';e.textContent=d.error||'';
@@ -314,6 +333,7 @@ $('#b-str').onclick=()=>{window.open('http://127.0.0.1:8766/','_blank');act('/st
 $('#b-obs').onclick=()=>act('/obs/start');
 $('#b-live').onclick=()=>{if(confirm('Start the YouTube broadcast now? OBS must be signed in to YouTube. (Private streams are only seen by the people you invited.)'))act('/obs/golive')};
 $('#b-stop').onclick=()=>act('/obs/stop');
+$('#b-snap').onclick=()=>act('/snap/make');
 $('#startlive').onclick=async()=>{try{await fetch('/startlive',{method:'POST'})}catch(e){}tick()};
 $('#quit').onclick=async()=>{try{await fetch('/quit',{method:'POST'})}catch(e){};document.body.innerHTML='<p style="padding:30px">You can close this tab.</p>'};
 tick();setInterval(tick,2000);
@@ -373,6 +393,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(404, "Not found", "text/plain")
 
     def do_POST(self):
+        if self.path == "/snap/make":
+            if self.headers.get("X-BP") != "1":
+                return self._send(403, "forbidden", "text/plain")
+            make_snap_video()
+            return self._send(200, "ok", "text/plain")
         if self.path in ("/stream/start", "/obs/start", "/obs/golive", "/obs/stop"):
             if self.headers.get("X-BP") != "1":                 # only this page may press these (a web page on another site cannot add the header)
                 return self._send(403, "forbidden", "text/plain")

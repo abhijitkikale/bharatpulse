@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1080">
+<title>BharatPulse daily snap</title>
+<style>
+:root{--bg:#0b0f16;--card:#111823;--line:#263040;--txt:#e6edf3;--mut:#8b97a8;--pos:#2ecc9a;--neg:#ef5b5b;--acc:#4cc9f0;--gold:#f5c542}
+*{box-sizing:border-box}
+html,body{margin:0;width:1080px;height:1920px;background:var(--bg);color:var(--txt);font-family:"Segoe UI",system-ui,Arial,sans-serif;overflow:hidden}
+#stage{position:relative;width:1080px;height:1920px;background:radial-gradient(1200px 900px at 20% 0%,#16233a 0%,#0b0f16 60%)}
+.top{position:absolute;left:56px;right:56px;top:96px;display:flex;align-items:center;justify-content:space-between}
+.top img{height:110px}.top .d{text-align:right;font-size:40px;color:var(--mut);font-weight:600;line-height:1.25}.top .d b{color:var(--txt);font-size:46px}
+#bar{position:absolute;left:0;top:0;height:10px;width:0;background:linear-gradient(90deg,var(--acc),var(--pos))}
+.foot{position:absolute;left:56px;right:56px;top:1566px;font-size:30px;color:var(--mut);text-align:center;line-height:1.35}
+.scene{position:absolute;left:56px;right:56px;top:260px;height:1280px;opacity:0}
+.h{font-size:58px;font-weight:800;letter-spacing:2px;color:var(--acc);margin-bottom:10px}
+.sub{font-size:36px;color:var(--mut);margin-bottom:40px;line-height:1.3}
+.big{font-weight:800;line-height:1.05}
+.pill{display:inline-block;border-radius:60px;padding:6px 34px;font-weight:800}
+.pos{color:var(--pos)}.neg{color:var(--neg)}.bgpos{background:rgba(46,204,154,.18);color:var(--pos)}.bgneg{background:rgba(239,91,91,.18);color:var(--neg)}
+.row{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:2px solid var(--line);border-radius:26px;padding:26px 34px;margin-bottom:22px;font-size:54px;font-weight:700}
+.row .n{flex:1}.row .c{width:270px;text-align:right;color:var(--mut);font-size:46px;font-weight:600}
+.bw{position:relative;height:60px;border-radius:30px;overflow:hidden;background:rgba(239,91,91,.9);margin:10px 0 14px}
+.bw i{position:absolute;left:0;top:0;bottom:0;background:var(--pos)}
+.lr{display:flex;justify-content:space-between;font-size:44px;font-weight:700}
+.sec{margin-bottom:20px}.sec .t{display:flex;justify-content:space-between;font-size:48px;font-weight:700;margin-bottom:8px}.sec .t small{color:var(--mut);font-size:34px;font-weight:600}
+.sec .tr{height:44px;border-radius:22px;background:rgba(255,255,255,.06);overflow:hidden}.sec .tr i{display:block;height:100%;border-radius:22px}
+.card{background:var(--card);border:2px solid var(--line);border-radius:28px;padding:20px 34px;margin-bottom:18px}
+.card .rk{font-size:34px;color:var(--gold);font-weight:800}.card .tk{font-size:70px;font-weight:800;line-height:1.02}.card .nm{font-size:30px;color:var(--mut);margin:2px 0 8px}
+.chip{display:inline-block;background:rgba(76,201,240,.15);color:var(--acc);border-radius:40px;padding:2px 20px;font-size:30px;font-weight:700;margin-right:12px}
+.card .st{display:flex;gap:44px;margin-top:6px;font-size:42px;font-weight:700}.card .st small{display:block;color:var(--mut);font-size:26px;font-weight:600}
+.ins{background:var(--card);border:2px solid var(--line);border-radius:30px;padding:36px 40px;margin-bottom:30px}
+.ins .k{font-size:36px;font-weight:800;letter-spacing:3px;color:var(--gold);margin-bottom:12px}.ins .l{font-size:60px;font-weight:800;line-height:1.15}.ins .s{font-size:38px;color:var(--mut);margin-top:14px}
+.lv{display:flex;justify-content:space-between;align-items:center;border-radius:24px;padding:22px 34px;margin-bottom:16px;font-size:52px;font-weight:700;border:2px solid var(--line);background:var(--card)}
+.lv span:last-child{font-variant-numeric:tabular-nums}.lv.spot{border-color:var(--txt);background:#1a2432}
+.reg{font-size:44px;font-weight:800;margin-bottom:24px}
+.center{text-align:center}
+.url{font-size:56px;font-weight:800;color:var(--acc);word-break:break-all;margin:30px 0}
+.fine{font-size:34px;color:var(--mut);line-height:1.4}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="bar"></div>
+  <div class="top"><img src="logo.png" alt="BharatPulse"><div class="d"><b id="d1"></b><br><span id="d2"></span></div></div>
+
+  <div class="scene" id="s1"><div class="center" style="padding-top:230px"><div class="h" style="font-size:64px;color:var(--mut)" id="h-t"></div>
+    <div class="big" style="font-size:190px" id="h-c"></div><div style="margin-top:34px"><span class="pill big" style="font-size:130px" id="h-p"></span></div>
+    <div class="big" style="font-size:62px;line-height:1.2;margin-top:90px;padding:0 20px" id="h-s"></div></div></div>
+
+  <div class="scene" id="s2"><div class="h">MARKET</div><div class="sub" id="s2-sub"></div><div id="s2-rows"></div>
+    <div style="margin-top:34px" id="s2-b"><div class="bw" id="bw"><i id="bwi"></i></div><div class="lr"><span class="pos" id="bu"></span><span class="neg" id="bd"></span></div></div>
+    <div style="margin-top:30px;font-size:50px;font-weight:700" id="s2-v"></div></div>
+
+  <div class="scene" id="s3"><div class="h">SECTORS</div><div class="sub">Day's change, with the weekly move beside it</div>
+    <div style="font-size:38px;font-weight:800;color:var(--pos);margin:6px 0 14px">LEADING</div><div id="s3-b"></div>
+    <div style="font-size:38px;font-weight:800;color:var(--neg);margin:26px 0 14px">LAGGING</div><div id="s3-w"></div></div>
+
+  <div class="scene" id="s4"><div class="h">MOMENTUM LEADERS</div><div class="sub" style="margin-bottom:26px">Top of our sector + stock momentum ranking. A factual list, not advice.</div><div id="s4-c"></div></div>
+
+  <div class="scene" id="s5"><div class="h">SOMETHING UNUSUAL</div><div class="sub">What stood out in today's data</div><div id="s5-i"></div></div>
+
+  <div class="scene" id="s6"><div class="h">LEVELS TO WATCH</div><div class="sub">Nifty options data for the next session. Information only.</div><div class="reg" id="s6-r"></div><div id="s6-l"></div></div>
+
+  <div class="scene center" id="s7" style="padding-top:60px"><img src="logo.png" style="width:760px" alt=""><div class="h" style="font-size:54px;color:var(--txt);margin-top:40px">FULL DASHBOARD</div>
+    <div class="url" id="s7-u"></div><div class="fine" style="font-size:42px;color:var(--txt)">Sectors · Momentum · Options · Flows</div>
+    <div class="fine" style="margin-top:70px">Not SEBI registered. This is not investment advice or a recommendation to buy or sell anything. Data is for education only and may be delayed or wrong.</div></div>
+
+  <div class="foot">Not SEBI registered · Not financial advice · Education only</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const DUR=30;
+const SC=[['s1',0,3.2],['s2',3,8.2],['s3',8,13.2],['s4',13,18.2],['s5',18,23.2],['s6',23,27.2],['s7',27,30]];
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const ease=x=>1-Math.pow(1-clamp(x),3);
+const prog=(t,t0,d)=>ease((t-t0)/d);
+const fmt=(x,n=2)=>Number(x).toLocaleString('en-IN',{minimumFractionDigits:n,maximumFractionDigits:n});
+const sgn=x=>(x>0?'+':'')+fmt(x,2)+'%';
+const cl=x=>x>=0?'pos':'neg';
+let S=null;
+function build(s){
+  S=s;$('d1').textContent=s.weekday;$('d2').textContent=s.label;
+  $('h-t').textContent=s.hook.title.toUpperCase()+' CLOSED AT';$('h-c').textContent=fmt(s.hook.close,0);
+  const p=$('h-p');p.textContent=sgn(s.hook.chg);p.className='pill big '+(s.hook.chg>=0?'bgpos':'bgneg');$('h-s').textContent=s.hook.sub;
+  $('s2-sub').textContent=s.breadth.adv.toLocaleString('en-IN')+' stocks up, '+s.breadth.dec.toLocaleString('en-IN')+' down';
+  $('s2-rows').innerHTML=s.indices.map(i=>`<div class="row sr"><span class="n">${i.name}</span><span class="c">${fmt(i.close,0)}</span><span class="pill ${i.chg>=0?'bgpos':'bgneg'}" style="font-size:50px">${sgn(i.chg)}</span></div>`).join('');
+  $('bwi').style.width=s.breadth.pct_adv+'%';$('bu').textContent=s.breadth.adv.toLocaleString('en-IN')+' advancing';$('bd').textContent=s.breadth.dec.toLocaleString('en-IN')+' declining';
+  $('s2-v').innerHTML=s.vix?`India VIX <b>${fmt(s.vix.value,2)}</b> <span class="${cl(-s.vix.chg)}">(${s.vix.chg>0?'+':''}${s.vix.chg}%)</span>`:'';
+  const mx=Math.max(...[...s.sectors.best,...s.sectors.worst].map(x=>Math.abs(x.chg)),0.5);
+  const sec=(x,i,k)=>`<div class="sec ${k}"><div class="t"><span>${x.name}</span><span class="${cl(x.chg)}">${sgn(x.chg)} <small>wk ${x.week==null?'-':sgn(x.week)}</small></span></div><div class="tr"><i data-w="${Math.abs(x.chg)/mx*100}" style="width:0;background:${x.chg>=0?'var(--pos)':'var(--neg)'}"></i></div></div>`;
+  $('s3-b').innerHTML=s.sectors.best.map((x,i)=>sec(x,i,'sb')).join('');$('s3-w').innerHTML=s.sectors.worst.map((x,i)=>sec(x,i,'sw')).join('');
+  $('s4-c').innerHTML=s.leaders.map((l,i)=>`<div class="card sc"><div class="rk">#${i+1}</div><div class="tk">${l.s}</div><div class="nm">${l.n}</div><span class="chip">${l.sector}</span>
+    <div class="st"><div><small>TODAY</small><span class="${cl(l.d1)}">${sgn(l.d1||0)}</span></div><div><small>1 MONTH</small><span class="${cl(l.r1m)}">${sgn(l.r1m||0)}</span></div></div></div>`).join('');
+  $('s5-i').innerHTML=(s.insights.length?s.insights:[{title:'TODAY',line:s.breadth.adv.toLocaleString('en-IN')+' stocks advanced and '+s.breadth.dec.toLocaleString('en-IN')+' declined',sub:''}]).map(i=>`<div class="ins si"><div class="k">${i.title}</div><div class="l">${i.line}</div>${i.sub?`<div class="s">${i.sub}</div>`:''}</div>`).join('');
+  const L=s.levels;
+  if(L){const pos=L.regime==='POSITIVE';$('s6-r').innerHTML=L.regime?`<span class="${pos?'pos':'neg'}">${L.regime} GAMMA REGIME</span><br><span style="font-size:36px;color:var(--mut);font-weight:600">${pos?'Dealers net long gamma: moves tend to be dampened':'Dealers net short gamma: moves tend to be amplified'}</span>`:'';
+    const rows=[['Call wall',L.call_wall,'#ff9f6b'],['Gamma flip',L.flip,'#f5a623'],['Put wall',L.put_wall,'#66c2ff'],['Max pain',L.max_pain,'#d4e157'],['Close',L.spot,'#e6edf3']].filter(r=>r[1]!=null).sort((a,b)=>b[1]-a[1]);
+    $('s6-l').innerHTML=rows.map(r=>`<div class="lv ${r[0]==='Close'?'spot':''} sl"><span style="color:${r[2]}">${r[0]}</span><span>${fmt(r[1],0)}</span></div>`).join('')}
+  $('s7-u').textContent=s.link;
+}
+function set(el,a,y=0){el.style.opacity=a;el.style.transform=`translateY(${y}px)`}
+function render(t){
+  $('bar').style.width=(clamp(t/DUR)*100)+'%';
+  SC.forEach(([id,a,b])=>{const e=$(id),fi=clamp((t-a)/0.45),fo=id==='s7'?1:clamp((b-t)/0.45);e.style.opacity=Math.min(fi,fo).toFixed(3);e.style.transform=`translateY(${(1-ease(fi))*40}px)`});
+  // scene-internal animations
+  const rel=(a,t0,d)=>prog(t,a+t0,d);
+  const hc=$('h-c');hc.style.transform=`scale(${0.85+0.15*rel(0,0.1,0.8)})`;
+  document.querySelectorAll('.sr').forEach((e,i)=>{const p=rel(3,0.4+i*0.35,0.6);e.style.opacity=p;e.style.transform=`translateX(${(1-p)*120}px)`});
+  const bp=rel(3,1.9,1.2);$('bwi').style.width=(S?S.breadth.pct_adv*bp:0)+'%';$('s2-b').style.opacity=rel(3,1.7,0.5);$('s2-v').style.opacity=rel(3,3.3,0.5);
+  document.querySelectorAll('.sec').forEach((e,i)=>{const p=rel(8,0.5+i*0.35,0.7);e.style.opacity=p;e.querySelector('i').style.width=(parseFloat(e.querySelector('i').dataset.w)*p)+'%'});
+  document.querySelectorAll('.sc').forEach((e,i)=>{const p=rel(13,0.5+i*0.5,0.6);e.style.opacity=p;e.style.transform=`translateY(${(1-p)*80}px)`});
+  document.querySelectorAll('.si').forEach((e,i)=>{const p=rel(18,0.5+i*0.9,0.6);e.style.opacity=p;e.style.transform=`translateX(${(1-p)*-120}px)`});
+  $('s6-r').style.opacity=rel(23,0.4,0.5);
+  document.querySelectorAll('.sl').forEach((e,i)=>{const p=rel(23,0.8+i*0.3,0.5);e.style.opacity=p;e.style.transform=`translateX(${(1-p)*100}px)`});
+}
+window.snapSetT=t=>{render(t)};
+fetch('snap.json',{cache:'no-store'}).then(r=>r.json()).then(s=>{build(s);window.snapReady=true;
+  const q=new URLSearchParams(location.search);
+  if(q.get('t')!=null)render(parseFloat(q.get('t')));
+  else if(q.get('play')){const t0=performance.now();(function f(){const t=((performance.now()-t0)/1000)%(DUR+1.5);render(Math.min(t,DUR));requestAnimationFrame(f)})()}
+  else render(0)});
+</script>
+</body>
+</html>
