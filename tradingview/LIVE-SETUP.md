@@ -29,6 +29,8 @@ One small box, two lines: `EOD: POSITIVE/NEGATIVE gamma` (from the end-of-day te
 - Original rule: a candle touches the level, a doji forms at it, price leaves and retests; the next candle decides CALL (close above) / PUT (close below), tagged bounce / cross.
 - **A**: a candle that closes through the level also counts as step 2 (no doji needed). **B**: a doji counts within 12 points of the level (setting). These run alongside the original rule, so they only add setups.
 - **C: VWAP break signal**: the previous 8 candles (setting) were all on one side of the VWAP, a candle closes through it and the next candle closes beyond it. No retest needed. Labelled "(break)". Daily and weekly VWAP each have a tick box.
+- **D: VWAP bounce signal**: the previous 5 candles (setting) were all on one side of the VWAP, a candle touches it and closes back on that side, and the next candle closes beyond it (CALL from above, PUT from below). Labelled "(VWAP bounce)". At most one per 10 candles (setting) on the same VWAP. A candle never reports the same level twice (retest, break and bounce share that rule).
+- The same rules are replayed by the stream page (`tools/stream_server.py`), so its setups table and trades match this indicator; only the data feed differs (Fyers candles after 09:30, TradingView's own opening candles through the alert below).
 
 ## One-time Telegram setup (on the PC that runs Refresh BharatPulse.bat)
 1. Open https://t.me/GEXINDICATORBOT in Telegram and press Start.
@@ -41,6 +43,8 @@ One-time setup (needs a TradingView plan with webhook alerts, and two-factor sig
 1. On the PC that runs the helper: `python tools/stream_relay_setup.py`. It makes a private topic for the free ntfy.sh relay and prints the webhook URL (`https://ntfy.sh/<topic>`). Keep that URL private. Only the opening 1-minute Nifty candles go through it, about 15 messages a day.
 2. In TradingView open **NSE:NIFTY on a 1-minute chart** with the live indicator on it. In the indicator settings tick **Send the opening 1-minute candles to the stream program** (group "Stream feed (webhook alert)"; the default is the first 15 minutes after 09:15).
 3. Create an alert (clock icon): **Condition** = BharatPulse Levels Live > **Any alert() function call**; **Notifications** > tick **Webhook URL** and paste the URL from step 1; leave the message as it is (the indicator supplies it). Expiration: as long as your plan allows (TradingView alerts expire; recreate when it does). Create.
-4. Restart the helper so it listens (it starts listening when the stream starts). After 09:16 the page shows "opening candles: TradingView (N)" in the header. If it does not, the alert is not firing or the topic differs.
+4. Restart the helper so it listens (it starts listening when the stream starts). After 09:16 the page shows "opening candles: TradingView (N)" in the header. If it does not, the alert is not firing or the topic differs. At 09:31 IST the Telegram READY message also says whether the TradingView opening candles arrived.
+5. The program saves the candles it receives per day in `data/stream_open/` (the relay itself forgets them after 12 hours and accepts messages of the last few days only), and replays a day's session with that day's candles, also the next morning and after the evening build.
+6. Alerts expire on TradingView: if the header stops showing "TradingView" and Telegram says "NOT received", create the alert again.
 
 The connector used inside Claude cannot create webhook alerts, so this alert has to be made by you on tradingview.com.

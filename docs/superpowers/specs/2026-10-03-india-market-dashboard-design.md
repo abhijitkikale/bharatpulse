@@ -27,6 +27,9 @@ Interactive, dark-themed, Power BI-style end-of-day dashboard for Indian markets
 - Tabs added: Risk Monitor, Options (OI, max pain, GEX, participants, volume profile, TradingView levels text), Volume Profile, 3D Surface, Momentum Stocks.
 - Momentum / sector composite: non-overlapping periods, skip latest week, selectable method and per-period weights.
 - TradingView indicators (`tradingview/`) and a Telegram bot for live levels.
+- Live stream page (`tools/stream_server.py`, `pipeline/stream_*.py`): full-screen Nifty chart with every level in a table, setups and a paper trade tracker (one trade at a time, +40% / -10% on the option premium), a countdown that follows the NSE holiday calendar (`pipeline/nse_calendar.py`), the TradingView opening candles through a webhook alert and the ntfy.sh relay, and a trading journal backup (`data/journal/`).
+- Hands-free day: Windows morning tasks (`install_morning_task.bat`), Fyers token expiry handled in IST, OBS and YouTube automation (`tools/obs_control.py`, `tools/obs_setup.py`), a helper-page card with the live dashboard / OBS / broadcast buttons, Telegram checks at 09:20 and 09:31, Unlisted sharing with a new link each day.
+- Cloud build note: the build machine runs the tests first and has no websocket libraries, so tests that need them skip there.
 
 ## Error handling
 Per-panel "as of" date and stale/failed badge; cached data reused when a source fails.
