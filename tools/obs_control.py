@@ -211,6 +211,19 @@ def _connect(cfg, tries=1, pause=3):
     raise ObsError(f"could not reach OBS ({type(last).__name__}); is it open with the WebSocket server on?")
 
 
+NO_KEY = ("OBS accepted the command but the stream did NOT start. Most likely OBS has no stream key: copy the stream key from YouTube Studio (Stream page) "
+          "and paste it in OBS > Settings > Stream (YouTube - RTMPS, 'Use stream key'). Click OK on OBS's error window.")
+
+
+def started_ok(obs, wait=12):
+    """After StartStream: True once OBS reports the output active (it can fail a moment later, e.g. without a stream key)."""
+    for _ in range(wait):
+        time.sleep(1)
+        if obs.streaming():
+            return True
+    return False
+
+
 def golive(cfg):
     """Select the BharatPulse scene, reload its page and start the broadcast (used by the Go live button). Returns a short message."""
     if not obs_running():
@@ -228,7 +241,7 @@ def golive(cfg):
             pass
         time.sleep(3)
         obs.call("StartStream")
-        return "broadcast started (check YouTube Studio; OBS must be signed in to YouTube)"
+        return "broadcast started (check YouTube Studio)" if started_ok(obs) else "FAILED: " + NO_KEY
     finally:
         obs.close()
 
@@ -313,8 +326,11 @@ def run_loop(get_state, stop, notify=None, log=lambda *a: None):
                             pass
                         stop.wait(3)
                         obs.call("StartStream")
-                        done_day = day
-                        notify(f"BharatPulse: YouTube broadcast STARTED ({t:%H:%M} IST, mode {cfg['mode']}).")
+                        done_day = day                                          # one attempt a day: a failed start would otherwise pop up OBS's error window every 20 seconds
+                        if started_ok(obs):
+                            notify(f"BharatPulse: YouTube broadcast STARTED ({t:%H:%M} IST, mode {cfg['mode']}).")
+                        else:
+                            notify("BharatPulse: the YouTube broadcast did NOT start. " + NO_KEY)
                     elif action in ("stop", "stale-stop"):
                         obs.call("StopStream")
                         done_day = day
