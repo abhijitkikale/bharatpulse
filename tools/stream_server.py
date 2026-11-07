@@ -61,6 +61,22 @@ def market_hours(t=None):
     return nse_calendar.in_session(t, lead=5, tail=10)
 
 
+def journal_frame(day, key):
+    """The option candles saved in that day's journal for a contract (strike, 'CE' / 'PE'): from each trade's entry to its exit. None if there are none."""
+    try:
+        doc = json.loads((JOURNAL / f"{day}.json").read_text(encoding="utf-8"))
+        rows = {}
+        for tr in doc.get("trades", []):
+            if (float(tr["strike"]), "CE" if tr["side"] == "CALL" else "PE") == key:
+                for hm, o, h, l, c, v in tr.get("option_candles_hm_ohlcv", []):
+                    rows[pd.Timestamp(f"{day} {hm}", tz="Asia/Kolkata")] = [o, h, l, c, v]
+        if not rows:
+            return None
+        return pd.DataFrame.from_dict(rows, orient="index", columns=["o", "h", "l", "c", "v"]).sort_index()
+    except Exception:
+        return None
+
+
 def save_eod(eod):
     try:
         STORE.mkdir(parents=True, exist_ok=True)
@@ -233,15 +249,18 @@ class Feed:
         hit = self.opt.get(key)
         if hit and time.time() - hit[0] < 15:
             return hit[1]
+        day = s["time"].date()                          # the session being replayed (not necessarily today's date)
         rows = (self.chains or {}).get(SYM, {}).get("rows") or []
         if not rows:
-            return hit[1] if hit else None
+            return hit[1] if hit else journal_frame(day, key)
         exp = min(r["XpryDt"] for r in rows)
         sym = next((r.get("symbol") for r in rows if r["XpryDt"] == exp and r["StrkPric"] == key[0] and r["OptnTp"] == typ), None)
         self.meta[key] = {"symbol": sym, "expiry": exp}
-        df = fetch_fyers.fetch_option_candles(sym) if sym else None
+        df = fetch_fyers.fetch_option_candles(sym, day) if sym else None
         if df is None and hit:
             df = hit[1]                                 # keep the last good candles if this call failed
+        if df is None:
+            df = journal_frame(day, key)                # Fyers has no candles for that day any more: use the ones saved in the journal
         self.opt[key] = (time.time(), df)
         return df
 

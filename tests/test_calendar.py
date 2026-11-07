@@ -52,3 +52,15 @@ def test_saved_end_of_day_levels_are_replayed_after_the_evening_build(tmp_path, 
     assert stream_server.eod_for(dt.date(2026, 11, 4)) is None
     stream_server.save_eod({"close": "2026-11-09", "levels": {}})
     assert (tmp_path / "2026-11-09.json").exists()
+
+
+def test_option_candles_fall_back_to_the_journal(tmp_path, monkeypatch):
+    import stream_server
+    monkeypatch.setattr(stream_server, "JOURNAL", tmp_path)
+    doc = {"trades": [{"strike": 24500, "side": "CALL", "option_candles_hm_ohlcv": [["09:26", 150, 152, 149, 151, 10], ["09:27", 151, 160, 150, 158, 12]]},
+                      {"strike": 24700, "side": "PUT", "option_candles_hm_ohlcv": [["12:50", 160, 165, 159, 164, 9]]}]}
+    (tmp_path / "2026-11-06.json").write_text(json.dumps(doc), encoding="utf-8")
+    df = stream_server.journal_frame(dt.date(2026, 11, 6), (24500.0, "CE"))
+    assert list(df.index.strftime("%H:%M")) == ["09:26", "09:27"] and df["c"].iloc[-1] == 158 and df.index.tz is not None
+    assert stream_server.journal_frame(dt.date(2026, 11, 6), (24500.0, "PE")) is None           # no such contract in the journal
+    assert stream_server.journal_frame(dt.date(2026, 11, 9), (24500.0, "CE")) is None           # no journal for that day
