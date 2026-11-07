@@ -328,7 +328,7 @@ def run_loop(get_state, stop, notify=None, log=lambda *a: None):
                         obs.call("StartStream")
                         done_day = day                                          # one attempt a day: a failed start would otherwise pop up OBS's error window every 20 seconds
                         if started_ok(obs):
-                            notify(f"BharatPulse: YouTube broadcast STARTED ({t:%H:%M} IST, mode {cfg['mode']}).")
+                            notify(f"BharatPulse: YouTube broadcast STARTED ({t:%H:%M} IST, mode {cfg['mode']}). Each broadcast has a NEW link: open YouTube Studio > Stream, click Share, copy the link and send it to your friends.")
                         else:
                             notify("BharatPulse: the YouTube broadcast did NOT start. " + NO_KEY)
                     elif action in ("stop", "stale-stop"):
