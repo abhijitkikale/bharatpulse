@@ -202,8 +202,11 @@ def insights(D, nifty, pct_adv, sectors, snap_prev=None):
 
 # ---------------- the day's summary ----------------
 def _fmt_date(D):
+    # the index data date (asof), not the last stock date: stocks can be a session ahead of the index files (e.g. Muhurat)
+    if D.get("asof"):
+        return dt.datetime.strptime(D["asof"], "%d %b %Y").date()
     d = (D.get("dates") or [None])[-1]
-    return dt.date.fromisoformat(d) if d else dt.datetime.strptime(D["asof"], "%d %b %Y").date()
+    return dt.date.fromisoformat(d)
 
 
 def _short(name):
