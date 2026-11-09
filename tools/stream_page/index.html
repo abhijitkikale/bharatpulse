@@ -159,7 +159,7 @@ function draw(s){
       if(!cur){tb.className='tr';tb.innerHTML=`<span>No trade yet</span><span class="k">the first setup becomes the trade · target +40% · stop −10% · no new trade after ${T.cutoff}</span>`}
       else{
         const chipT=t=>{const c=t.pnl_pct>=0?G():R(),ic=t.status==='TARGET'?'✔':t.status==='STOP'?'✖':t.status==='OPEN'?'▶':'■';
-          return `<span style="border:1px solid ${c};color:${c};border-radius:8px;padding:0 10px;font-size:.82em;white-space:nowrap">${ic} T${t.n} ${t.side} ${t.strike} ${t.side==='CALL'?'CE':'PE'} · ${t.entry_time} @ ${t.entry.toFixed(2)} → ${t.exit_time?t.exit_time+' @ '+t.exit.toFixed(2):'open'} · ${pc(t.pnl_pct)}</span>`};
+          return `<span style="border:1px solid ${c};color:${c};border-radius:8px;padding:0 10px;font-size:.82em;white-space:nowrap">${ic} T${t.n} ${t.side} ${t.strike} ${t.side==='CALL'?'CE':'PE'} on ${(t.level||'').replace(/ [0-9.]+ /,' ')} · ${t.entry_time} @ ${t.entry.toFixed(2)} → ${t.exit_time?t.exit_time+' @ '+t.exit.toFixed(2):'open'} · ${pc(t.pnl_pct)}</span>`};
         const prev=T.trades.slice(0,-1).map(chipT).join('');
         const open=cur.status==='OPEN',px=cur.exit!=null?cur.exit:cur.last,pnl=cur.pnl_pct,typ=cur.side==='CALL'?'CE':'PE';
         const head=open?`▶ TRADE ${cur.n} OPEN`:cur.status==='TARGET'?`✔ TRADE ${cur.n} TARGET HIT`:cur.status==='STOP'?`✖ TRADE ${cur.n} STOP HIT`:`■ TRADE ${cur.n} CLOSED (day end)`;
