@@ -54,3 +54,25 @@ def send_video(path, caption=""):
         return False, "Telegram refused: " + str(r.json().get("description", r.status_code))[:100]
     except Exception as e:
         return False, "Telegram failed: " + type(e).__name__
+
+
+def _logged(fn):
+    """Every send attempt is added to data/telegram_log.txt (time, result, first words), so a missing message can be traced. The token is never logged."""
+    import datetime
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(*a, **k):
+        r = fn(*a, **k)
+        try:
+            first = str(a[0] if a else "").replace("\n", " ")[:70]
+            with open(CFG.parent / "telegram_log.txt", "a", encoding="utf-8") as f:
+                f.write(f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} PC clock | {fn.__name__} | {'ok' if r[0] else 'FAILED'} {r[1]} | {first}\n")
+        except Exception:
+            pass
+        return r
+    return wrapper
+
+
+send = _logged(send)
+send_video = _logged(send_video)

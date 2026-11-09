@@ -104,6 +104,7 @@ class Feed:
         self.live = None
         self.live_at = 0.0
         self.chains = None                             # latest current-expiry chain rows (they carry the option symbols)
+        self.sent_day, self.sent = None, set()          # Telegram trade messages already sent today
         self.reported = None                           # the day the morning 'ready' check was sent to Telegram
         self.tv = self.load_tv()                       # opening 1-minute candles sent by the TradingView alert: {IST minute: bar}
         self.opt = {}                                  # (strike, "CE" / "PE") -> (fetched at, candles)
@@ -175,6 +176,7 @@ class Feed:
             except Exception:
                 trades = None
             self.journal(sday, replay, today, res, used, state_regime=None)
+            self.alerts(t, sday, res)
         state = stream_levels.build_state(df, self.eod, self.live, t, self.msg, setups=setups, trades=trades)
         state["open_src"] = used                        # how many opening candles came from TradingView
         state["replay_eod"] = replay["close"] if setups is not None and replay is not self.eod else None   # the trades use the levels of this older close
@@ -239,6 +241,29 @@ class Feed:
                      "End-of-day levels: " + (f"from the {self.eod['close']} close" if self.eod else "not loaded"),
                      f"Page: http://127.0.0.1:{PORT}/"]
             telegram_notify.send("\n".join(lines))
+        except Exception:
+            pass
+
+    def alerts(self, t, sday, res):
+        """Telegram: a message for each new paper trade, its close and the setups not taken (only today's live session; sent keys are saved so a restart does not repeat them)."""
+        try:
+            if sday != t.date() or not market_hours(t):
+                return
+            import stream_alerts, telegram_notify
+            f = ROOT / "data" / "telegram_sent.json"
+            if self.sent_day != str(sday):
+                self.sent_day, self.sent = str(sday), set()
+                try:
+                    d = json.loads(f.read_text(encoding="utf-8"))
+                    if d.get("day") == str(sday):
+                        self.sent = set(d.get("keys", []))
+                except Exception:
+                    pass
+            before = len(self.sent)
+            for text in stream_alerts.new_messages(res, self.sent, t):
+                telegram_notify.send(text)
+            if len(self.sent) != before:
+                f.write_text(json.dumps({"day": str(sday), "keys": sorted(self.sent)}), encoding="utf-8")
         except Exception:
             pass
 
