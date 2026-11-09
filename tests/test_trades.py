@@ -63,4 +63,4 @@ def test_daily_limits():
     df = pd.DataFrame(rows, index=idx, columns=["o", "h", "l", "c", "v"])
     sets = [{"time": idx[k], "side": "CALL", "strike": 25000, "level": "X", "tag": ""} for k in range(0, 40, 2)]
     res = stream_trades.run_trades(sets, lambda s: df)
-    assert len(res["trades"]) == 2 and any("loss limit" in x["status"] for x in res["signals"])
+    assert len(res["trades"]) == 3 and any("loss limit" in x["status"] for x in res["signals"])

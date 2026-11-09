@@ -9,7 +9,7 @@ import pandas as pd
 
 TARGET, STOP = 0.40, 0.10
 CUTOFF = (14, 45)
-MAX_TRADES, MAX_LOSS_PCT = 5, 20.0     # daily limits: no new trade after 5 trades or once the day's closed trades add up to -20%
+MAX_TRADES, MAX_LOSS_PCT = 5, 30.0     # daily limits: no new trade after 5 trades or once the day's closed trades add up to -30%
 LAST_MINUTE = (15, 29)
 
 
