@@ -51,3 +51,16 @@ def test_no_new_trade_after_the_cutoff_and_without_an_option_price():
     res = stream_trades.run_trades([late], lambda s: df)
     assert not res["trades"] and res["signals"][0]["status"] == "no new trade after 14:45"
     assert stream_trades.run_trades([_setup(0)], lambda s: None)["signals"][0]["status"] == "no option price"
+
+
+def test_daily_limits():
+    import pandas as pd
+    idx = pd.date_range("2026-11-09 09:30", periods=60, freq="min", tz="Asia/Kolkata")
+    # every trade hits its stop on the next candle: entry 100, then low 85
+    rows = []
+    for i in range(60):
+        rows.append([100, 100, 85 if i % 2 else 100, 100, 1])
+    df = pd.DataFrame(rows, index=idx, columns=["o", "h", "l", "c", "v"])
+    sets = [{"time": idx[k], "side": "CALL", "strike": 25000, "level": "X", "tag": ""} for k in range(0, 40, 2)]
+    res = stream_trades.run_trades(sets, lambda s: df)
+    assert len(res["trades"]) == 2 and any("loss limit" in x["status"] for x in res["signals"])

@@ -3,12 +3,13 @@
 The first setup becomes a trade (CALL = buy the at-the-money call, PUT = buy the at-the-money put of the nearest expiry). Its entry price is the
 option's 1-minute close on the setup candle. The trade stays open until +TARGET (profit) or -STOP (loss) of that premium is touched. Setups that
 confirm while a trade is open are only listed ("ignored"); once the trade is closed the next setup becomes the next trade. No new trade starts
-after CUTOFF. A 1-minute option candle that touches both levels counts as a stop (the cautious choice). A trade still open on the last candle of
+after CUTOFF, after MAX_TRADES trades in the day, or once the closed trades of the day add up to -MAX_LOSS_PCT percent. A 1-minute option candle that touches both levels counts as a stop (the cautious choice). A trade still open on the last candle of
 the day is closed at that price. Percentages only; brokerage, taxes and slippage are not included. Pure functions, no network."""
 import pandas as pd
 
 TARGET, STOP = 0.40, 0.10
 CUTOFF = (14, 45)
+MAX_TRADES, MAX_LOSS_PCT = 5, 20.0     # daily limits: no new trade after 5 trades or once the day's closed trades add up to -20%
 LAST_MINUTE = (15, 29)
 
 
@@ -72,6 +73,10 @@ def run_trades(setups, option_frame, cutoff=None):
         t = s["time"]
         if cur is not None and (cur["exit_time"] is None or t < cur["exit_time"]):
             status = f"ignored: trade {cur['n']} is open"
+        elif len(trades) >= MAX_TRADES:
+            status = f"daily limit: {MAX_TRADES} trades done"
+        elif sum(x["pnl_pct"] for x in trades) <= -MAX_LOSS_PCT:
+            status = f"daily loss limit reached (-{MAX_LOSS_PCT:.0f}%)"
         elif _hm(t) > cutoff:
             status = f"no new trade after {cutoff[0]}:{cutoff[1]:02d}"
         else:
