@@ -135,8 +135,9 @@ def test_tradingview_opening_candles_replace_the_fyers_ones():
     assert stream_levels.merge_open(fy, far)[1] == 0                                              # a wild price is ignored
 
 
-def test_vwap_bounce_needs_a_touch_and_a_confirming_candle_and_respects_the_cooldown():
+def test_vwap_bounce_needs_a_touch_and_a_confirming_candle_and_respects_the_cooldown(monkeypatch):
     import stream_setups
+    monkeypatch.setattr(stream_setups, "BOUNCE_ON", True)      # rule D is off by default; this test checks the rule itself
     nan = [(np.nan, np.nan, np.nan)]
 
     def signals(rows, tag=None):
@@ -163,3 +164,8 @@ def test_opening_candles_of_the_last_few_days_are_still_accepted():
     assert stream_levels.parse_open_bar(msg, pd.Timestamp("2026-11-07").date(), max_days=4)[0] == t0          # the relay's next-day replay
     assert stream_levels.parse_open_bar(msg, pd.Timestamp("2026-11-12").date(), max_days=4) is None           # too old
     assert stream_levels.parse_open_bar(msg, pd.Timestamp("2026-11-05").date(), max_days=4) is None           # from the future
+
+
+def test_vwap_bounce_rule_is_off_by_default():
+    import stream_setups
+    assert stream_setups.BOUNCE_ON is False

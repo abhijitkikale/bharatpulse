@@ -6,7 +6,7 @@
 //        Gamma flip, GEX call wall, GEX put wall, OI call wall, OI put wall, Max pain of the CURRENT expiry. Drawn in cyan with the
 //        prefix "Live"; the end-of-day lines stay as they are. Paste the newest message over the old one (select all, paste).
 // Bounce signal (D): on the daily and weekly VWAP, when the candles before were all on one side, a candle touches the VWAP and closes back on
-// that side and the next candle closes beyond it; at most one per 10 candles per VWAP. Switch it off with the setting D.
+// that side and the next candle closes beyond it; at most one per 10 candles per VWAP. It is OFF by default: switch it on with the setting D.
 // Break signal (C): on the daily and weekly VWAP, when the candles before were all on one side, a candle closes through it and the next
 // candle closes beyond it. Needs no retest. Switch it off with the setting "C".
 // Setups (CALL / PUT) are given only by the end-of-day levels ticked in "Setups ..." (default: GEX call / put wall, POC, VAH, VAL,
@@ -125,7 +125,7 @@ breakMode = input.bool(true, "A: a candle that closes through the level also cou
 dojiZone  = input.float(12.0, "B: a doji counts when it forms within this many points of the level (0 = it must touch)", minval=0.0, step=1.0, group=gStr)
 breakSig  = input.bool(true, "C: VWAP break signal: the candles before were all on one side of the VWAP, a candle closes through it and the NEXT candle closes beyond it (no retest needed)", group=gStr)
 bkLook    = input.int(8, "C: number of candles before the break that must all be on the other side of the VWAP", minval=2, maxval=30, group=gStr)
-bounceSig = input.bool(true, "D: VWAP bounce signal: the candles before were all on one side of the VWAP, a candle touches it and closes back on that side, and the NEXT candle closes beyond it (CALL from above / PUT from below)", group=gStr)
+bounceSig = input.bool(false, "D: VWAP bounce signal (OFF by default: it doubled the normal bounce signals): the candles before were all on one side of the VWAP, a candle touches it and closes back on that side, and the NEXT candle closes beyond it (CALL from above / PUT from below)", group=gStr)
 bnLook    = input.int(5, "D: candles before the touch that must all be on the same side of the VWAP", minval=2, maxval=30, group=gStr)
 bnCool    = input.int(10, "D: minimum candles between two bounce signals on the same VWAP", minval=1, maxval=120, group=gStr)
 confirmMode = input.string("Next candle decides: close above = CALL, close below = PUT", "Confirmation candle (Rev 1)", options=["Off (same as Rev 0)", "Next candle decides: close above = CALL, close below = PUT", "Next candle must not cross back over the level", "Next candle must close in the signal direction"], group=gStr)

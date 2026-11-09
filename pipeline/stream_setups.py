@@ -14,6 +14,7 @@ import pandas as pd
 import compute_options
 
 TOL, DOJI, MAXWAIT, MINAWAY, ZONE, LOOK = 0.03, 30.0, 12, 1, 12.0, 8
+BOUNCE_ON = False                          # rule D (VWAP bounce) is switched off: on a sideways day it gave 7 of 20 setups, mostly doubles of a normal bounce
 BOUNCE_LOOK, BOUNCE_COOL = 5, 10          # VWAP bounce: candles before the touch on one side, and candles between two bounce signals
 WARMUP = (9, 45)             # Now VAH / Now VAL come from a profile of a few candles before this time: no setups on them yet
 SETUP_EOD = ("GEX call wall", "GEX put wall", "POC", "VAH", "VAL", "Weekly POC", "Weekly VAH", "Weekly VAL")
@@ -140,14 +141,14 @@ def find_setups(df, eod_levels, daily, weekly, va, sym="NIFTY"):
                         bk[i] = ("CALL", k)
                     elif c[k] < L and above:
                         bk[i] = ("PUT", k)
-                # the VWAP bounce signal
-                if bn[i] is not None and k == bn[i][1] + 1:
+                # the VWAP bounce signal (rule D, off by default)
+                if BOUNCE_ON and bn[i] is not None and k == bn[i][1] + 1:
                     ok = c[k] > L + tlb if bn[i][0] == "CALL" else c[k] < L - tlb
                     if ok and k - last_bn[i] >= BOUNCE_COOL and em_bar[i] != k:
                         emit(k, i, bn[i][0], " (VWAP bounce)")
                         last_bn[i] = k
                 bn[i] = None
-                if k >= BOUNCE_LOOK:
+                if BOUNCE_ON and k >= BOUNCE_LOOK:
                     prev = [(c[k - j], series[k - j]) for j in range(1, BOUNCE_LOOK + 1)]
                     if all(a > b for a, b in prev) and l[k] <= L + tlb and c[k] > L:
                         bn[i] = ("CALL", k)
