@@ -47,7 +47,9 @@ def main():
         text = f"BharatPulse {t:%H:%M} IST: PROBLEM: " + "; ".join(p) + "."
         print(text, telegram_notify.send(text))
     else:
-        print("all fine")
+        text = (f"BharatPulse {t:%H:%M} IST: sign-in and stream page OK. Last check before 09:30: TradingView must be open on the Nifty 1-minute chart "
+                "with the BharatPulse candle alert active (its 09:15-09:30 candles fix the VWAP). If the alert is missing, recreate it (tradingview/LIVE-SETUP.md).")
+        print(text, telegram_notify.send(text))
 
 
 if __name__ == "__main__":
