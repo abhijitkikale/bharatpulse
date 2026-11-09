@@ -37,6 +37,7 @@ PORT = 8766
 SYM = "NIFTY"
 OPEN_DIR = ROOT / "data" / "stream_open"      # the TradingView opening candles, one file per day (the relay forgets them after 12 hours)
 JOURNAL = ROOT / "data" / "journal"            # trading journal backup: one file per day plus trades.csv (this PC only)
+EXP_FILE = ROOT / "data" / "expiry_by_day.json"   # the option expiry used for each session day (kept for replays after the expiry has passed)
 STORE = ROOT / "data" / "stream_eod"          # one end-of-day levels file per close date, kept so the day's trades can be replayed after the evening build
 
 
@@ -267,8 +268,55 @@ class Feed:
         except Exception:
             pass
 
+    @staticmethod
+    def fyers_symbol(day_exp, strike, typ):
+        """NSE:NIFTY26N0925050CE style weekly contract name (year, month letter / digit, day, strike, CE / PE)."""
+        d = pd.Timestamp(day_exp)
+        m = "123456789OND"[d.month - 1]
+        return f"NSE:{SYM}{d:%y}{m}{d:%d}{int(strike)}{typ}"
+
+    def exp_load(self):
+        try:
+            return json.loads(EXP_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def exp_save(self, day, exp):
+        d = self.exp_load()
+        if d.get(str(day)) != exp:
+            d[str(day)] = exp
+            try:
+                EXP_FILE.write_text(json.dumps(d, indent=1), encoding="utf-8")
+            except OSError:
+                pass
+
+    def contract(self, day, key, rows):
+        """(symbol, expiry, candles) of the contract a setup of session `day` would buy: the nearest expiry that was valid ON THAT DAY, not today's
+        (after an expiry the chain only lists later ones, so a replay of an older session would otherwise price the wrong contract)."""
+        typ = key[1]
+        known = self.exp_load().get(str(day))
+        rmin = str(min(r["XpryDt"] for r in rows))[:10] if rows else None
+        if known is None and rmin is not None and (rmin <= str(day) or day == now_ist().date()):
+            known = rmin                                 # the chain still lists that session's own nearest expiry
+            self.exp_save(day, known)
+        if known:
+            sym = next((r.get("symbol") for r in rows if str(r["XpryDt"])[:10] == known and r["StrkPric"] == key[0] and r["OptnTp"] == typ), None)                 or self.fyers_symbol(known, key[0], typ)
+            return sym, known, fetch_fyers.fetch_option_candles(sym, day)
+        # unknown and the chain has moved on: try the session day itself and the days after it, up to the chain's nearest expiry
+        d0 = pd.Timestamp(day)
+        for k in range(0, 8):
+            e = (d0 + pd.Timedelta(days=k)).strftime("%Y-%m-%d")
+            if rmin is not None and e >= rmin:
+                break
+            sym = self.fyers_symbol(e, key[0], typ)
+            df = fetch_fyers.fetch_option_candles(sym, day)
+            if df is not None:
+                self.exp_save(day, e)
+                return sym, e, df
+        return None, None, None
+
     def option_frame(self, s):
-        """1-minute candles of the contract a setup would buy (at-the-money strike of the nearest expiry), cached for 15 seconds."""
+        """1-minute candles of the contract a setup would buy (at-the-money strike of the nearest expiry of THAT session), cached for 15 seconds."""
         typ = "CE" if s["side"] == "CALL" else "PE"
         key = (float(s["strike"]), typ)
         hit = self.opt.get(key)
@@ -276,12 +324,9 @@ class Feed:
             return hit[1]
         day = s["time"].date()                          # the session being replayed (not necessarily today's date)
         rows = (self.chains or {}).get(SYM, {}).get("rows") or []
-        if not rows:
-            return hit[1] if hit else journal_frame(day, key)
-        exp = min(r["XpryDt"] for r in rows)
-        sym = next((r.get("symbol") for r in rows if r["XpryDt"] == exp and r["StrkPric"] == key[0] and r["OptnTp"] == typ), None)
-        self.meta[key] = {"symbol": sym, "expiry": exp}
-        df = fetch_fyers.fetch_option_candles(sym, day) if sym else None
+        sym, exp, df = self.contract(day, key, rows)
+        if sym:
+            self.meta[key] = {"symbol": sym, "expiry": exp}
         if df is None and hit:
             df = hit[1]                                 # keep the last good candles if this call failed
         if df is None:

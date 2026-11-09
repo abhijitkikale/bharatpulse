@@ -48,6 +48,12 @@ def write(day_doc, folder):
     folder.mkdir(parents=True, exist_ok=True)
     doc = {**day_doc, "saved_at": dt.datetime.now().isoformat(timespec="seconds")}
     f = folder / (day_doc["date"] + ".json")
+    if f.exists():                                     # keep the version being replaced (a replay with wrong data must not destroy the live record)
+        try:
+            (folder / "prev").mkdir(exist_ok=True)
+            (folder / "prev" / (day_doc["date"] + ".json")).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+        except OSError:
+            pass
     f.write_text(json.dumps(doc, indent=1), encoding="utf-8")
     rebuild_csv(folder)
     return f
