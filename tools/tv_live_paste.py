@@ -65,6 +65,8 @@ def open_chart(page, c):
 
 def paste(page, c, text):
     """Replace the 'Live levels' box of the indicator and press OK. Raises if anything is missing or the text did not stick."""
+    if page.get_by_text("Session disconnected").count():           # TradingView allows one live session per user: another browser took it
+        raise RuntimeError("TradingView session was taken by another browser (one live session per user); not reconnecting by itself")
     item = page.locator('[data-qa-id="legend-source-item"]', has_text=c["indicator"]).first
     item.wait_for(timeout=20000)
     item.hover()
