@@ -48,3 +48,11 @@ One-time setup (needs a TradingView plan with webhook alerts, and two-factor sig
 6. Alerts expire on TradingView: if the header stops showing "TradingView" and Telegram says "NOT received", create the alert again.
 
 The connector used inside Claude cannot create webhook alerts, so this alert has to be made by you on tradingview.com.
+
+
+## Setups from TradingView (optional, being tested)
+The same webhook alert can also carry every CALL / PUT setup the indicator finds, so the stream page books its paper trade from TradingView's own signal and the two cannot disagree.
+1. In the indicator settings tick **Send every CALL / PUT setup to the stream program too** (group "Stream feed (webhook alert)"). This needs the current `BharatPulse-Levels-live.pine`: paste it into the Pine editor, press **Update on chart**, then delete the old alert and create it again (Condition: the indicator > **Any alert() function call**, Webhook URL = your relay address).
+2. The page records the setups it receives in `data/stream_sig/<day>.json` (always, for comparison with its own setups).
+3. To make the page USE them for its paper trades, put `"signals_from": "tradingview"` in `data/stream_relay.json` next to the topic (restart the helper). Without it the page finds the setups itself on the Fyers candles. With it, a day where TradingView sends nothing shows no trades, so check the 09:31 Telegram and the header first.
+4. Paper trades only: nothing here sends an order to any broker.

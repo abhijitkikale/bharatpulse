@@ -169,3 +169,14 @@ def test_opening_candles_of_the_last_few_days_are_still_accepted():
 def test_vwap_bounce_rule_is_off_by_default():
     import stream_setups
     assert stream_setups.BOUNCE_ON is False
+
+
+def test_setup_message_from_tradingview_is_parsed():
+    import stream_levels
+    t = int(pd.Timestamp("2026-11-11 10:34", tz="Asia/Kolkata").timestamp() * 1000)
+    msg = json.dumps({"k": "sig", "t": t, "s": "PUT", "l": "Now VWAP", "v": 24949.83, "g": " (bounce)", "c": 24941.2})
+    sg = stream_levels.parse_signal(msg, pd.Timestamp("2026-11-11").date())
+    assert sg["side"] == "PUT" and sg["strike"] == 24950 and sg["level"] == "Now VWAP 24949.83" and sg["tag"] == " (bounce)"
+    assert sg["time"] == pd.Timestamp("2026-11-11 10:34", tz="Asia/Kolkata")
+    assert stream_levels.parse_signal(json.dumps({"k": "sig", "t": t, "s": "HOLD", "l": "x", "v": 1, "c": 1}), pd.Timestamp("2026-11-11").date()) is None
+    assert stream_levels.parse_signal('{"o":1,"h":2}', pd.Timestamp("2026-11-11").date()) is None          # a candle message is not a setup

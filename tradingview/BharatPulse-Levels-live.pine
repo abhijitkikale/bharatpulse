@@ -79,6 +79,7 @@ wkVwapColor = input.color(#ffeb3b, "Colour of the weekly VWAP", group=gLive)
 gFeed = "Stream feed (webhook alert)"
 sendOpen = input.bool(false, "Send the opening 1-minute candles to the stream program (needs one webhook alert, see LIVE-SETUP.md)", group=gFeed)
 openMins = input.int(15, "Send the first N minutes after 09:15", minval=1, maxval=30, group=gFeed)
+sendSig = input.bool(false, "Send every CALL / PUT setup to the stream program too (same webhook alert; the page can book its paper trade from it)", group=gFeed)
 
 gSet = "Setups (touch > doji > retest) on these levels"
 sGexC  = input.bool(true,  "GEX call wall", group=gSet)
@@ -640,6 +641,8 @@ if useStrat and barstate.isconfirmed and inDay and time >= sigFrom and nBase > 0
                 nm = array.get(ln, i)
                 callAny := callAny or emitSide == "CALL"
                 putAny := putAny or emitSide == "PUT"
+                if sendSig and barstate.isrealtime and barstate.isconfirmed
+                    alert('{"k":"sig","t":' + str.tostring(time) + ',"s":"' + emitSide + '","l":"' + nm + '","v":' + str.tostring(L, "#.##") + ',"g":"' + emitTag + '","c":' + str.tostring(close, "#.##")  + '}', alert.freq_all)
                 strike = math.round(close / strikeStep) * strikeStep
                 array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
                 array.unshift(sgSide, emitSide)
@@ -690,6 +693,8 @@ if useStrat and breakSig and barstate.isconfirmed and inDay and time >= sigFrom
                 array.set(emBar, bi, bar_index)
                 callAny := callAny or bemit == "CALL"
                 putAny := putAny or bemit == "PUT"
+                if sendSig and barstate.isrealtime and barstate.isconfirmed
+                    alert('{"k":"sig","t":' + str.tostring(time) + ',"s":"' + bemit + '","l":"' + bname + '","v":' + str.tostring(Lb, "#.##") + ',"g":"' + " (break)" + '","c":' + str.tostring(close, "#.##")  + '}', alert.freq_all)
                 float bstrike = math.round(close / strikeStep) * strikeStep
                 array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
                 array.unshift(sgSide, bemit)
@@ -742,6 +747,8 @@ if useStrat and bounceSig and barstate.isconfirmed and inDay and time >= sigFrom
                 array.set(emBar, bi2, bar_index)
                 callAny := callAny or demit == "CALL"
                 putAny := putAny or demit == "PUT"
+                if sendSig and barstate.isrealtime and barstate.isconfirmed
+                    alert('{"k":"sig","t":' + str.tostring(time) + ',"s":"' + demit + '","l":"' + dname + '","v":' + str.tostring(Ld, "#.##") + ',"g":"' + " (VWAP bounce)" + '","c":' + str.tostring(close, "#.##")  + '}', alert.freq_all)
                 float dstrike = math.round(close / strikeStep) * strikeStep
                 array.unshift(sgWhen, str.format_time(time, "dd MMM HH:mm", syminfo.timezone))
                 array.unshift(sgSide, demit)

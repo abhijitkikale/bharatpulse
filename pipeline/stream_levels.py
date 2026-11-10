@@ -162,3 +162,21 @@ def merge_open(df, bars, max_dev=0.05):
         out.loc[ts, ["o", "h", "l", "c", "v"]] = [b["o"], b["h"], b["l"], b["c"], b["v"]]
         used += 1
     return out.sort_index(), used
+
+
+def parse_signal(text, day, max_days=4, step=50):
+    """One setup message from the TradingView alert: {"k": "sig", "t": bar open ms, "s": CALL / PUT, "l": level name, "v": level value, "g": tag, "c": close}.
+    Returns the setup dict the page uses ({"idx", "time", "side", "strike", "level", "tag"}) or None when it is not such a message."""
+    try:
+        j = json.loads(text)
+        if j.get("k") != "sig" or j["s"] not in ("CALL", "PUT"):
+            return None
+        ts = pd.Timestamp(int(j["t"]), unit="ms", tz="UTC").tz_convert("Asia/Kolkata")
+        c, v = float(j["c"]), float(j["v"])
+        name = str(j["l"])[:40]
+        tag = str(j.get("g", ""))[:20]
+    except Exception:
+        return None
+    if not 0 <= (day - ts.date()).days <= max_days or ts.second != 0 or not (c == c and c > 0 and v == v and v > 0):
+        return None
+    return {"idx": -1, "time": ts, "side": j["s"], "strike": int(round(c / step) * step), "level": f"{name} {v:.2f}", "tag": tag}

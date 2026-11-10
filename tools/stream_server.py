@@ -36,6 +36,7 @@ RELAY_URL = "https://ntfy.sh/"
 PORT = 8766
 SYM = "NIFTY"
 OPEN_DIR = ROOT / "data" / "stream_open"      # the TradingView opening candles, one file per day (the relay forgets them after 12 hours)
+SIG_DIR = ROOT / "data" / "stream_sig"          # the setups TradingView reported through the alert, one file per day (kept for comparison and for signals_from=tradingview)
 JOURNAL = ROOT / "data" / "journal"            # trading journal backup: one file per day plus trades.csv (this PC only)
 EXP_FILE = ROOT / "data" / "expiry_by_day.json"   # the option expiry used for each session day (kept for replays after the expiry has passed)
 STORE = ROOT / "data" / "stream_eod"          # one end-of-day levels file per close date, kept so the day's trades can be replayed after the evening build
@@ -54,6 +55,15 @@ def relay_topic():
         except Exception:
             t = None
     return t if t and 12 <= len(t) <= 80 and all(ch.isalnum() or ch in "-_" for ch in t) else None
+
+
+def signals_from_tradingview():
+    """True when data/stream_relay.json says {"signals_from": "tradingview"}: the page then books its paper trades from the setups TradingView reports, instead of
+    finding the setups itself on the Fyers candles. Default: the page finds them itself (the TradingView setups are only recorded for comparison)."""
+    try:
+        return json.loads(RELAY.read_text(encoding="utf-8")).get("signals_from") == "tradingview"
+    except Exception:
+        return False
 
 
 def market_hours(t=None):
@@ -107,6 +117,7 @@ class Feed:
         self.chains = None                             # latest current-expiry chain rows (they carry the option symbols)
         self.sent_day, self.sent = None, set()          # Telegram trade messages already sent today
         self.reported = None                           # the day the morning 'ready' check was sent to Telegram
+        self.sigs = self.load_sigs()                   # setups reported by TradingView: {date: [setup dicts]}
         self.tv = self.load_tv()                       # opening 1-minute candles sent by the TradingView alert: {IST minute: bar}
         self.opt = {}                                  # (strike, "CE" / "PE") -> (fetched at, candles)
         self.meta = {}                                 # (strike, "CE" / "PE") -> {"symbol", "expiry"} of the contract used
@@ -169,6 +180,8 @@ class Feed:
                 setups = stream_setups.find_setups(today, replay["levels"], daily, weekly, stream_setups.developing_va(today), SYM)
         except Exception:
             setups = None
+        if setups is not None and signals_from_tradingview():     # book the paper trades from the setups TradingView reported
+            setups = list(self.sigs.get(str(sday), []))
         trades, res = None, None
         if setups:
             try:
@@ -185,6 +198,31 @@ class Feed:
         with self.lock:
             self.state = state
         OUT.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
+
+    @staticmethod
+    def load_sigs():
+        out = {}
+        try:
+            for f in sorted(SIG_DIR.glob("*.json"))[-6:]:
+                rows = json.loads(f.read_text(encoding="utf-8"))
+                out[f.stem] = [{**r, "time": pd.Timestamp(r["time"])} for r in rows]
+        except Exception:
+            pass
+        return out
+
+    def add_sig(self, sg):
+        """Keep one setup reported by TradingView (the relay replays old messages after a restart, so a repeat is ignored)."""
+        day = str(sg["time"].date())
+        lst = self.sigs.setdefault(day, [])
+        if any(x["time"] == sg["time"] and x["side"] == sg["side"] and x["level"] == sg["level"] and x["tag"] == sg["tag"] for x in lst):
+            return
+        lst.append(sg)
+        lst.sort(key=lambda x: x["time"])
+        try:
+            SIG_DIR.mkdir(parents=True, exist_ok=True)
+            (SIG_DIR / f"{day}.json").write_text(json.dumps([{**x, "time": x["time"].isoformat()} for x in lst]), encoding="utf-8")
+        except OSError:
+            pass
 
     @staticmethod
     def load_tv():
@@ -353,6 +391,10 @@ class Feed:
                         except ValueError:
                             continue
                         if ev and ev.get("event") == "message":
+                            sg = stream_levels.parse_signal(ev.get("message", ""), now_ist().date())
+                            if sg:
+                                self.add_sig(sg)
+                                continue
                             got = stream_levels.parse_open_bar(ev.get("message", ""), now_ist().date(), max_days=4)
                             if got:
                                 self.tv[got[0]] = got[1]
