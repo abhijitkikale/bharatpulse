@@ -24,6 +24,8 @@ CFG = ROOT / "data" / "tv_chart.json"
 LOG = ROOT / "data" / "tv_paste_log.txt"
 DEFAULT = {"url": "https://in.tradingview.com/chart/yKs7UQDu/", "indicator": "BP Live", "symbol": "NIFTY"}
 START, END = (9, 10), (15, 40)
+DASH = "https://abhijitkikale.github.io/bharatpulse/"
+EOD_FILE = ROOT / "data" / "tv_eod_pasted.txt"       # the end-of-day text last pasted, so it is pasted once a day, not every cycle
 
 
 def cfg():
@@ -63,8 +65,9 @@ def open_chart(page, c):
     page.wait_for_timeout(3000)                                   # let the indicators finish loading
 
 
-def paste(page, c, text):
-    """Replace the 'Live levels' box of the indicator and press OK. Raises if anything is missing or the text did not stick."""
+def paste(page, c, text=None, eod=None):
+    """Replace the 'Live levels' box (text) and / or the end-of-day 'Levels' box (eod) of the indicator and press OK.
+    Raises if anything is missing or the text did not stick."""
     if page.get_by_text("Session disconnected").count():           # TradingView allows one live session per user: another browser took it
         raise RuntimeError("TradingView session was taken by another browser (one live session per user); not reconnecting by itself")
     item = page.locator('[data-qa-id="legend-source-item"]', has_text=c["indicator"]).first
@@ -73,11 +76,14 @@ def paste(page, c, text):
     item.locator('[data-qa-id="legend-settings-action"]').click(force=True, timeout=10000)
     dlg = page.locator('[data-name="indicator-properties-dialog"]')
     dlg.wait_for(timeout=15000)
-    box = dlg.locator("textarea").nth(1)                           # 0 = Levels (end of day), 1 = Live levels
-    box.fill(text)
-    if box.input_value().replace("\r", "") != text:
-        dlg.locator('button[name="cancel"]').click()
-        raise RuntimeError("the text did not stay in the box")
+    for idx, val in ((0, eod), (1, text)):                         # 0 = Levels (end of day), 1 = Live levels
+        if val is None:
+            continue
+        box = dlg.locator("textarea").nth(idx)
+        box.fill(val)
+        if box.input_value().replace("\r", "") != val:
+            dlg.locator('button[name="cancel"]').click()
+            raise RuntimeError("the text did not stay in the box")
     dlg.locator('button[name="submit"]').click()
     dlg.wait_for(state="hidden", timeout=15000)
     if c.get("save", True):                                        # save the layout so it carries the newest text (use a layout of its own for this)
@@ -86,13 +92,31 @@ def paste(page, c, text):
         page.wait_for_timeout(2500)
 
 
-def run_once(page, c, text):
+def run_once(page, c, text=None, eod=None):
     try:
-        paste(page, c, text)
+        paste(page, c, text, eod)
     except Exception as e:
         log("paste failed, reloading the chart and trying once more:", str(e)[:160])
         open_chart(page, c)
-        paste(page, c, text)
+        paste(page, c, text, eod)
+
+
+def fetch_eod(p):
+    """The end-of-day text the dashboard's Options tab gives for Nifty (the same text you used to copy by hand each evening), read from the
+    published dashboard in a plain browser. The live file is blocked so the text is the close, never today's developing profile."""
+    b = p.chromium.launch(channel="chrome", headless=True)
+    try:
+        pg = b.new_page(viewport={"width": 1500, "height": 900})
+        pg.route("**/live-data/live.json*", lambda r: r.abort())
+        pg.goto(DASH, wait_until="networkidle", timeout=90000)
+        pg.click('[data-tab="options"]')
+        pg.wait_for_function("document.querySelector('#op-tv-text') && document.querySelector('#op-tv-text').value.length > 50", timeout=30000)
+        t = pg.eval_on_selector("#op-tv-text", "e => e.value").replace(chr(13), "").strip()
+        if not t.startswith("# BharatPulse") or " close " not in t.splitlines()[0] or "LIVE profile" in t.splitlines()[0]:
+            raise RuntimeError("unexpected end-of-day text: " + t[:80])
+        return t
+    finally:
+        b.close()
 
 
 def login():
@@ -150,33 +174,59 @@ def main():
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         done = ""
         try:
+            eod_last = EOD_FILE.read_text(encoding="utf-8").strip() if EOD_FILE.exists() else ""
             if a.once:
-                if not f.exists():
-                    log("no text yet:", f)
+                eod = None
+                try:
+                    e = fetch_eod(p)
+                    eod = e
+                except Exception as ex:
+                    log("end-of-day text not available:", str(ex)[:160])
+                if not f.exists() and eod is None:
+                    log("nothing to paste:", f)
                     return 1
                 open_chart(page, c)
-                run_once(page, c, f.read_text(encoding="utf-8").strip())
-                log("pasted once ok")
+                run_once(page, c, f.read_text(encoding="utf-8").strip() if f.exists() else None, eod)
+                if eod:
+                    EOD_FILE.write_text(eod, encoding="utf-8")
+                log("pasted once ok" + (" (with the end-of-day levels: " + eod.splitlines()[0][:60] + ")" if eod else ""))
                 return 0
+            eod_checked = False
+            eod_retry = 0.0
             while True:
                 t = live_loop.now_ist()
                 hm = (t.hour, t.minute)
                 if t.weekday() >= 5 or hm >= END:
                     log("done for today")
                     return 0
-                if hm >= START and f.exists():
-                    txt = f.read_text(encoding="utf-8").strip()
-                    if txt and txt != done:
+                if hm >= START:
+                    eod = None
+                    if not eod_checked and time.time() >= eod_retry:        # the end-of-day levels: once a day, as the first thing
                         try:
-                            if "BharatPulse" not in page.url and "tradingview.com/chart" not in page.url:
+                            e = fetch_eod(p)
+                            eod_checked = True
+                            if e != eod_last:
+                                eod = e
+                            else:
+                                log("end-of-day levels unchanged since the last paste:", e.splitlines()[0][:60])
+                        except Exception as ex:
+                            eod_retry = time.time() + 600
+                            log("end-of-day text not available, trying again in 10 minutes:", str(ex)[:160])
+                    txt = f.read_text(encoding="utf-8").strip() if f.exists() else ""
+                    if (txt and txt != done) or eod:
+                        try:
+                            if "tradingview.com/chart" not in page.url or not page.locator('[data-qa-id="legend-source-item"]').count():
                                 open_chart(page, c)
-                            elif not page.locator('[data-qa-id="legend-source-item"]').count():
-                                open_chart(page, c)
-                            run_once(page, c, txt)
-                            done = txt
-                            log("pasted", txt.splitlines()[0][:60])
-                        except Exception as e:
-                            log("paste FAILED:", str(e)[:200])
+                            run_once(page, c, txt if (txt and txt != done) else None, eod)
+                            if eod:
+                                eod_last = eod
+                                EOD_FILE.write_text(eod, encoding="utf-8")
+                                log("pasted the end-of-day levels:", eod.splitlines()[0][:70])
+                            if txt and txt != done:
+                                done = txt
+                                log("pasted", txt.splitlines()[0][:60])
+                        except Exception as ex:
+                            log("paste FAILED:", str(ex)[:200])
                             done = txt                              # do not hammer the same text; the next 5-minute text gets a fresh try
                 time.sleep(20)
         finally:
