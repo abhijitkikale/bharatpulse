@@ -80,6 +80,10 @@ def paste(page, c, text):
         raise RuntimeError("the text did not stay in the box")
     dlg.locator('button[name="submit"]').click()
     dlg.wait_for(state="hidden", timeout=15000)
+    if c.get("save", True):                                        # save the layout so it carries the newest text (use a layout of its own for this)
+        page.wait_for_timeout(1500)
+        page.keyboard.press("Control+s")
+        page.wait_for_timeout(2500)
 
 
 def run_once(page, c, text):
