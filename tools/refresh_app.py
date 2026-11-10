@@ -168,6 +168,22 @@ def live_running():
     return live_loop.get_state()["running"]
 
 
+TVP = {"proc": None}
+
+
+def start_tv_paste():
+    """Morning routine: the hidden browser that pastes the live GEX text into the TradingView indicator every 5 minutes.
+    Needs the one-time 'python tools/tv_live_paste.py --login'; without it nothing starts. Never runs twice."""
+    try:
+        if not (ROOT / "data" / "tv_profile").exists() or (TVP["proc"] and TVP["proc"].poll() is None):
+            return
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        TVP["proc"] = subprocess.Popen([sys.executable, str(ROOT / "tools" / "tv_live_paste.py")], cwd=str(ROOT), creationflags=flags,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
 def start_live():
     """Run the 5-minute live loop in a background thread of this helper (no second window). Does nothing if it already runs."""
     with LOCK:
@@ -176,6 +192,7 @@ def start_live():
         S["stop"] = threading.Event()
         live_loop.set_state(running=True, msg="starting", last=None, next=None)        # set now so a double click cannot start two
         threading.Thread(target=live_loop.run_loop, kwargs={"push": True, "stop": S["stop"], "log": lambda *a: None}, daemon=True).start()
+        start_tv_paste()
         try:                                     # the live stream page (http://127.0.0.1:8766/) runs alongside the live updates
             stream_server.start_in_thread()
             open_stream_page()

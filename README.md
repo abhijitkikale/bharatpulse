@@ -108,3 +108,11 @@ All under `data/`, which is **not** part of the public repository.
 - Data: NSE archives (indices, constituents, F&O bhavcopy, participant OI, FII/DII, holiday list), Yahoo Finance (stocks, global indices, FX), Fyers data-only API (1-minute index candles with index volume, option chain and option candles). Private Bank and Capital Market constituents are approximations (NSE publishes no file).
 
 Educational/informational only - not investment advice. Market data is from NSE, Yahoo Finance, Fyers and TradingView and is subject to their terms.
+
+
+## Live GEX text pasted into TradingView automatically
+
+`tools/live_loop.py` saves the newest live text to `data/live_levels_NIFTY.txt` every 5 minutes. `tools/tv_live_paste.py` keeps its own hidden Google Chrome
+(profile `data/tv_profile`, separate from your normal Chrome) open on your chart (`data/tv_chart.json`) and pastes that text into the 'Live levels' box of the BP Live indicator
+whenever it changes (09:10-15:40 IST). One time: `python tools/tv_live_paste.py --login` (sign in with the 2-step code in the window; it closes by itself).
+`Refresh BharatPulse.bat` starts the pasting after the Fyers sign-in. Test: `python tools/tv_live_paste.py --once`; results: `data/tv_paste_log.txt`.

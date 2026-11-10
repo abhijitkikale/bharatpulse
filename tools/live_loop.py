@@ -122,6 +122,11 @@ def cycle(push, log=print):
         gex = live_gex.build_gex(chains, now) if chains else None
         if gex:
             payload["gex"] = gex
+            for sym, b in gex.items():                    # the newest text for the chart, every cycle (tools/tv_live_paste.py pastes it)
+                try:
+                    (ROOT / "data" / f"live_levels_{sym}.txt").write_text(live_gex.tv_text(sym, b, now), encoding="utf-8")
+                except Exception:
+                    pass
             telegram_moves(gex, now, log)
         else:
             log("  live GEX unavailable:", cstat)
