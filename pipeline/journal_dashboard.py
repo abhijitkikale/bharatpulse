@@ -15,12 +15,14 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 FOLDER = ROOT / "data" / "journal"
 OUT = ROOT / "data" / "journal_dashboard.html"
 SETTINGS = ROOT / "data" / "journal_settings.json"     # {"capital": 25000, "lot": 65}: rupee results = (exit - entry) x lot; Nifty lot is 65 (NSE circular FAOP70616, from Jan 2026)
-DEFAULTS = {"capital": 25000, "lot": 65}
+DEFAULTS = {"capital": 25000, "lot": 65, "from": "2026-11-11"}      # "from": the first day the page shows; earlier journal files stay on disk, they are only left out
 
 
-def load_days(folder=FOLDER):
+def load_days(folder=FOLDER, start=None):
     days = []
     for f in sorted(pathlib.Path(folder).glob("????-??-??.json")):
+        if start and f.stem < start:
+            continue
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -48,7 +50,8 @@ def load_settings():
 
 
 def build_html(folder=FOLDER):
-    data = json.dumps({"days": load_days(folder), "settings": load_settings()}, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
+    cfg = load_settings()
+    data = json.dumps({"days": load_days(folder, cfg.get("from")), "settings": cfg}, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
     return TEMPLATE.replace("__DATA__", data)
 
 
