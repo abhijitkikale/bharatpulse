@@ -104,6 +104,11 @@ def telegram_moves(gex, now, log=print, sender=telegram_notify.send):
             log(f"  Telegram {sym}: {msg}")
             if ok:
                 SENT["blocks"][sym] = b
+                try:                                  # the same move as a blue message for the friends' channel (does nothing when there is no channel)
+                    import telegram_notify as tn
+                    tn.send_channel_gex(live_gex.NAME.get(sym, sym), b, now)
+                except Exception:
+                    pass
 
 
 def cycle(push, log=print):

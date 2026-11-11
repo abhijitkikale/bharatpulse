@@ -300,7 +300,7 @@ class Feed:
                     pass
             before = len(self.sent)
             for text in stream_alerts.new_messages(res, self.sent, t):
-                telegram_notify.send(text)
+                telegram_notify.send_alert(text)
             if len(self.sent) != before:
                 f.write_text(json.dumps({"day": str(sday), "keys": sorted(self.sent)}), encoding="utf-8")
         except Exception:

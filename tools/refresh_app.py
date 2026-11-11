@@ -436,12 +436,53 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+def status_text():
+    """The answer to /status from Telegram: plain text, a few lines."""
+    import socket
+    t = live_loop.now_ist()
+    tok, ls = token_info(), live_loop.get_state()
+    lines = [f"BharatPulse status {t:%d %b %H:%M} IST"]
+    lines.append("Fyers sign-in: " + (f"valid until {tok.get('expires')}" if tok.get("valid") else "NOT valid (sign in after 06:30 IST)"))
+    lines.append("Live updates: " + (("running, " + str(ls.get("msg"))) if ls.get("running") else "not running"))
+    try:
+        s = socket.socket()
+        s.settimeout(1)
+        s.connect(("127.0.0.1", 8766))
+        s.close()
+        lines.append("Stream page: up")
+    except OSError:
+        lines.append("Stream page: down")
+    try:
+        o = obs_control.snapshot(obs_control.load_config())
+        lines.append("YouTube broadcast: " + ("LIVE" if o.get("live") else "off" if o.get("configured") else "OBS not set up"))
+    except Exception:
+        lines.append("YouTube broadcast: unknown")
+    lines.append("TradingView pasting: " + ("running" if TVP["proc"] and TVP["proc"].poll() is None else "off"))
+    try:
+        j = json.loads((ROOT / "data" / "journal" / f"{t:%Y-%m-%d}.json").read_text(encoding="utf-8"))
+        tr = j.get("trades", [])
+        lines.append(f"Today: {len(tr)} trade(s), " + ", ".join(f"{x['side']} {x['strike']} {x['result']} {x['pnl_pct']:+.0f}%" for x in tr[-4:]) if tr else "Today: no trade yet")
+    except Exception:
+        lines.append("Today: no trade yet")
+    return chr(10).join(lines)
+
+
+def start_control():
+    """Telegram commands for you only (/status, /stream_on, /stream_off, /sleep, /shutdown): see tools/tg_control.py. Started once per helper."""
+    try:
+        import tg_control
+        tg_control.start_in_thread(status_text)
+    except Exception:
+        pass
+
+
 def main():
     try:
         srv = http.server.ThreadingHTTPServer((HOST, PORT), Handler)
     except OSError:
         sys.exit(f"Port {PORT} is already in use. Close the other BharatPulse helper window and try again.")
     print(f"BharatPulse refresh page: {REDIRECT}   (close this window to stop it)")
+    start_control()
     if sys.platform == "win32":
         try:                                    # keep this PC awake while the helper runs (the screen may still turn off)
             import ctypes

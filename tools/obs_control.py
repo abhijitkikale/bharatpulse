@@ -115,6 +115,26 @@ def _trading_day(t):
         return t.weekday() < 5
 
 
+HOLD = ROOT / "data" / "obs_hold.json"            # {"day": "YYYY-MM-DD"}: you stopped the broadcast by hand (Telegram /stream_off), the automatic start leaves that day alone
+
+
+def set_hold(day):
+    try:
+        if day:
+            HOLD.write_text(json.dumps({"day": day}), encoding="utf-8")
+        elif HOLD.exists():
+            HOLD.unlink()
+    except OSError:
+        pass
+
+
+def hold_day():
+    try:
+        return json.loads(HOLD.read_text(encoding="utf-8")).get("day")
+    except Exception:
+        return None
+
+
 def now_ist():
     return pd.Timestamp.now(tz="Asia/Kolkata")
 
@@ -299,6 +319,8 @@ def run_loop(get_state, stop, notify=None, log=lambda *a: None):
     while not stop.is_set():
         t = now_ist()
         day = str(t.date())
+        if hold_day() == day:
+            done_day = day                                             # stopped by hand today: no automatic start
         try:
             cfg = load_config() or cfg
             if cfg["mode"] != "off" and t.weekday() < 5 and (5, 0) <= (t.hour, t.minute) < _hm(cfg["stop_at"]):

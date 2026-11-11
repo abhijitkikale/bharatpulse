@@ -56,6 +56,65 @@ def send_video(path, caption=""):
         return False, "Telegram failed: " + type(e).__name__
 
 
+def channel():
+    """The friends' channel (@name or -100... id) from data/telegram.json ("channel") or BHARATPULSE_TG_CHANNEL, or None. Create it with tools/telegram_channel_setup.py."""
+    c = os.environ.get("BHARATPULSE_TG_CHANNEL")
+    if not c and CFG.exists():
+        try:
+            c = json.loads(CFG.read_text(encoding="utf-8")).get("channel")
+        except Exception:
+            c = None
+    return str(c) if c else None
+
+
+def _post_html(token, chat, text):
+    r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", timeout=15,
+                      json={"chat_id": chat, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True})
+    if r.status_code == 200 and r.json().get("ok"):
+        return True, "sent"
+    return False, "Telegram refused: " + str(r.json().get("description", r.status_code))[:100]
+
+
+def send_html(text, to_channel=False):
+    """A formatted (HTML) message to your own chat and, when to_channel is set and a channel is configured, to the friends' channel too.
+    Returns (ok, short message); ok means your own chat got it."""
+    token, chat = config()
+    if not token:
+        return False, "Telegram not set up"
+    try:
+        ok, msg = _post_html(token, chat, text)
+        ch = channel() if to_channel else None
+        if ch:
+            ok2, msg2 = _post_html(token, ch, text)
+            msg += " | channel: " + msg2
+        return ok, msg
+    except Exception as e:
+        return False, "Telegram failed: " + type(e).__name__
+
+
+def send_alert(text):
+    """A trade message from the stream page: coloured and formatted; the friends' channel gets the public kinds (trade taken, target, stop-loss, closed),
+    your own chat gets all of them (setups not taken stay with you). Messages of an unknown kind go to your chat as plain text."""
+    import tg_style
+    kind, body = tg_style.to_html(text)
+    if body is None:
+        return send(text)
+    return send_html(body, to_channel=tg_style.is_public(kind))
+
+
+def send_channel_gex(name, block, now):
+    """The live GEX levels as a blue message for the friends' channel only (your own chat already gets the copyable text)."""
+    import tg_style
+    ch = channel()
+    token, _ = config()
+    if not (ch and token):
+        return False, "no channel"
+    try:
+        return _post_html(token, ch, tg_style.gex_html(name, block, now))
+    except Exception as e:
+        return False, "Telegram failed: " + type(e).__name__
+
+
 def _logged(fn):
     """Every send attempt is added to data/telegram_log.txt (time, result, first words), so a missing message can be traced. The token is never logged."""
     import datetime
@@ -76,3 +135,6 @@ def _logged(fn):
 
 send = _logged(send)
 send_video = _logged(send_video)
+send_html = _logged(send_html)
+send_alert = _logged(send_alert)
+send_channel_gex = _logged(send_channel_gex)

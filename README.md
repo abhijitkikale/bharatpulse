@@ -120,3 +120,8 @@ whenever it changes (09:10-15:40 IST). One time: `python tools/tv_live_paste.py 
 ## Trading journal page
 
 `Open Trading Journal.bat` (or `python pipeline/journal_dashboard.py --open`) opens `data/journal_dashboard.html`: every journaled day with its paper trades in rupees (one lot of 65 on a 25,000 capital, change in `data/journal_settings.json`), the setups taken or ignored, the index chart and the option price of each trade. It is rewritten at every journal save and is also served at `http://127.0.0.1:8766/journal` while the helper runs. It stays on your PC (the `data` folder is not uploaded).
+
+## Telegram for friends, and control from your phone
+
+* **Friends' channel** (`tools/telegram_channel_setup.py`, or double-click `Connect Telegram Channel.bat`): create a Telegram channel, add GEXINDICATORBOT as an administrator, run the script once. The channel then gets the public messages only: live GEX levels (blue), trade taken with entry / target / stop-loss (orange), target hit (green), stop-loss hit (red), closed some other way (yellow). Setups not taken, warnings, videos and the raw indicator text stay in your own chat. Friends join with the channel's invite link and can only read.
+* **Commands to the bot** (`tools/tg_control.py`, answered only for your own private chat): `/status`, `/stream_on`, `/stream_off`, `/sleep`, `/shutdown` (each of the last two needs `/confirm` within 60 seconds, `/cancel` stops it), `/help`. Old commands are never run later.
