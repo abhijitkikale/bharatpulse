@@ -132,6 +132,22 @@ def render(out_dir, preview=False):
             ff.kill()
 
 
+def video_ok(path):
+    """True when the whole file decodes without a single error and is about as long as planned (a broken render once showed one frame for the whole video)."""
+    import imageio_ffmpeg
+    r = subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-i", str(path), "-f", "null", "-"], capture_output=True, text=True, errors="replace")
+    bad = [l for l in r.stderr.splitlines() if "NAL" in l or "Invalid data" in l or "error while decoding" in l.lower()]
+    stamps = [l for l in r.stderr.splitlines() if "time=" in l]
+    secs = 0.0
+    if stamps:
+        try:
+            h, m, sec = stamps[-1].split("time=")[1].split()[0].split(":")
+            secs = int(h) * 3600 + int(m) * 60 + float(sec)
+        except Exception:
+            pass
+    return not bad and secs >= DUR - 1.0
+
+
 def main():
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")        # the rupee sign in the headline breaks a Windows console otherwise
@@ -167,6 +183,11 @@ def main():
         print("preview written to", out_dir)
         return
     mp4 = out_dir / "snap.mp4"
+    if not video_ok(mp4):                                              # never send a broken file: render once more, then stop
+        print("the video has decoding errors: rendering again")
+        render(out_dir, preview=False)
+        if not video_ok(mp4):
+            raise SystemExit("the video is still broken after a second render; nothing was sent")
     print(f"video: {mp4} ({mp4.stat().st_size / 1e6:.1f} MB)")
     if music is not None:
         final = out_dir / "snap_music.mp4"
