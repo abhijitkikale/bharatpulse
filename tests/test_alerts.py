@@ -27,3 +27,11 @@ def test_old_events_are_marked_but_not_sent():
     sent = set()
     assert stream_alerts.new_messages(_res(), sent, ts("12:00")) == []
     assert len(sent) == 3
+
+
+def test_drifting_vwap_value_does_not_repeat_a_setup_message():
+    sent = set()
+    one = {"time": ts("10:09"), "side": "PUT", "strike": 25350, "level": "Now VWAP 25351.83 (break)", "status": "ignored: trade 2 is open"}
+    assert len(stream_alerts.new_messages({"trades": [], "signals": [one]}, sent, ts("10:10"))) == 1
+    drift = dict(one, level="Now VWAP 25351.85 (break)")
+    assert stream_alerts.new_messages({"trades": [], "signals": [drift]}, sent, ts("10:11")) == []

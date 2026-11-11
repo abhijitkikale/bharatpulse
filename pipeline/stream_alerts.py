@@ -1,6 +1,8 @@
 """Telegram texts for the live stream page: one message when a setup is taken as a paper trade, one when it closes, one line for setups that are ignored.
 Pure function (no network): new_messages() compares the day's run_trades() result with what was already sent and returns only what is new.
 Facts only (side, strike, level, prices, percentages); a paper-trade tracker, not advice."""
+import re
+
 import pandas as pd
 
 
@@ -39,7 +41,8 @@ def new_messages(res, sent, now, fresh_minutes=3):
     for s in res.get("signals", []):
         if s["status"].startswith("TRADE"):
             continue
-        add(f"S{_hm(s['time'])}{s['side']}{s['strike']}{s['level']}", s["time"],
+        # the key leaves out every number of the level text: the VWAP value drifts a few paise each minute and would send the same setup again and again
+        add(f"S{_hm(s['time'])}{s['side']}{re.sub(r'[0-9.]+', '', s['level'])}", s["time"],
             f"Setup not taken ({s['status']}): {s['side']} {s['strike']} {_opt(s['side'])} on {s['level']} at {_hm(s['time'])}")
     out.sort(key=lambda x: x[0])
     return [t for _, t in out]
