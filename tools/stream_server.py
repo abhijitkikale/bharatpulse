@@ -440,6 +440,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 body = b"{}"
             return self._send(200, body, "application/json")
+        if path in ("/journal", "/journal/"):
+            try:
+                import journal_dashboard
+                return self._send(200, journal_dashboard.build_html().encode("utf-8"), "text/html; charset=utf-8")
+            except Exception as e:
+                return self._send(500, ("journal page failed: " + str(e)).encode("utf-8"), "text/plain; charset=utf-8")
         if path in ("/", "/index.html"):
             return self._send(200, (PAGE_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
         self._send(404, b"not found", "text/plain")

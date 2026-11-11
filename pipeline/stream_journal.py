@@ -56,6 +56,12 @@ def write(day_doc, folder):
             pass
     f.write_text(json.dumps(doc, indent=1), encoding="utf-8")
     rebuild_csv(folder)
+    try:                                               # keep the journal page (data/journal_dashboard.html) current; only for the real journal folder
+        import journal_dashboard
+        if folder.resolve() == journal_dashboard.FOLDER.resolve():
+            journal_dashboard.write_file()
+    except Exception:
+        pass
     return f
 
 

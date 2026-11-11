@@ -35,3 +35,13 @@ def test_drifting_vwap_value_does_not_repeat_a_setup_message():
     assert len(stream_alerts.new_messages({"trades": [], "signals": [one]}, sent, ts("10:10"))) == 1
     drift = dict(one, level="Now VWAP 25351.85 (break)")
     assert stream_alerts.new_messages({"trades": [], "signals": [drift]}, sent, ts("10:11")) == []
+
+
+def test_journal_page_builds_with_rupee_settings(tmp_path):
+    import json, journal_dashboard
+    day = {"date": "2026-11-11", "symbol": "NIFTY", "total_pct": 20.0, "trades": [{"n": 1, "side": "PUT", "strike": 25300, "expiry": "2026-11-17", "setup": "x", "entry_time": "09:25",
+           "entry": 200.0, "target": 280.0, "stop": 180.0, "exit_time": "09:34", "exit": 180.0, "result": "STOP", "pnl_pct": -10.0, "setups_ignored_while_open": [], "option_candles_hm_ohlcv": [["09:25", 1, 2, 3, 200.0, 5]]}],
+           "setups": [], "index_candles_hm_ohlcv": [["09:15", 1, 2, 3, 4, 5]], "levels_used": {"close": "2026-11-09", "levels": {"POC": 25000}}, "opening_candles": "Fyers"}
+    (tmp_path / "2026-11-11.json").write_text(json.dumps(day), encoding="utf-8")
+    html = journal_dashboard.build_html(tmp_path)
+    assert '"capital":25000' in html and '"lot":65' in html and "2026-11-11" in html and html.count("</script>") == 1

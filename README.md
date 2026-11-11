@@ -116,3 +116,7 @@ Educational/informational only - not investment advice. Market data is from NSE,
 (profile `data/tv_profile`, separate from your normal Chrome) open on your chart (`data/tv_chart.json`) and pastes that text into the 'Live levels' box of the BP Live indicator
 whenever it changes (09:10-15:40 IST). One time: `python tools/tv_live_paste.py --login` (sign in with the 2-step code in the window; it closes by itself).
 `Refresh BharatPulse.bat` starts the pasting after the Fyers sign-in. Test: `python tools/tv_live_paste.py --once`; results: `data/tv_paste_log.txt`.
+
+## Trading journal page
+
+`Open Trading Journal.bat` (or `python pipeline/journal_dashboard.py --open`) opens `data/journal_dashboard.html`: every journaled day with its paper trades in rupees (one lot of 65 on a 25,000 capital, change in `data/journal_settings.json`), the setups taken or ignored, the index chart and the option price of each trade. It is rewritten at every journal save and is also served at `http://127.0.0.1:8766/journal` while the helper runs. It stays on your PC (the `data` folder is not uploaded).
