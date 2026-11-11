@@ -71,6 +71,9 @@ TEMPLATE = r"""<!doctype html>
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0a0e15;--panel:#111826;--line:#1f2a3d;--fg:#e6edf3;--mut:#8b97a8;--up:#2ccf94;--dn:#ff6174;--amb:#f5b13d;--vio:#b79cff;--acc:#38d0dd;--soft:#162033;color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#0a0e15;--panel:#111826;--line:#1f2a3d;--fg:#e6edf3;--mut:#8b97a8;--up:#2ccf94;--dn:#ff6174;--amb:#f5b13d;--vio:#b79cff;--acc:#38d0dd;--soft:#162033;color-scheme:dark}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
+.wrap>*{min-width:0}
+#home,#dayview{margin:0;width:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--ff);padding:20px max(16px,env(safe-area-inset-right,0px)) 48px max(16px,env(safe-area-inset-left,0px))}
 .wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
 h1{font:700 26px/1.1 var(--fh);margin:0;letter-spacing:-.01em}
@@ -119,11 +122,35 @@ tr.taken td{background:var(--soft)}
 .chartbox svg{min-width:680px}
 @media (max-width:820px){.two{grid-template-columns:1fr}}
 .foot{color:var(--mut);font-size:12px}
+
+.nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:10px;padding:6px 12px;cursor:pointer;font:inherit}
+.btn:disabled{opacity:.4;cursor:default}
+.btn:focus-visible,.cell:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.mhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px 20px;margin-bottom:12px}
+.mhead .t{font:700 20px var(--fh)}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.dow{color:var(--mut);font:500 12px var(--ff);text-transform:uppercase;letter-spacing:.05em;padding:2px 4px}
+.cell{min-height:86px;border:1px solid var(--line);border-radius:10px;padding:6px 8px;display:flex;flex-direction:column;gap:2px;background:var(--panel);text-align:left;font:inherit;color:var(--fg);min-width:0}
+.cell.blank{border-color:transparent;background:transparent}
+.cell .d{color:var(--mut);font-size:12px}
+.cell .r{font:700 15px var(--fh)}
+.cell .n{color:var(--mut);font-size:11px}
+.cell.win{background:color-mix(in srgb,var(--up) 14%,var(--panel));border-color:color-mix(in srgb,var(--up) 45%,var(--line));cursor:pointer}
+.cell.loss{background:color-mix(in srgb,var(--dn) 14%,var(--panel));border-color:color-mix(in srgb,var(--dn) 45%,var(--line));cursor:pointer}
+.cell.flat{cursor:pointer}
+.cell:disabled{cursor:default}
+@media (max-width:640px){.cell{min-height:64px;padding:4px 5px}.cell .r{font-size:12px}.cell .n{display:none}}
+.band.small{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 </style></head><body><div class="wrap">
-<header><div><h1>Trading Journal</h1><div class="sub">Paper trades from the BharatPulse stream page. +40% target, &minus;10% stop, one trade at a time, one lot of 65 on a ₹25,000 capital. A record of what the rules did, not advice.</div></div><div class="tabs" id="tabs" role="tablist"></div></header>
-<section class="band" id="band"></section>
-<section class="panel" id="day"></section>
+<header><div><h1>Trading Journal</h1><div class="sub">Paper trades from the BharatPulse stream page. +40% target, &minus;10% stop, one trade at a time, one lot of 65 on a &#8377;25,000 capital. A record of what the rules did, not advice.</div></div></header>
+<div id="home" class="wrap" style="gap:18px">
+<section class="panel"><div class="mhead"><div class="nav"><button class="btn" id="prev" aria-label="Previous month">&lsaquo;</button><span class="t" id="mname"></span><button class="btn" id="next" aria-label="Next month">&rsaquo;</button></div><div id="msum" class="num"></div></div><div class="cal" id="cal"></div><div class="legend"><span>Each box is one trading day: result in rupees and number of trades. Click a day for its details.</span></div></section>
+<section><h2>Overall</h2><div class="band small" id="stats"></div></section>
+<section class="panel"><h2>Result after each trade</h2><div class="chartbox" id="curve"></div></section>
 <section class="panel"><h2>All days</h2><div class="tablewrap"><table id="all"></table></div></section>
+</div>
+<div id="dayview" class="wrap" style="gap:18px" hidden><div><button class="btn" id="back">&lsaquo; Calendar</button></div><section class="panel" id="day"></section></div>
 <div class="foot" id="foot"></div>
 </div>
 <script>
@@ -139,25 +166,7 @@ const cls = x => x>0 ? 'up' : x<0 ? 'dn' : '';
 const wk = d => new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
 const mins = hm => { const [h,m]=hm.split(':').map(Number); return h*60+m-(9*60+15); };
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let sel = days.length ? days[0].date : null, LVSHOWN = false;
 function status(s){ if(s.startsWith('TRADE')) return ['Taken','tgt']; if(s.startsWith('ignored')) return ['Ignored: a trade was open','mut']; if(s.startsWith('no new trade')) return ['After the 14:45 cutoff','mut']; return [s,'mut']; }
-function tabs(){
-  $('tabs').innerHTML = days.map(d=>`<button class="tab" role="tab" data-d="${d.date}" aria-selected="${d.date===sel}"><b>${wk(d.date)}</b><small class="${cls(dayRs(d))} num">${rs(dayRs(d))} &middot; ${d.trades.length} trade${d.trades.length===1?'':'s'}</small></button>`).join('');
-  $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{sel=b.dataset.d;render();});
-}
-function band(){
-  const all = days.flatMap(d=>d.trades), totRs = days.reduce((s,d)=>s+dayRs(d),0);
-  const tg = all.filter(t=>t.result==='TARGET').length, st = all.filter(t=>t.result==='STOP').length;
-  const best = days.slice().sort((a,b)=>dayRs(b)-dayRs(a))[0], worst = days.slice().sort((a,b)=>dayRs(a)-dayRs(b))[0];
-  const tile = (k,v,n,c='') => `<div class="tile"><div class="k">${k}</div><div class="v num ${c}">${v}</div><div class="n">${n}</div></div>`;
-  $('band').innerHTML = days.length ? [
-    tile('Net result', rs(totRs), `${(totRs/CAP*100>0?'+':'')}${(totRs/CAP*100).toFixed(1)}% of the ₹${CAP.toLocaleString('en-IN')} capital`, cls(totRs)),
-    tile('Trades', all.length, `${tg} reached the target, ${st} hit the stop`),
-    tile('Days journaled', days.length, `one lot = ${LOT} units`),
-    tile('Best day', best ? rs(dayRs(best)) : '&ndash;', best ? wk(best.date) : '', best ? cls(dayRs(best)) : ''),
-    tile('Worst day', worst ? rs(dayRs(worst)) : '&ndash;', worst ? wk(worst.date) : '', worst ? cls(dayRs(worst)) : '')
-  ].join('') : '';
-}
 function chart(d){
   const W=1000,H=320,L=56,R=84,T=14,B=26, n=375, iw=W-L-R, ih=H-T-B;
   const cs = d.candles; if(!cs.length) return '<div class="empty">No index candles were saved for this day.</div>';
@@ -205,20 +214,96 @@ function levels(d){
   const e=Object.entries(d.levels).sort((a,b)=>b[1]-a[1]); if(!e.length) return '<div class="empty">No levels saved.</div>';
   return `<div class="kv num">${e.map(([k,v])=>`<span>${esc(k)}</span><span>${v}</span>`).join('')}</div>`;
 }
+
+let LVSHOWN = false, view = '', mon = '';
+const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const byDate = {}; days.forEach(d=>byDate[d.date]=d);
+const oldest = days.length ? days[days.length-1].date.slice(0,7) : '', newest = days.length ? days[0].date.slice(0,7) : '';
+function stats(list){
+  const asc = list.slice().sort((a,b)=>a.date<b.date?-1:1);
+  const trades = asc.flatMap(d=>d.trades.map(t=>({...t, rs: tradeRs(t), date:d.date})));
+  const closed = trades.filter(t=>t.rs!=null), wins = closed.filter(t=>t.rs>0), loss = closed.filter(t=>t.rs<0);
+  const net = closed.reduce((s,t)=>s+t.rs,0), avg = a => a.length ? a.reduce((s,t)=>s+t.rs,0)/a.length : null;
+  let cum=0, peak=0, dd=0; closed.forEach(t=>{cum+=t.rs; peak=Math.max(peak,cum); dd=Math.min(dd,cum-peak);});
+  const dr = asc.map(dayRs);
+  return {net, n:closed.length, wins:wins.length, loss:loss.length, rate: closed.length ? wins.length/closed.length*100 : null, avgWin:avg(wins), avgLoss:avg(loss), per: closed.length?net/closed.length:null,
+          best: closed.length?closed.reduce((a,b)=>b.rs>a.rs?b:a):null, worst: closed.length?closed.reduce((a,b)=>b.rs<a.rs?b:a):null,
+          gd: dr.filter(x=>x>0).length, ld: dr.filter(x=>x<0).length, nd: asc.length, dd, trades: closed};
+}
+function statsBand(){
+  const S = stats(days); if(!S.n){ $('stats').innerHTML = '<div class="empty">No closed trades yet.</div>'; return; }
+  const tile = (k,v,n,c='') => `<div class="tile"><div class="k">${k}</div><div class="v num ${c}">${v}</div><div class="n">${n}</div></div>`;
+  const rc = S.net/CAP*100;
+  $('stats').innerHTML = [
+    tile('Net result', rs(S.net), `${days.length} day${days.length===1?'':'s'} journaled`, cls(S.net)),
+    tile('Return on capital', pct(rc), `on ₹${CAP.toLocaleString('en-IN')}`, cls(rc)),
+    tile('Trades', S.n, `${S.wins} reached the target, ${S.loss} hit the stop`),
+    tile('Target rate', S.rate==null?'&ndash;':S.rate.toFixed(0)+'%', 'trades that reached the target'),
+    tile('Average target trade', rs(S.avgWin), S.wins+(S.wins===1?' trade':' trades'), 'up'),
+    tile('Average stopped trade', rs(S.avgLoss), S.loss+(S.loss===1?' trade':' trades'), 'dn'),
+    tile('Average per trade', rs(S.per), 'target and stop trades together', cls(S.per)),
+    tile('Best trade', S.best?rs(S.best.rs):'&ndash;', S.best?`${wk(S.best.date)}, trade ${S.best.n}`:'', 'up'),
+    tile('Worst trade', S.worst?rs(S.worst.rs):'&ndash;', S.worst?`${wk(S.worst.date)}, trade ${S.worst.n}`:'', 'dn'),
+    tile('Winning days', `${S.gd} of ${S.nd}`, `${S.ld} losing, ${S.nd-S.gd-S.ld} flat or without a trade`),
+    tile('Deepest dip', rs(S.dd), `${(S.dd/CAP*100).toFixed(1)}% of capital, peak to low`, S.dd<0?'dn':'')
+  ].join('');
+}
+function curve(){
+  const S = stats(days), t = S.trades; if(!t.length){ $('curve').innerHTML='<div class="empty">No closed trades yet.</div>'; return; }
+  const W=1000,H=220,L=64,R=20,T=14,B=30; let cum=0; const pts=[[0,0]]; t.forEach((x,i)=>{cum+=x.rs; pts.push([i+1,cum]);});
+  const lo=Math.min(0,...pts.map(p=>p[1])), hi=Math.max(0,...pts.map(p=>p[1])), pad=(hi-lo||1)*.12, a=lo-pad, b=hi+pad;
+  const x=i=>L+(t.length?i/t.length:0)*(W-L-R), y=v=>T+(b-v)/(b-a)*(H-T-B);
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Cumulative result after each trade">`;
+  const step=Math.max(500,Math.round((b-a)/4/500)*500);
+  for(let v=Math.ceil(a/step)*step;v<b;v+=step) s+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end">${rs(v).replace('+','')}</text>`;
+  s+=`<line x1="${L}" x2="${W-R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--mut)" stroke-dasharray="4 3"/>`;
+  s+=`<polyline fill="none" stroke="var(--acc)" stroke-width="2" points="${pts.map(p=>x(p[0]).toFixed(1)+','+y(p[1]).toFixed(1)).join(' ')}"/>`;
+  t.forEach((q,i)=>{ const px=x(i+1), py=y(pts[i+1][1]); s+=`<circle cx="${px}" cy="${py}" r="4.5" fill="${q.rs>0?'var(--up)':'var(--dn)'}"><title>${wk(q.date)} trade ${q.n}: ${rs(q.rs)}, total ${rs(pts[i+1][1])}</title></circle>`; });
+  const seen={}; t.forEach((q,i)=>{ if(!seen[q.date]){seen[q.date]=1; s+=`<text x="${x(i+1)}" y="${H-8}" text-anchor="middle">${wk(q.date)}</text>`;} });
+  $('curve').innerHTML = s+'</svg>';
+}
+function calendar(){
+  if(!mon) mon = newest || new Date().toISOString().slice(0,7);
+  const [Y,M] = mon.split('-').map(Number), first = new Date(Y,M-1,1), nd = new Date(Y,M,0).getDate(), off = (first.getDay()+6)%7;
+  $('mname').textContent = MN[M-1]+' '+Y; $('prev').disabled = !oldest || mon<=oldest; $('next').disabled = !newest || mon>=newest;
+  const inMonth = days.filter(d=>d.date.startsWith(mon)), S = stats(inMonth);
+  $('msum').innerHTML = inMonth.length ? `<b class="${cls(S.net)}">${rs(S.net)}</b> this month &middot; ${S.n} trade${S.n===1?'':'s'}` : '<span class="sub">No journal days this month</span>';
+  let h = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>`<div class="dow">${x}</div>`).join('');
+  for(let i=0;i<off;i++) h += '<div class="cell blank"></div>';
+  for(let k=1;k<=nd;k++){
+    const ds = `${mon}-${String(k).padStart(2,'0')}`, d = byDate[ds];
+    if(!d){ h += `<button class="cell" disabled aria-label="${ds}: no journal"><span class="d">${k}</span></button>`; continue; }
+    const r = dayRs(d), c = r>0?'win':r<0?'loss':'flat';
+    h += `<button class="cell ${c}" data-d="${ds}" aria-label="${wk(ds)}: ${rs(r)}, ${d.trades.length} trades"><span class="d">${k}</span><span class="r num ${r>0?'up':r<0?'dn':''}">${d.trades.length?rs(r):'No trade'}</span><span class="n num">${d.trades.length} trade${d.trades.length===1?'':'s'}${d.trades.length?' &middot; '+pct(r/CAP*100):''}</span></button>`;
+  }
+  $('cal').innerHTML = h;
+  $('cal').querySelectorAll('button[data-d]').forEach(b=>b.onclick=()=>go(b.dataset.d));
+}
+function go(d){ location.hash = d || ''; }
 function dayview(){
-  const d=days.find(x=>x.date===sel); if(!d){ $('day').innerHTML='<div class="empty">No journal days yet. They appear after a trading session.</div>'; return; }
+  const d = byDate[view]; if(!d){ go(''); return; }
   const op=d.opening||'', opWarn=!/TradingView \(1[5-9]|TradingView \(\d{2}/.test(op);
+  const ch = chart(d);
   $('day').innerHTML = `<div class="dayhead"><div><div class="t">${wk(d.date)} ${d.date.slice(0,4)} &middot; ${esc(d.symbol)}</div><div class="pills"><span class="pill">Levels from the ${esc(d.close||'?')} close</span><span class="pill ${opWarn?'warn':''}">Opening candles: ${esc(op||'n/a')}</span><span class="pill">${d.trades.length} trade${d.trades.length===1?'':'s'} &middot; ${d.setups.length} setups</span></div></div><div style="text-align:right"><div class="t ${cls(dayRs(d))} num">${rs(dayRs(d))}</div><div class="sub num">${(dayRs(d)/CAP*100>0?'+':'')}${(dayRs(d)/CAP*100).toFixed(1)}% of capital &middot; ${pct(d.total)} on premiums</div></div></div>
-  <div class="chartbox" style="margin-top:12px">${chart(d)}</div>
+  <div class="chartbox" style="margin-top:12px">${ch}</div>
   <div class="legend"><span>Line: index close, 1-minute</span><span>Shaded: a trade was open</span><span>&#9650; &#9660; filled: setup taken &middot; hollow: setup not taken</span>${LVSHOWN ? '<span style="color:var(--vio)">Dashed: end-of-day levels near the day range</span>' : '<span>No end-of-day level was near the day range</span>'}</div>
   <h2 style="margin-top:18px">Trades</h2><div class="cards">${d.trades.length?d.trades.map(card).join(''):'<div class="empty">No trade was taken.</div>'}</div>
   <div class="two" style="margin-top:18px"><div><h2>Setups, in time order</h2><div class="tablewrap">${setups(d)}</div></div><div><h2>Levels the page used</h2>${levels(d)}</div></div>`;
 }
 function alltable(){
   $('all').innerHTML = `<thead><tr><th>Date</th><th>Trades</th><th>Target</th><th>Stop</th><th>Result</th><th>% of capital</th><th>Opening candles</th></tr></thead><tbody>${days.map(d=>`<tr class="row" tabindex="0" data-d="${d.date}"><td>${wk(d.date)} ${d.date.slice(0,4)}</td><td class="num">${d.trades.length}</td><td class="num">${d.trades.filter(t=>t.result==='TARGET').length}</td><td class="num">${d.trades.filter(t=>t.result==='STOP').length}</td><td class="num ${cls(dayRs(d))}">${rs(dayRs(d))}</td><td class="num ${cls(dayRs(d))}">${pct(dayRs(d)/CAP*100)}</td><td>${esc(d.opening||'n/a')}</td></tr>`).join('')}</tbody>`;
-  $('all').querySelectorAll('tr.row').forEach(r=>{const go=()=>{sel=r.dataset.d;render();window.scrollTo({top:0,behavior:'smooth'});};r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter')go();};});
+  $('all').querySelectorAll('tr.row').forEach(r=>{const f=()=>go(r.dataset.d);r.onclick=f;r.onkeydown=e=>{if(e.key==='Enter')f();};});
 }
-function render(){ tabs(); band(); dayview(); alltable(); $('foot').textContent = days.length ? 'Last saved ' + (days[0].saved||'').replace('T',' ') + ' (PC clock). Source: data/journal/*.json' : ''; }
+function render(){
+  view = location.hash.slice(1); const isDay = !!byDate[view];
+  $('home').hidden = isDay; $('dayview').hidden = !isDay;
+  if(isDay){ dayview(); window.scrollTo(0,0); } else { if(view) location.hash=''; calendar(); statsBand(); curve(); alltable(); }
+  $('foot').textContent = days.length ? 'Last saved ' + (days[0].saved||'').replace('T',' ') + ' (PC clock). Source: data/journal/*.json' : 'No journal days yet. They appear after a trading session.';
+}
+$('prev').onclick = () => { const [Y,M]=mon.split('-').map(Number); const d=new Date(Y,M-2,1); mon=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; calendar(); };
+$('next').onclick = () => { const [Y,M]=mon.split('-').map(Number); const d=new Date(Y,M,1); mon=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; calendar(); };
+$('back').onclick = () => go('');
+window.addEventListener('hashchange', render);
 render();
 </script></body></html>
 """
