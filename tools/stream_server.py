@@ -58,12 +58,13 @@ def relay_topic():
 
 
 def signals_from_tradingview():
-    """True when data/stream_relay.json says {"signals_from": "tradingview"}: the page then books its paper trades from the setups TradingView reports, instead of
-    finding the setups itself on the Fyers candles. Default: the page finds them itself (the TradingView setups are only recorded for comparison)."""
+    """True (the default) when the page books its paper trades from the setups TradingView reports. data/stream_relay.json {"signals_from": "fyers"}
+    makes the page find the setups itself on the Fyers candles instead (the TradingView setups are then only recorded for comparison).
+    The BP Live alert is renewed every morning by tools/tv_live_paste.py so that it carries that day's level text."""
     try:
-        return json.loads(RELAY.read_text(encoding="utf-8")).get("signals_from") == "tradingview"
+        return json.loads(RELAY.read_text(encoding="utf-8")).get("signals_from") != "fyers"
     except Exception:
-        return False
+        return True
 
 
 def market_hours(t=None):

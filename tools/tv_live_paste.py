@@ -92,6 +92,60 @@ def paste(page, c, text=None, eod=None):
         page.wait_for_timeout(2500)
 
 
+ALERT_DAY = ROOT / "data" / "tv_alert_day.txt"       # the day the BP Live alert was last made fresh, and its id
+
+
+def _alerts_api(page, path, body=None):
+    """Call TradingView's alert service from the open chart page (it uses your signed-in session). Returns the parsed JSON."""
+    js = """async ([path, body]) => {
+        const r = await fetch('https://pricealerts.tradingview.com/' + path, {method: body ? 'POST' : 'GET', credentials: 'include',
+                              headers: body ? {'Content-Type': 'text/plain;charset=UTF-8'} : {}, body: body ? JSON.stringify(body) : undefined});
+        return await r.json();
+    }"""
+    return page.evaluate(js, [path, body])
+
+
+def _bp_alert_ids(page):
+    r = _alerts_api(page, "list_alerts")
+    rows = r.get("r") or r.get("result") or r.get("alerts") or []
+    out = []
+    for a in rows:
+        name = str(a.get("name") or "")
+        if name.startswith("BP Live") and a.get("active", True) and a.get("resolution") == "1":
+            out.append(int(a.get("alert_id")))
+    return out
+
+
+def renew_alert(page, c):
+    """Make ONE fresh BP Live alert. A TradingView alert keeps the level text the indicator had when it was saved (the later 5-minute pastes never
+    reach it) and the indicator draws and sends setups only for the trading day after the close date in that text. So each morning, once the
+    end-of-day and live text are pasted, a new alert is created from this chart (it copies today's text) and the older BP Live alerts are deleted."""
+    before = _bp_alert_ids(page)
+    page.keyboard.press("Escape")
+    page.keyboard.press("Alt+a")
+    dlg_title = page.get_by_text("Create alert on")
+    dlg_title.wait_for(timeout=15000)
+    page.get_by_text("Price", exact=True).first.click()
+    page.locator("[role=option]", has_text=c["indicator"]).first.click()
+    page.wait_for_timeout(1500)
+    if not page.get_by_text("Any alert() function call").count():
+        raise RuntimeError("the alert dialog did not offer 'Any alert() function call'")
+    page.locator('button[data-qa-id="submit"]').click()
+    page.wait_for_timeout(4000)
+    after = _bp_alert_ids(page)
+    new = [i for i in after if i not in before]
+    if len(new) != 1:
+        raise RuntimeError(f"expected one new alert, found {len(new)} (before {before}, after {after})")
+    if before:
+        r = _alerts_api(page, "delete_alerts", {"payload": {"alert_ids": before}})
+        page.wait_for_timeout(1500)
+        left = _bp_alert_ids(page)
+        if left != new:
+            raise RuntimeError(f"old alerts were not all removed: {left} (delete answered {str(r)[:120]})")
+    ALERT_DAY.write_text(f"{time.strftime('%Y-%m-%d')} {new[0]}", encoding="utf-8")
+    return new[0], before
+
+
 def run_once(page, c, text=None, eod=None):
     try:
         paste(page, c, text, eod)
@@ -162,9 +216,23 @@ def main():
     ap.add_argument("--login", action="store_true")
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--show", action="store_true", help="show the browser window instead of running hidden")
+    ap.add_argument("--alert", action="store_true", help="make one fresh BP Live alert from the chart now and delete the older BP Live alerts")
     a = ap.parse_args()
     if a.login:
         return login()
+    if a.alert:
+        from playwright.sync_api import sync_playwright
+        c = cfg()
+        with sync_playwright() as p:
+            ctx = open_browser(p, headless=not a.show)
+            try:
+                page = ctx.pages[0] if ctx.pages else ctx.new_page()
+                open_chart(page, c)
+                new, old = renew_alert(page, c)
+                log("fresh BP Live alert", new, "(replaced", old, ")")
+            finally:
+                ctx.close()
+        return 0
     import live_loop
     from playwright.sync_api import sync_playwright
     c = cfg()
@@ -193,6 +261,7 @@ def main():
                 return 0
             eod_checked = False
             eod_retry = 0.0
+            alert_retry = 0.0
             while True:
                 t = live_loop.now_ist()
                 hm = (t.hour, t.minute)
@@ -228,6 +297,27 @@ def main():
                         except Exception as ex:
                             log("paste FAILED:", str(ex)[:200])
                             done = txt                              # do not hammer the same text; the next 5-minute text gets a fresh try
+                    # once a day, after today's end-of-day text is on the chart: a fresh alert, so its text is today's (see renew_alert)
+                    today_s = t.strftime("%Y-%m-%d")
+                    renewed = ALERT_DAY.exists() and ALERT_DAY.read_text(encoding="utf-8").startswith(today_s)
+                    if eod_checked and not renewed and time.time() >= alert_retry:
+                        try:
+                            if "tradingview.com/chart" not in page.url or not page.locator('[data-qa-id="legend-source-item"]').count():
+                                open_chart(page, c)
+                            new, old = renew_alert(page, c)
+                            log("fresh BP Live alert", new, "(replaced", old, ")")
+                            try:
+                                import telegram_notify
+                                telegram_notify.send(f"TradingView alert renewed for today (alert {new}). The BP Live alert now carries today's levels.")
+                            except Exception:
+                                pass
+                        except Exception as ex:
+                            alert_retry = time.time() + 120
+                            log("alert renewal FAILED, trying again in 2 minutes:", str(ex)[:200])
+                            try:
+                                page.keyboard.press("Escape")
+                            except Exception:
+                                pass
                 time.sleep(20)
         finally:
             try:
