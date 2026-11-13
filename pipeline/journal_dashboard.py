@@ -30,7 +30,7 @@ def load_days(folder=FOLDER, start=None):
         trades = []
         for t in d.get("trades", []):
             trades.append({k: t.get(k) for k in ("n", "side", "strike", "expiry", "setup", "entry_time", "entry", "target", "stop", "exit_time", "exit", "result", "pnl_pct")}
-                          | {"ignored": len(t.get("setups_ignored_while_open") or []), "opt": [[r[0], r[4]] for r in (t.get("option_candles_hm_ohlcv") or [])]})
+                          | {"shifts": t.get("stop_shifts") or [], "ignored": len(t.get("setups_ignored_while_open") or []), "opt": [[r[0], r[4]] for r in (t.get("option_candles_hm_ohlcv") or [])]})
         days.append({
             "date": d["date"], "symbol": d.get("symbol", "NIFTY"), "total": d.get("total_pct"), "trades": trades,
             "setups": d.get("setups", []), "candles": [[r[0], r[2], r[3], r[4]] for r in d.get("index_candles_hm_ohlcv", [])],
@@ -204,7 +204,7 @@ function card(t){
   const win=t.result==='TARGET'||t.result==='TRAIL', dur=(t.entry_time&&t.exit_time)?(mins(t.exit_time)-mins(t.entry_time)):null;
   return `<div class="card"><div class="top"><span class="name">Trade ${t.n} &middot; <span class="chip ${t.side==='CALL'?'call':'put'}">${t.side}</span> ${t.strike} ${t.side==='CALL'?'CE':'PE'}</span><span class="chip ${win?'tgt':t.result==='STOP'?'stp':'open'}">${t.result==='TARGET'?'Target':t.result==='TRAIL'?'Trailing stop':t.result==='STOP'?'Stop':esc(t.result||'Open')} ${rs(tradeRs(t))} (${pct(t.pnl_pct)})</span></div>
   <div class="sub" style="margin:0">${esc(t.setup)}</div>${spark(t)}
-  <div class="kv num"><span>In</span><span>${t.entry_time} at ${t.entry}</span><span>Out</span><span>${t.exit_time||'&ndash;'}${t.exit!=null?' at '+t.exit:''}${dur!=null?' ('+dur+' min)':''}</span><span>Cost of one lot</span><span>₹${Math.round(t.entry*LOT).toLocaleString('en-IN')}${t.entry*LOT>CAP?' (more than the capital)':''}</span><span>Expiry</span><span>${t.expiry||''}</span><span>Setups skipped meanwhile</span><span>${t.ignored}</span></div></div>`;
+  <div class="kv num"><span>In</span><span>${t.entry_time} at ${t.entry}</span><span>Out</span><span>${t.exit_time||'&ndash;'}${t.exit!=null?' at '+t.exit:''}${dur!=null?' ('+dur+' min)':''}</span><span>Cost of one lot</span><span>₹${Math.round(t.entry*LOT).toLocaleString('en-IN')}${t.entry*LOT>CAP?' (more than the capital)':''}</span><span>Expiry</span><span>${t.expiry||''}</span><span>Setups skipped meanwhile</span><span>${t.ignored}</span></div>${(t.shifts&&t.shifts.length)?`<div class="sub" style="margin:6px 0 0">${t.shifts.map(esc).join('<br>')}</div>`:''}</div>`;
 }
 function setups(d){
   if(!d.setups.length) return '<div class="empty">No setups recorded.</div>';

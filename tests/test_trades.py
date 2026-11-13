@@ -98,3 +98,11 @@ def test_trailing_stop_cautious_rules_and_target_still_works():
     assert t["status"] == "TRAIL" and t["exit"] == 103 and t["pnl_pct"] == 3.0
     t = _res([[100, 121, 100, 118], [118, 141, 110, 139]])                                    # still reaches +40% -> target
     assert t["status"] == "TARGET" and t["pnl_pct"] == 40.0
+
+
+def test_trailing_stop_shifts_are_recorded_for_the_page_and_the_journal():
+    res = stream_trades.run_trades([_setup(0)], lambda s: _opt([[100, 100, 100, 100], [100, 121, 100, 118], [118, 131, 117, 128], [128, 129, 126, 127]]))
+    sh = res["trades"][0]["shifts"]
+    assert [round(x["lock"] * 100) for x in sh] == [5, 15] and sh[0]["time"].strftime("%H:%M") == "10:01" and abs(sh[1]["stop"] - 115) < 1e-9
+    j = stream_trades.to_json(res, 19800)
+    assert [x["lock"] for x in j["trades"][0]["shifts"]] == [5, 15] and [m["text"] for m in j["markers"] if m["kind"] == "shift"] == ["T1 SL +5%", "T1 SL +15%"]

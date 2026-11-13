@@ -35,6 +35,7 @@ def build_day(day, res, replay, index_df, opt_frames, meta, extra=None):
                        "entry_time": tr["entry_time"].strftime("%H:%M"), "entry": round(tr["entry"], 2), "target": round(tr["target"], 2), "stop": round(tr["stop"], 2),
                        "exit_time": tr["exit_time"].strftime("%H:%M") if tr["exit_time"] is not None else None,
                        "exit": None if tr["exit"] is None else round(tr["exit"], 2), "result": tr["status"], "pnl_pct": tr["pnl_pct"],
+                       "stop_shifts": [f"{x['time']:%H:%M} stop moved to +{round(x['lock'] * 100)}% ({x['stop']:.2f}) after the premium reached +{round(x['reach'] * 100)}%" for x in tr.get("shifts", [])],
                        "setups_ignored_while_open": [f"{s['time']:%H:%M} {s['side']} {s['strike']} {s['level']}" for s in ign], "option_candles_hm_ohlcv": rows})
     return {"date": str(day), "symbol": "NIFTY", "levels_used": {"close": (replay or {}).get("close"), "levels": (replay or {}).get("levels")},
             "total_pct": res["total_pct"], "trades": trades,

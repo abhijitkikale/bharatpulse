@@ -61,7 +61,7 @@ def _take(s, df, n, last_minute=LAST_MINUTE):
         return None
     tp, sl = entry * (1 + TARGET), entry * (1 - STOP)
     tr = {"n": n, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "entry_time": t, "entry": entry, "target": tp, "stop": sl, "stop_now": sl,
-          "status": "OPEN", "exit_time": None, "exit": None, "last": entry}
+          "status": "OPEN", "exit_time": None, "exit": None, "last": entry, "shifts": []}
     for ts, r in df[df.index > t].iterrows():
         tr["last"] = float(r["c"])
         if r["l"] <= sl:                                    # touched the stop in force at the start of this candle (also when the same candle reached the target or a trail level)
@@ -72,7 +72,9 @@ def _take(s, df, n, last_minute=LAST_MINUTE):
             break
         for reach, lock in TRAIL:                           # the stop moves up for the next candle; the first (highest) level reached counts
             if r["h"] >= entry * (1 + reach):
-                sl = max(sl, entry * (1 + lock))
+                if entry * (1 + lock) > sl:                 # the stop moves up (it is in force from the next candle): remember when, for the page's pop-up and the journal
+                    sl = entry * (1 + lock)
+                    tr["shifts"].append({"time": ts, "reach": reach, "lock": lock, "stop": sl})
                 break
         tr["stop_now"] = sl
     if tr["status"] == "OPEN" and _hm(df.index[-1]) >= last_minute:
@@ -120,12 +122,15 @@ def to_json(res, shift):
     """JSON-ready copy (times as HH:MM, chart marker times shifted like the candles)."""
     hm = lambda t: None if t is None else t.strftime("%H:%M")
     ep = lambda t: int(t.timestamp()) + shift
-    trades = [{**{k: v for k, v in tr.items() if k not in ("entry_time", "exit_time")}, "entry_time": hm(tr["entry_time"]), "exit_time": hm(tr["exit_time"]),
+    trades = [{**{k: v for k, v in tr.items() if k not in ("entry_time", "exit_time", "shifts")},
+               "shifts": [{"when": hm(x["time"]), "time": ep(x["time"]), "reach": round(x["reach"] * 100), "lock": round(x["lock"] * 100), "stop": round(x["stop"], 2)} for x in tr.get("shifts", [])], "entry_time": hm(tr["entry_time"]), "exit_time": hm(tr["exit_time"]),
                "entry": round(tr["entry"], 2), "target": round(tr["target"], 2), "stop": round(tr["stop"], 2), "stop_now": round(tr.get("stop_now", tr["stop"]), 2),
                "exit": None if tr["exit"] is None else round(tr["exit"], 2), "last": round(tr["last"], 2)} for tr in res["trades"]]
     markers = []
     for tr in res["trades"]:
         markers.append({"time": ep(tr["entry_time"]), "kind": "entry", "side": tr["side"], "text": f"T{tr['n']} {tr['side']}"})
+        for x in tr.get("shifts", []):
+            markers.append({"time": ep(x["time"]), "kind": "shift", "side": tr["side"], "text": f"T{tr['n']} SL +{round(x['lock'] * 100)}%"})
         if tr["exit_time"] is not None:
             markers.append({"time": ep(tr["exit_time"]), "kind": "exit", "side": tr["side"], "text": f"T{tr['n']} {tr['status']} {tr['pnl_pct']:+.0f}%"})
     sig = [{"when": hm(x["time"]), "time": ep(x["time"]), "side": x["side"], "strike": f"{x['strike']} {'CE' if x['side'] == 'CALL' else 'PE'}", "level": x["level"],

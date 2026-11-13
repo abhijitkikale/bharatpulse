@@ -33,9 +33,14 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 .row{display:flex;align-items:center;gap:6px;border-left:4px solid;padding:0 6px;font-weight:700;line-height:1.28;white-space:nowrap}
 .row .n{flex:1;overflow:hidden;text-overflow:ellipsis}.row .v{font-variant-numeric:tabular-nums}.row .d{width:4.6em;text-align:right;font-weight:500;color:var(--mut);font-variant-numeric:tabular-nums}
 .row.px{background:var(--px);border-left-color:var(--txt);color:var(--txt)}
+#slpop{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.slp{background:#10202b;border:2px solid #ffb300;color:#ffe082;border-radius:12px;padding:10px 18px;font-weight:700;font-size:calc(var(--fs)*1.25);box-shadow:0 6px 24px #000a;animation:slin .35s ease-out;transition:opacity .8s}
+.slp small{display:block;font-weight:500;color:#cfd8e3;font-size:.8em;margin-top:2px}
+@keyframes slin{from{transform:translateY(-30px);opacity:0}to{transform:none;opacity:1}}
 </style>
 </head>
 <body>
+<div id="slpop"></div>
 <div class="wrap">
   <div class="ban"><span id="b1"></span></div>
   <div class="hd"><span class="t">NIFTY 50 · 1 min</span><span class="p" id="px">–</span><span class="m" id="meta"></span><span class="chip" id="chip">connecting…</span><span class="chip btn" id="th" title="Light / dark background">☀ Light</span></div>
@@ -105,6 +110,20 @@ function renderLevels(s){
     const d=l.value-s.last,c=color(l),tag=l.kind==='live'&&t?` <span style="color:var(--mut);font-weight:500">${t}</span>`:'';
     return `<div class="row" style="border-left-color:${c};color:${c}"><span class="n">${l.name}${tag}</span><span class="v">${l.value.toFixed(2)}</span><span class="d">${d>0?'+':''}${d.toFixed(0)}</span></div>`}).join('');
 }
+// pop-up at the top when a trade's trailing stop moves up (not for shifts already there when the page was opened)
+let SEEN=null;
+function slPop(t,x){
+  const box=document.getElementById('slpop'),d=document.createElement('div');d.className='slp';
+  d.innerHTML=`🔒 TRADE ${t.n} · STOP-LOSS MOVED UP to +${x.lock}% (${x.stop.toFixed(2)})<small>${t.side} ${t.strike} ${t.side==='CALL'?'CE':'PE'} · premium reached +${x.reach}% · ${x.when}</small>`;
+  box.appendChild(d);
+  setTimeout(()=>{d.style.opacity='0';setTimeout(()=>d.remove(),900)},15000);
+}
+function slCheck(T){
+  if(!T)return;
+  const all=[];T.trades.forEach(t=>(t.shifts||[]).forEach(x=>all.push({k:t.n+'@'+x.when+'@'+x.lock,t,x})));
+  if(SEEN===null){SEEN=new Set(all.map(o=>o.k));return}
+  all.forEach(o=>{if(!SEEN.has(o.k)){SEEN.add(o.k);slPop(o.t,o.x)}});
+}
 function draw(s){
   LASTS=s;
   const LV=s.levels||[];
@@ -134,7 +153,7 @@ function draw(s){
   else box.style.display='none';
   // CALL / PUT setups (not shown on the clean address)
   const sb=document.getElementById('setups'),st=s.setups||{table:[],markers:[]};
-  const T=s.trades,tb=document.getElementById('trade');
+  const T=s.trades,tb=document.getElementById('trade');slCheck(T);
   if(CLEAN){sb.style.display='none';cs.setMarkers([]);tb.style.display='none'}
   else{
     sb.style.display='flex';
@@ -148,6 +167,7 @@ function draw(s){
     if(T){
       T.signals.filter(x=>!x.status.startsWith('TRADE')).forEach(x=>mk.push({time:x.time,position:x.side==='CALL'?'belowBar':'aboveBar',color:'#8b97a8',shape:x.side==='CALL'?'arrowUp':'arrowDown',text:''}));
       T.markers.forEach(m=>mk.push(m.kind==='entry'?{time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:cc(m),shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text}
+        :m.kind==='shift'?{time:m.time,position:m.side==='CALL'?'aboveBar':'belowBar',color:'#ffb300',shape:'square',text:m.text}
         :{time:m.time,position:m.side==='CALL'?'aboveBar':'belowBar',color:m.text.includes('+')?G():R(),shape:'circle',text:m.text}));
     }else mk=st.markers.map(m=>({time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:cc(m),shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text}));
     cs.setMarkers(mk.sort((a,b)=>a.time-b.time));
