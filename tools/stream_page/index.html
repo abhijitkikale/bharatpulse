@@ -156,16 +156,16 @@ function draw(s){
     else{
       tb.style.display='flex';
       const cur=T.trades.length?T.trades[T.trades.length-1]:null,pc=v=>(v>0?'+':'')+v.toFixed(1)+'%';
-      if(!cur){tb.className='tr';tb.innerHTML=`<span>No trade yet</span><span class="k">the first setup becomes the trade · target +40% · stop −10% · no new trade after ${T.cutoff}</span>`}
+      if(!cur){tb.className='tr';tb.innerHTML=`<span>No trade yet</span><span class="k">the first setup becomes the trade · target +40% · stop −10% (trails up: +20%→+5%, +30%→+15%, +35%→+30%) · no trade before 9:25 · no new trade after ${T.cutoff}</span>`}
       else{
-        const chipT=t=>{const c=t.pnl_pct>=0?G():R(),ic=t.status==='TARGET'?'✔':t.status==='STOP'?'✖':t.status==='OPEN'?'▶':'■';
+        const chipT=t=>{const c=t.pnl_pct>=0?G():R(),ic=t.status==='TARGET'||t.status==='TRAIL'?'✔':t.status==='STOP'?'✖':t.status==='OPEN'?'▶':'■';
           return `<span style="border:1px solid ${c};color:${c};border-radius:8px;padding:0 10px;font-size:.82em;white-space:nowrap">${ic} T${t.n} ${t.side} ${t.strike} ${t.side==='CALL'?'CE':'PE'} on ${(t.level||'').replace(/ [0-9.]+ /,' ')} · ${t.entry_time} @ ${t.entry.toFixed(2)} → ${t.exit_time?t.exit_time+' @ '+t.exit.toFixed(2):'open'} · ${pc(t.pnl_pct)}</span>`};
         const prev=T.trades.slice(0,-1).map(chipT).join('');
         const open=cur.status==='OPEN',px=cur.exit!=null?cur.exit:cur.last,pnl=cur.pnl_pct,typ=cur.side==='CALL'?'CE':'PE';
-        const head=open?`▶ TRADE ${cur.n} OPEN`:cur.status==='TARGET'?`✔ TRADE ${cur.n} TARGET HIT`:cur.status==='STOP'?`✖ TRADE ${cur.n} STOP HIT`:`■ TRADE ${cur.n} CLOSED (day end)`;
+        const head=open?`▶ TRADE ${cur.n} OPEN`:cur.status==='TARGET'?`✔ TRADE ${cur.n} TARGET HIT`:cur.status==='STOP'?`✖ TRADE ${cur.n} STOP HIT`:cur.status==='TRAIL'?`✔ TRADE ${cur.n} TRAILING STOP HIT`:`■ TRADE ${cur.n} CLOSED (day end)`;
         tb.className='tr '+(pnl>=0?'win':'loss');
         tb.innerHTML=prev+`<span style="color:${cur.side==='CALL'?G():R()}">${head}</span><span>${cur.side} ${cur.strike} ${typ}</span><span><span class="k">in ${cur.entry_time} at</span>${cur.entry.toFixed(2)}</span>`+
-          `<span><span class="k">target +40%</span>${cur.target.toFixed(2)}</span><span><span class="k">stop −10%</span>${cur.stop.toFixed(2)}</span>`+
+          `<span><span class="k">target +40%</span>${cur.target.toFixed(2)}</span><span><span class="k">stop ${(()=>{const sn=cur.stop_now!=null?cur.stop_now:cur.stop,q=(sn/cur.entry-1)*100;return (q>=0?'+':'−')+Math.abs(q).toFixed(0)+'%'})()}</span>${(cur.stop_now!=null?cur.stop_now:cur.stop).toFixed(2)}</span>`+
           `<span><span class="k">${open?'now':'out '+cur.exit_time+' at'}</span>${px.toFixed(2)}</span><span class="big" style="color:${pnl>=0?G():R()}">${pc(pnl)}</span>`+
           `<span style="margin-left:auto"><span class="k">day total (${T.trades.length} trade${T.trades.length>1?'s':''})</span><span class="big" style="color:${T.total_pct>=0?G():R()}">${pc(T.total_pct)}</span></span>`}
     }

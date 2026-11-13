@@ -74,3 +74,27 @@ def test_no_trade_in_the_first_ten_minutes_after_the_open():
     df2 = _opt([[100, 100, 100, 100], [100, 100, 99, 100]], start="2026-11-06 09:25")
     res = stream_trades.run_trades([_setup(25, hour=9)], lambda s: df2)
     assert res["signals"][0]["status"] == "TRADE 1"
+
+
+def _res(rows):
+    return stream_trades.run_trades([_setup(0)], lambda s: _opt([[100, 100, 100, 100]] + rows))["trades"][0]
+
+
+def test_trailing_stop_moves_up_at_20_30_and_35_percent():
+    t = _res([[100, 121, 100, 118], [118, 119, 106, 108], [108, 109, 104, 105]])             # +20% reached: stop -> +5%; later candle touches 105
+    assert t["status"] == "TRAIL" and t["exit"] == 105 and t["pnl_pct"] == 5.0 and abs(t["stop_now"] - 105) < 1e-9
+    t = _res([[100, 131, 100, 128], [128, 129, 114, 120]])                                    # +30% reached: stop -> +15%
+    assert t["status"] == "TRAIL" and abs(t["exit"] - 115) < 1e-9 and t["pnl_pct"] == 15.0
+    t = _res([[100, 136, 100, 134], [134, 139, 129, 131]])                                    # +35% reached: stop -> +30%
+    assert t["status"] == "TRAIL" and abs(t["exit"] - 130) < 1e-9 and t["pnl_pct"] == 30.0
+
+
+def test_trailing_stop_cautious_rules_and_target_still_works():
+    t = _res([[100, 121, 99, 118]])                                                           # same candle touches +20% and the old -10% stop is not touched; stop moves for the NEXT candle
+    assert t["status"] == "OPEN" and abs(t["stop_now"] - 105) < 1e-9
+    t = _res([[100, 121, 89, 100]])                                                           # the old stop (-10%) was touched in the same candle: counted as the stop first
+    assert t["status"] == "STOP" and t["pnl_pct"] == -10.0
+    t = _res([[100, 121, 100, 118], [103, 104, 102, 103]])                                    # a gap below the raised stop (105) fills at the open
+    assert t["status"] == "TRAIL" and t["exit"] == 103 and t["pnl_pct"] == 3.0
+    t = _res([[100, 121, 100, 118], [118, 141, 110, 139]])                                    # still reaches +40% -> target
+    assert t["status"] == "TARGET" and t["pnl_pct"] == 40.0

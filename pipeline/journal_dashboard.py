@@ -143,7 +143,7 @@ tr.taken td{background:var(--soft)}
 @media (max-width:640px){.cell{min-height:64px;padding:4px 5px}.cell .r{font-size:12px}.cell .n{display:none}}
 .band.small{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 </style></head><body><div class="wrap">
-<header><div><h1>Trading Journal</h1><div class="sub">Paper trades from the BharatPulse stream page. +40% target, &minus;10% stop, one trade at a time, one lot of 65 on a &#8377;25,000 capital. A record of what the rules did, not advice.</div></div></header>
+<header><div><h1>Trading Journal</h1><div class="sub">Paper trades from the BharatPulse stream page. +40% target, &minus;10% stop that trails up (+20% &rarr; +5%, +30% &rarr; +15%, +35% &rarr; +30%), no trade in the first 10 minutes (before 9:25), one trade at a time, one lot of 65 on a &#8377;25,000 capital. A record of what the rules did, not advice.</div></div></header>
 <div id="home" class="wrap" style="gap:18px">
 <section class="panel"><div class="mhead"><div class="nav"><button class="btn" id="prev" aria-label="Previous month">&lsaquo;</button><span class="t" id="mname"></span><button class="btn" id="next" aria-label="Next month">&rsaquo;</button></div><div id="msum" class="num"></div></div><div class="cal" id="cal"></div><div class="legend"><span>Each box is one trading day: result in rupees and number of trades. Click a day for its details.</span></div></section>
 <section><h2>Overall</h2><div class="band small" id="stats"></div></section>
@@ -181,7 +181,7 @@ function chart(d){
   for(let p=Math.ceil(lo/step)*step;p<hi;p+=step) s+=`<line x1="${L}" x2="${W-R}" y1="${y(p)}" y2="${y(p)}" stroke="var(--line)"/><text x="${L-8}" y="${y(p)+4}" text-anchor="end">${p}</text>`;
   [0,60,120,180,240,300,360].forEach(m=>{const h=9*60+15+m; s+=`<text x="${x(m)}" y="${H-8}" text-anchor="middle">${String(Math.floor(h/60)).padStart(2,'0')}:${String(h%60).padStart(2,'0')}</text>`;});
   d.trades.forEach(t=>{ if(!t.entry_time||!t.exit_time) return; const a=x(mins(t.entry_time)), b=Math.max(x(mins(t.exit_time)),a+3);
-    s+=`<rect x="${a}" y="${T}" width="${b-a}" height="${ih}" fill="${t.result==='TARGET'?'var(--up)':'var(--dn)'}" opacity=".13"><title>Trade ${t.n}: ${t.entry_time} to ${t.exit_time}, ${pct(t.pnl_pct)}</title></rect>`; });
+    s+=`<rect x="${a}" y="${T}" width="${b-a}" height="${ih}" fill="${(t.result==='TARGET'||t.result==='TRAIL')?'var(--up)':'var(--dn)'}" opacity=".13"><title>Trade ${t.n}: ${t.entry_time} to ${t.exit_time}, ${pct(t.pnl_pct)}</title></rect>`; });
   lv.forEach(([k,v])=>{ s+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--vio)" stroke-dasharray="5 4" opacity=".7"/><text x="${W-R+6}" y="${y(v)+4}" style="fill:var(--vio)">${k} ${Math.round(v)}</text>`; });
   s+=`<polyline fill="none" stroke="var(--acc)" stroke-width="1.6" points="${cs.map((c,i)=>x(i).toFixed(1)+','+y(c[3]).toFixed(1)).join(' ')}"/>`;
   d.setups.forEach(q=>{ const m=mins(q.time); if(m<0||m>=n) return; const taken=q.status.startsWith('TRADE'); const c=cs[Math.min(m,cs.length-1)]; const px=x(m), py=y(c[3]); const up=q.side==='CALL', col=up?'var(--up)':'var(--dn)';
@@ -201,8 +201,8 @@ function spark(t){
   return s+'</svg>';
 }
 function card(t){
-  const win=t.result==='TARGET', dur=(t.entry_time&&t.exit_time)?(mins(t.exit_time)-mins(t.entry_time)):null;
-  return `<div class="card"><div class="top"><span class="name">Trade ${t.n} &middot; <span class="chip ${t.side==='CALL'?'call':'put'}">${t.side}</span> ${t.strike} ${t.side==='CALL'?'CE':'PE'}</span><span class="chip ${win?'tgt':t.result==='STOP'?'stp':'open'}">${t.result==='TARGET'?'Target':t.result==='STOP'?'Stop':esc(t.result||'Open')} ${rs(tradeRs(t))} (${pct(t.pnl_pct)})</span></div>
+  const win=t.result==='TARGET'||t.result==='TRAIL', dur=(t.entry_time&&t.exit_time)?(mins(t.exit_time)-mins(t.entry_time)):null;
+  return `<div class="card"><div class="top"><span class="name">Trade ${t.n} &middot; <span class="chip ${t.side==='CALL'?'call':'put'}">${t.side}</span> ${t.strike} ${t.side==='CALL'?'CE':'PE'}</span><span class="chip ${win?'tgt':t.result==='STOP'?'stp':'open'}">${t.result==='TARGET'?'Target':t.result==='TRAIL'?'Trailing stop':t.result==='STOP'?'Stop':esc(t.result||'Open')} ${rs(tradeRs(t))} (${pct(t.pnl_pct)})</span></div>
   <div class="sub" style="margin:0">${esc(t.setup)}</div>${spark(t)}
   <div class="kv num"><span>In</span><span>${t.entry_time} at ${t.entry}</span><span>Out</span><span>${t.exit_time||'&ndash;'}${t.exit!=null?' at '+t.exit:''}${dur!=null?' ('+dur+' min)':''}</span><span>Cost of one lot</span><span>₹${Math.round(t.entry*LOT).toLocaleString('en-IN')}${t.entry*LOT>CAP?' (more than the capital)':''}</span><span>Expiry</span><span>${t.expiry||''}</span><span>Setups skipped meanwhile</span><span>${t.ignored}</span></div></div>`;
 }
@@ -291,7 +291,7 @@ function dayview(){
   <div class="two" style="margin-top:18px"><div><h2>Setups, in time order</h2><div class="tablewrap">${setups(d)}</div></div><div><h2>Levels the page used</h2>${levels(d)}</div></div>`;
 }
 function alltable(){
-  $('all').innerHTML = `<thead><tr><th>Date</th><th>Trades</th><th>Target</th><th>Stop</th><th>Result</th><th>% of capital</th><th>Opening candles</th></tr></thead><tbody>${days.map(d=>`<tr class="row" tabindex="0" data-d="${d.date}"><td>${wk(d.date)} ${d.date.slice(0,4)}</td><td class="num">${d.trades.length}</td><td class="num">${d.trades.filter(t=>t.result==='TARGET').length}</td><td class="num">${d.trades.filter(t=>t.result==='STOP').length}</td><td class="num ${cls(dayRs(d))}">${rs(dayRs(d))}</td><td class="num ${cls(dayRs(d))}">${pct(dayRs(d)/CAP*100)}</td><td>${esc(d.opening||'n/a')}</td></tr>`).join('')}</tbody>`;
+  $('all').innerHTML = `<thead><tr><th>Date</th><th>Trades</th><th>Target</th><th>Trail</th><th>Stop</th><th>Result</th><th>% of capital</th><th>Opening candles</th></tr></thead><tbody>${days.map(d=>`<tr class="row" tabindex="0" data-d="${d.date}"><td>${wk(d.date)} ${d.date.slice(0,4)}</td><td class="num">${d.trades.length}</td><td class="num">${d.trades.filter(t=>t.result==='TARGET').length}</td><td class="num">${d.trades.filter(t=>t.result==='TRAIL').length}</td><td class="num">${d.trades.filter(t=>t.result==='STOP').length}</td><td class="num ${cls(dayRs(d))}">${rs(dayRs(d))}</td><td class="num ${cls(dayRs(d))}">${pct(dayRs(d)/CAP*100)}</td><td>${esc(d.opening||'n/a')}</td></tr>`).join('')}</tbody>`;
   $('all').querySelectorAll('tr.row').forEach(r=>{const f=()=>go(r.dataset.d);r.onclick=f;r.onkeydown=e=>{if(e.key==='Enter')f();};});
 }
 function render(){

@@ -1,13 +1,15 @@
 """Paper trade tracker for the stream page: one trade at a time, taken from the setups of stream_setups.find_setups.
 
 The first setup becomes a trade (CALL = buy the at-the-money call, PUT = buy the at-the-money put of the nearest expiry). Its entry price is the
-option's 1-minute close on the setup candle. The trade stays open until +TARGET (profit) or -STOP (loss) of that premium is touched. Setups that
+option's 1-minute close on the setup candle. The trade stays open until +TARGET (profit) or the stop is touched. The stop starts at -STOP and trails up:
+at +20% it moves to +5%, at +30% to +15%, at +35% to +30% (TRAIL, see below; a stop hit at a raised level is "TRAIL", a profit locked in). A candle is judged with the stop in force at its start, and the stop touched counts first when the same candle also reached a trail level or the target (the cautious choice). Setups that
 confirm while a trade is open are only listed ("ignored"); once the trade is closed the next setup becomes the next trade. No new trade starts
 after CUTOFF, after MAX_TRADES trades in the day, or once the closed trades of the day add up to -MAX_LOSS_PCT percent. A 1-minute option candle that touches both levels counts as a stop (the cautious choice). A trade still open on the last candle of
 the day is closed at that price. Percentages only; brokerage, taxes and slippage are not included. Pure functions, no network."""
 import pandas as pd
 
 TARGET, STOP = 0.40, 0.10
+TRAIL = ((0.35, 0.30), (0.30, 0.15), (0.20, 0.05))     # trailing stop: once the premium has reached +35% / +30% / +20% the stop moves up to +30% / +15% / +5% (never down)
 CUTOFF = (14, 45)
 MAX_TRADES, MAX_LOSS_PCT = 5, 30.0     # daily limits: no new trade after 5 trades or once the day's closed trades add up to -30%
 LAST_MINUTE = (15, 29)
@@ -58,16 +60,21 @@ def _take(s, df, n, last_minute=LAST_MINUTE):
     if entry <= 0:
         return None
     tp, sl = entry * (1 + TARGET), entry * (1 - STOP)
-    tr = {"n": n, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "entry_time": t, "entry": entry, "target": tp, "stop": sl,
+    tr = {"n": n, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "entry_time": t, "entry": entry, "target": tp, "stop": sl, "stop_now": sl,
           "status": "OPEN", "exit_time": None, "exit": None, "last": entry}
     for ts, r in df[df.index > t].iterrows():
         tr["last"] = float(r["c"])
-        if r["l"] <= sl:                                    # touched the stop (also when the same candle reached the target)
-            tr.update(status="STOP", exit_time=ts, exit=min(sl, float(r["o"])))      # a gap down through the stop fills at the open
+        if r["l"] <= sl:                                    # touched the stop in force at the start of this candle (also when the same candle reached the target or a trail level)
+            tr.update(status="STOP" if sl < entry else "TRAIL", exit_time=ts, exit=min(sl, float(r["o"])))      # a gap down through the stop fills at the open
             break
         if r["h"] >= tp:
             tr.update(status="TARGET", exit_time=ts, exit=tp)
             break
+        for reach, lock in TRAIL:                           # the stop moves up for the next candle; the first (highest) level reached counts
+            if r["h"] >= entry * (1 + reach):
+                sl = max(sl, entry * (1 + lock))
+                break
+        tr["stop_now"] = sl
     if tr["status"] == "OPEN" and _hm(df.index[-1]) >= last_minute:
         tr.update(status="DAY END", exit_time=df.index[-1], exit=float(df["c"].iloc[-1]))
     px = tr["exit"] if tr["exit"] is not None else tr["last"]
@@ -114,7 +121,7 @@ def to_json(res, shift):
     hm = lambda t: None if t is None else t.strftime("%H:%M")
     ep = lambda t: int(t.timestamp()) + shift
     trades = [{**{k: v for k, v in tr.items() if k not in ("entry_time", "exit_time")}, "entry_time": hm(tr["entry_time"]), "exit_time": hm(tr["exit_time"]),
-               "entry": round(tr["entry"], 2), "target": round(tr["target"], 2), "stop": round(tr["stop"], 2),
+               "entry": round(tr["entry"], 2), "target": round(tr["target"], 2), "stop": round(tr["stop"], 2), "stop_now": round(tr.get("stop_now", tr["stop"]), 2),
                "exit": None if tr["exit"] is None else round(tr["exit"], 2), "last": round(tr["last"], 2)} for tr in res["trades"]]
     markers = []
     for tr in res["trades"]:

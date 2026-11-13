@@ -57,6 +57,8 @@ def to_html(text):
             head = f"\U0001F7E2 <b>TARGET HIT</b> \u00b7 trade {n}  <b>{_sign(pnl)}%</b>"
         elif kind == "trade_stop":
             head = f"\U0001F534 <b>STOP-LOSS HIT</b> \u00b7 trade {n}  <b>{_sign(pnl)}%</b>"
+        elif status == "TRAIL":
+            head = f"\U0001F7E2 <b>TRAILING STOP HIT</b> · trade {n}  <b>{_sign(pnl)}%</b>  (profit locked)"
         else:
             head = f"\U0001F7E1 <b>TRADE {n} CLOSED</b> ({html.escape(status)})  <b>{_sign(pnl)}%</b>"
         return kind, head + f"\n{side} {strike} {opt} \u00b7 out {hm} at {out}" + FOOTER
