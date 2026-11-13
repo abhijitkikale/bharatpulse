@@ -31,6 +31,21 @@ def _hm(t):
     return (t.hour, t.minute)
 
 
+EARLIEST = (9, 25)      # no trade in the first 10 minutes after the 09:15 open (the setup is still listed, as "no trade before 9:25")
+
+
+def _earliest(day):
+    """First minute a trade may start. Regular days only; a special session (Muhurat) keeps no such wait."""
+    try:
+        import nse_calendar
+        ss = nse_calendar.sessions(day)
+        if ss and ss[0] != nse_calendar.REGULAR:
+            return (0, 0)
+    except Exception:
+        pass
+    return EARLIEST
+
+
 def _take(s, df, n, last_minute=LAST_MINUTE):
     """Open (and, if the candles allow, close) a trade for setup s on the option candles df (columns o h l c). None when there is no price."""
     if df is None or df.empty:
@@ -69,9 +84,12 @@ def run_trades(setups, option_frame, cutoff=None):
         lim = limits(setups[0]["time"].date())
         cutoff, last_minute = (cutoff or lim[0]), lim[1]
     cutoff = cutoff or CUTOFF
+    earliest = _earliest(setups[0]["time"].date()) if setups else (0, 0)
     for s in setups:
         t = s["time"]
-        if cur is not None and (cur["exit_time"] is None or t < cur["exit_time"]):
+        if _hm(t) < earliest:                                # the first minutes after the open: the setup is listed, not traded
+            status = f"no trade before {earliest[0]}:{earliest[1]:02d}"
+        elif cur is not None and (cur["exit_time"] is None or t < cur["exit_time"]):
             status = f"ignored: trade {cur['n']} is open"
         elif len(trades) >= MAX_TRADES:
             status = f"daily limit: {MAX_TRADES} trades done"

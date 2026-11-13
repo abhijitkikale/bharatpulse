@@ -64,3 +64,13 @@ def test_daily_limits():
     sets = [{"time": idx[k], "side": "CALL", "strike": 25000, "level": "X", "tag": ""} for k in range(0, 40, 2)]
     res = stream_trades.run_trades(sets, lambda s: df)
     assert len(res["trades"]) == 3 and any("loss limit" in x["status"] for x in res["signals"])
+
+
+def test_no_trade_in_the_first_ten_minutes_after_the_open():
+    df = _opt([[100, 100, 100, 100], [100, 100, 99, 100]], start="2026-11-06 09:19")
+    early = _setup(19, hour=9)
+    res = stream_trades.run_trades([early], lambda s: df)
+    assert not res["trades"] and res["signals"][0]["status"] == "no trade before 9:25"
+    df2 = _opt([[100, 100, 100, 100], [100, 100, 99, 100]], start="2026-11-06 09:25")
+    res = stream_trades.run_trades([_setup(25, hour=9)], lambda s: df2)
+    assert res["signals"][0]["status"] == "TRADE 1"
