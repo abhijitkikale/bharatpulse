@@ -33,6 +33,17 @@ def _hm(t):
     return (t.hour, t.minute)
 
 
+CONTRA_IN_NEGATIVE = True   # in NEGATIVE gamma a setup against the move (CALL below the gamma flip, PUT above it) is listed, not traded
+REGIME_BUFFER = 0.05        # when the gamma regime turns against an open trade that is in profit, its stop moves up to 5% below the current premium
+
+
+def _contra(s, rg):
+    """True when setup s goes against the move in negative gamma. rg: {"regime": "POSITIVE"/"NEGATIVE", "side": -1 below / +1 above the live flip, 0 unknown} or None."""
+    if not CONTRA_IN_NEGATIVE or not rg or rg.get("regime") != "NEGATIVE" or not rg.get("side"):
+        return False
+    return (s["side"] == "CALL" and rg["side"] < 0) or (s["side"] == "PUT" and rg["side"] > 0)
+
+
 EARLIEST = (9, 25)      # no trade in the first 10 minutes after the 09:15 open (the setup is still listed, as "no trade before 9:25")
 
 
@@ -48,7 +59,7 @@ def _earliest(day):
     return EARLIEST
 
 
-def _take(s, df, n, last_minute=LAST_MINUTE):
+def _take(s, df, n, last_minute=LAST_MINUTE, regime_at=None):
     """Open (and, if the candles allow, close) a trade for setup s on the option candles df (columns o h l c). None when there is no price."""
     if df is None or df.empty:
         return None
@@ -62,6 +73,13 @@ def _take(s, df, n, last_minute=LAST_MINUTE):
     tp, sl = entry * (1 + TARGET), entry * (1 - STOP)
     tr = {"n": n, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "entry_time": t, "entry": entry, "target": tp, "stop": sl, "stop_now": sl,
           "status": "OPEN", "exit_time": None, "exit": None, "last": entry, "shifts": []}
+    prev_reg = None
+    if regime_at is not None:
+        try:
+            rg0 = regime_at(t)
+            prev_reg = rg0["regime"] if rg0 else None
+        except Exception:
+            prev_reg = None
     for ts, r in df[df.index > t].iterrows():
         tr["last"] = float(r["c"])
         if r["l"] <= sl:                                    # touched the stop in force at the start of this candle (also when the same candle reached the target or a trail level)
@@ -76,6 +94,20 @@ def _take(s, df, n, last_minute=LAST_MINUTE):
                     sl = entry * (1 + lock)
                     tr["shifts"].append({"time": ts, "reach": reach, "lock": lock, "stop": sl})
                 break
+        if regime_at is not None:                           # the gamma regime turned against the trade (PUT: now POSITIVE, CALL: now NEGATIVE) while it is in profit: tighten the stop
+            try:
+                rg = regime_at(ts)
+            except Exception:
+                rg = None
+            cur_reg = rg["regime"] if rg else None
+            against = (tr["side"] == "PUT" and cur_reg == "POSITIVE") or (tr["side"] == "CALL" and cur_reg == "NEGATIVE")
+            if against and prev_reg is not None and cur_reg != prev_reg and float(r["c"]) > entry:
+                new = float(r["c"]) * (1 - REGIME_BUFFER)
+                if new > sl:
+                    sl = new
+                    tr["shifts"].append({"time": ts, "reach": None, "lock": new / entry - 1, "stop": new, "why": f"gamma regime turned {cur_reg}"})
+            if cur_reg is not None:
+                prev_reg = cur_reg
         tr["stop_now"] = sl
     if tr["status"] == "OPEN" and _hm(df.index[-1]) >= last_minute:
         tr.update(status="DAY END", exit_time=df.index[-1], exit=float(df["c"].iloc[-1]))
@@ -84,8 +116,9 @@ def _take(s, df, n, last_minute=LAST_MINUTE):
     return tr
 
 
-def run_trades(setups, option_frame, cutoff=None):
+def run_trades(setups, option_frame, cutoff=None, regime_at=None):
     """setups: chronological list from stream_setups.find_setups. option_frame(setup) -> DataFrame of that contract's 1-minute candles or None.
+    regime_at(time) -> {"regime", "side"} or None (the live gamma regime at that time; None = unknown, then no regime rule applies).
     Returns {"trades": [...], "signals": [...], "total_pct": float}; signals lists every setup with what happened to it."""
     trades, signals, cur = [], [], None
     last_minute = LAST_MINUTE
@@ -96,6 +129,10 @@ def run_trades(setups, option_frame, cutoff=None):
     earliest = _earliest(setups[0]["time"].date()) if setups else (0, 0)
     for s in setups:
         t = s["time"]
+        try:
+            rg = regime_at(t) if regime_at else None
+        except Exception:
+            rg = None
         if _hm(t) < earliest:                                # the first minutes after the open: the setup is listed, not traded
             status = f"no trade before {earliest[0]}:{earliest[1]:02d}"
         elif cur is not None and (cur["exit_time"] is None or t < cur["exit_time"]):
@@ -106,15 +143,17 @@ def run_trades(setups, option_frame, cutoff=None):
             status = f"daily loss limit reached (-{MAX_LOSS_PCT:.0f}%)"
         elif _hm(t) > cutoff:
             status = f"no new trade after {cutoff[0]}:{cutoff[1]:02d}"
+        elif _contra(s, rg):
+            status = "not taken: against the move in negative gamma"
         else:
-            tr = _take(s, option_frame(s), len(trades) + 1, last_minute)
+            tr = _take(s, option_frame(s), len(trades) + 1, last_minute, regime_at)
             if tr is None:
                 status = "no option price"
             else:
                 trades.append(tr)
                 cur = tr
                 status = f"TRADE {tr['n']}"
-        signals.append({"time": t, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "status": status})
+        signals.append({"time": t, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "status": status, "regime": rg["regime"] if rg else None})
     return {"trades": trades, "signals": signals, "total_pct": round(sum(tr["pnl_pct"] for tr in trades), 1), "cutoff": "%d:%02d" % tuple(cutoff)}
 
 
@@ -123,16 +162,16 @@ def to_json(res, shift):
     hm = lambda t: None if t is None else t.strftime("%H:%M")
     ep = lambda t: int(t.timestamp()) + shift
     trades = [{**{k: v for k, v in tr.items() if k not in ("entry_time", "exit_time", "shifts")},
-               "shifts": [{"when": hm(x["time"]), "time": ep(x["time"]), "reach": round(x["reach"] * 100), "lock": round(x["lock"] * 100), "stop": round(x["stop"], 2)} for x in tr.get("shifts", [])], "entry_time": hm(tr["entry_time"]), "exit_time": hm(tr["exit_time"]),
+               "shifts": [{"when": hm(x["time"]), "time": ep(x["time"]), "reach": None if x.get("reach") is None else round(x["reach"] * 100), "lock": round(x["lock"] * 100), "stop": round(x["stop"], 2), "why": x.get("why")} for x in tr.get("shifts", [])], "entry_time": hm(tr["entry_time"]), "exit_time": hm(tr["exit_time"]),
                "entry": round(tr["entry"], 2), "target": round(tr["target"], 2), "stop": round(tr["stop"], 2), "stop_now": round(tr.get("stop_now", tr["stop"]), 2),
                "exit": None if tr["exit"] is None else round(tr["exit"], 2), "last": round(tr["last"], 2)} for tr in res["trades"]]
     markers = []
     for tr in res["trades"]:
         markers.append({"time": ep(tr["entry_time"]), "kind": "entry", "side": tr["side"], "text": f"T{tr['n']} {tr['side']}"})
         for x in tr.get("shifts", []):
-            markers.append({"time": ep(x["time"]), "kind": "shift", "side": tr["side"], "text": f"T{tr['n']} SL +{round(x['lock'] * 100)}%"})
+            markers.append({"time": ep(x["time"]), "kind": "shift", "side": tr["side"], "text": f"T{tr['n']} SL {round(x['lock'] * 100):+d}%" + (" (regime)" if x.get("why") else "")})
         if tr["exit_time"] is not None:
             markers.append({"time": ep(tr["exit_time"]), "kind": "exit", "side": tr["side"], "text": f"T{tr['n']} {tr['status']} {tr['pnl_pct']:+.0f}%"})
     sig = [{"when": hm(x["time"]), "time": ep(x["time"]), "side": x["side"], "strike": f"{x['strike']} {'CE' if x['side'] == 'CALL' else 'PE'}", "level": x["level"],
-            "status": x["status"]} for x in res["signals"]]
+            "status": x["status"], "regime": x.get("regime")} for x in res["signals"]]
     return {"trades": trades, "signals": sig, "markers": markers, "total_pct": res["total_pct"], "cutoff": res.get("cutoff", f"{CUTOFF[0]}:{CUTOFF[1]:02d}")}

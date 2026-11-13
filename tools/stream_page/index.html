@@ -114,7 +114,8 @@ function renderLevels(s){
 let SEEN=null;
 function slPop(t,x){
   const box=document.getElementById('slpop'),d=document.createElement('div');d.className='slp';
-  d.innerHTML=`🔒 TRADE ${t.n} · STOP-LOSS MOVED UP to +${x.lock}% (${x.stop.toFixed(2)})<small>${t.side} ${t.strike} ${t.side==='CALL'?'CE':'PE'} · premium reached +${x.reach}% · ${x.when}</small>`;
+  const why=x.why?`${x.why} against your ${t.side} · profit locked`:`premium reached +${x.reach}%`,lk=(x.lock>=0?'+':'−')+Math.abs(x.lock)+'%';
+  d.innerHTML=`🔒 TRADE ${t.n} · STOP-LOSS MOVED UP to ${lk} (${x.stop.toFixed(2)})<small>${t.side} ${t.strike} ${t.side==='CALL'?'CE':'PE'} · ${why} · ${x.when}</small>`;
   box.appendChild(d);
   setTimeout(()=>{d.style.opacity='0';setTimeout(()=>d.remove(),900)},15000);
 }

@@ -106,3 +106,36 @@ def test_trailing_stop_shifts_are_recorded_for_the_page_and_the_journal():
     assert [round(x["lock"] * 100) for x in sh] == [5, 15] and sh[0]["time"].strftime("%H:%M") == "10:01" and abs(sh[1]["stop"] - 115) < 1e-9
     j = stream_trades.to_json(res, 19800)
     assert [x["lock"] for x in j["trades"][0]["shifts"]] == [5, 15] and [m["text"] for m in j["markers"] if m["kind"] == "shift"] == ["T1 SL +5%", "T1 SL +15%"]
+
+
+def _rg(regime, side=-1):
+    return lambda ts: {"regime": regime, "side": side}
+
+
+def test_contra_setups_are_not_traded_in_negative_gamma():
+    df = _opt([[100, 100, 100, 100], [100, 100, 99, 100]])
+    f = lambda s: df
+    r = stream_trades.run_trades([_setup(0, "CALL")], f, regime_at=_rg("NEGATIVE", -1))      # below the flip in negative gamma: a CALL goes against the move
+    assert not r["trades"] and r["signals"][0]["status"] == "not taken: against the move in negative gamma" and r["signals"][0]["regime"] == "NEGATIVE"
+    assert stream_trades.run_trades([_setup(0, "PUT")], f, regime_at=_rg("NEGATIVE", -1))["signals"][0]["status"] == "TRADE 1"
+    assert stream_trades.run_trades([_setup(0, "PUT")], f, regime_at=_rg("NEGATIVE", 1))["signals"][0]["status"].startswith("not taken")      # above the flip: PUT is against
+    assert stream_trades.run_trades([_setup(0, "CALL")], f, regime_at=_rg("POSITIVE", -1))["signals"][0]["status"] == "TRADE 1"           # positive gamma: nothing is blocked
+    assert stream_trades.run_trades([_setup(0, "CALL")], f)["signals"][0]["status"] == "TRADE 1"                                           # no regime data: nothing is blocked
+
+
+def test_stop_tightens_to_5_percent_below_the_premium_when_the_regime_turns_against_a_trade():
+    rows = [[100, 100, 100, 100], [100, 121, 100, 118], [118, 121, 116, 120], [115, 116, 113, 114]]
+    reg = lambda ts: {"regime": "NEGATIVE" if ts.strftime("%H:%M") <= "10:01" else "POSITIVE", "side": -1}
+    res = stream_trades.run_trades([_setup(0, "PUT")], lambda s: _opt(rows), regime_at=reg)
+    t = res["trades"][0]
+    assert [x.get("why") for x in t["shifts"]] == [None, "gamma regime turned POSITIVE"]
+    assert abs(t["shifts"][1]["stop"] - 114.0) < 1e-9 and t["status"] == "TRAIL" and abs(t["exit"] - 114.0) < 1e-9 and t["pnl_pct"] == 14.0
+    j = stream_trades.to_json(res, 19800)
+    assert j["trades"][0]["shifts"][1]["why"] == "gamma regime turned POSITIVE" and "T1 SL +14% (regime)" in [m["text"] for m in j["markers"]]
+    # a trade that is not in profit is not tightened, and a flip in the trade's favour does nothing
+    losing = [[100, 100, 100, 100], [100, 101, 97, 98], [98, 99, 96, 97]]
+    t2 = stream_trades.run_trades([_setup(0, "PUT")], lambda s: _opt(losing), regime_at=lambda ts: {"regime": "NEGATIVE" if ts.strftime("%H:%M") <= "10:00" else "POSITIVE", "side": -1})["trades"][0]
+    assert t2["shifts"] == []
+    reg0 = lambda ts: {"regime": "NEGATIVE" if ts.strftime("%H:%M") <= "10:01" else "POSITIVE", "side": 0}
+    t3 = stream_trades.run_trades([_setup(0, "CALL")], lambda s: _opt(rows), regime_at=reg0)["trades"][0]               # CALL: the flip to POSITIVE is in its favour
+    assert all(x.get("why") is None for x in t3["shifts"])

@@ -36,6 +36,7 @@ RELAY_URL = "https://ntfy.sh/"
 PORT = 8766
 SYM = "NIFTY"
 OPEN_DIR = ROOT / "data" / "stream_open"      # the TradingView opening candles, one file per day (the relay forgets them after 12 hours)
+REG_DIR = ROOT / "data" / "stream_regime"      # the live gamma flip as it stood at each 5-minute reading, one file per day (the trade rules for the regime read it)
 SIG_DIR = ROOT / "data" / "stream_sig"          # the setups TradingView reported through the alert, one file per day (kept for comparison and for signals_from=tradingview)
 JOURNAL = ROOT / "data" / "journal"            # trading journal backup: one file per day plus trades.csv (this PC only)
 EXP_FILE = ROOT / "data" / "expiry_by_day.json"   # the option expiry used for each session day (kept for replays after the expiry has passed)
@@ -119,6 +120,7 @@ class Feed:
         self.sent_day, self.sent = None, set()          # Telegram trade messages already sent today
         self.reported = None                           # the day the morning 'ready' check was sent to Telegram
         self.sigs = self.load_sigs()                   # setups reported by TradingView: {date: [setup dicts]}
+        self.rhist = {}                                # {date: [{"time", "flip", "pos_above", "pos"}]}: the live gamma flip readings of the day
         self.tv = self.load_tv()                       # opening 1-minute candles sent by the TradingView alert: {IST minute: bar}
         self.opt = {}                                  # (strike, "CE" / "PE") -> (fetched at, candles)
         self.meta = {}                                 # (strike, "CE" / "PE") -> {"symbol", "expiry"} of the contract used
@@ -168,6 +170,7 @@ class Feed:
                     if g and SYM in g:
                         self.live = {**g[SYM], "time": t.strftime("%H:%M")}
                         self.live_at = time.time()
+                        self.add_reading(t, g[SYM])
             except Exception:
                 pass
         setups, replay = None, None
@@ -186,7 +189,7 @@ class Feed:
         trades, res = None, None
         if setups:
             try:
-                res = stream_trades.run_trades(setups, self.option_frame)
+                res = stream_trades.run_trades(setups, self.option_frame, regime_at=self.regime_fn(df, sday))
                 trades = stream_trades.to_json(res, stream_levels.SHIFT)
             except Exception:
                 trades = None
@@ -199,6 +202,51 @@ class Feed:
         with self.lock:
             self.state = state
         OUT.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
+
+    def readings(self, day):
+        """The day's live gamma flip readings (loaded from disk the first time)."""
+        day = str(day)
+        if day not in self.rhist:
+            rows = []
+            try:
+                rows = [{**r, "time": pd.Timestamp(r["time"])} for r in json.loads((REG_DIR / f"{day}.json").read_text(encoding="utf-8"))]
+            except Exception:
+                pass
+            self.rhist[day] = rows
+        return self.rhist[day]
+
+    def add_reading(self, t, block):
+        """Remember one live reading: the flip and which side of it is positive gamma (the same rule as the page's regime box)."""
+        try:
+            flip = block["levels"].get("flip")
+            pos = block["net_cr"] > 0
+            pos_above = None
+            if flip is not None:
+                above = block["spot"] >= flip
+                pos_above = above if pos else not above
+            lst = self.readings(t.date())
+            lst.append({"time": t, "flip": flip, "pos_above": pos_above, "pos": bool(pos)})
+            REG_DIR.mkdir(parents=True, exist_ok=True)
+            (REG_DIR / f"{t.date()}.json").write_text(json.dumps([{**x, "time": x["time"].isoformat()} for x in lst]), encoding="utf-8")
+        except Exception:
+            pass
+
+    def regime_fn(self, df, day):
+        """regime_at(time) for the trade rules: the live regime at that time (the newest reading at or before it, against the index close of that minute), or None when
+        there was no reading yet (the rules then do nothing)."""
+        hist = self.readings(day)
+        closes = df["c"]
+
+        def regime_at(ts):
+            h = [x for x in hist if x["time"] <= ts]
+            if not h:
+                return None
+            x = h[-1]
+            p = float(closes.asof(ts))
+            if x["flip"] is None or x["pos_above"] is None:
+                return {"regime": "POSITIVE" if x["pos"] else "NEGATIVE", "side": 0}
+            return {"regime": "POSITIVE" if (p > x["flip"]) == x["pos_above"] else "NEGATIVE", "side": 1 if p > x["flip"] else -1}
+        return regime_at
 
     @staticmethod
     def load_sigs():
