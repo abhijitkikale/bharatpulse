@@ -34,7 +34,7 @@ def new_messages(res, sent, now, fresh_minutes=3):
         n = tr["n"]
         add(f"T{n}open", tr["entry_time"],
             f"TRADE {n} (paper): {tr['side']} {tr['strike']} {_opt(tr['side'])} on {tr['level']}\nentry {_hm(tr['entry_time'])} at {tr['entry']:.2f}  "
-            f"target {tr['target']:.2f} (+40%)  stop {tr['stop']:.2f} (-10%)")
+            f"target {tr['target']:.2f} (+{tr.get('tp_pct', 40)}%)  stop {tr['stop']:.2f} (-{tr.get('sl_pct', 10)}%)")
         if tr.get("exit_time") is not None:
             add(f"T{n}close", tr["exit_time"],
                 f"TRADE {n} closed: {tr['status']} {tr['pnl_pct']:+.1f}%  ({tr['side']} {tr['strike']} {_opt(tr['side'])}, out {_hm(tr['exit_time'])} at {tr['exit']:.2f})")

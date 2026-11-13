@@ -139,3 +139,45 @@ def test_stop_tightens_to_5_percent_below_the_premium_when_the_regime_turns_agai
     reg0 = lambda ts: {"regime": "NEGATIVE" if ts.strftime("%H:%M") <= "10:01" else "POSITIVE", "side": 0}
     t3 = stream_trades.run_trades([_setup(0, "CALL")], lambda s: _opt(rows), regime_at=reg0)["trades"][0]               # CALL: the flip to POSITIVE is in its favour
     assert all(x.get("why") is None for x in t3["shifts"])
+
+
+def _pm(rows, minute=5):
+    s = _setup(minute, hour=13)
+    df = _opt([[100, 100, 100, 100]] + rows, start=f"2026-11-06 13:{minute:02d}")
+    return stream_trades.run_trades([s], lambda x: df)["trades"][0]
+
+
+def test_afternoon_rules_from_13_00_target_20_stop_7_and_trail_10_15():
+    t = _pm([[100, 121, 99, 118]])
+    assert t["status"] == "TARGET" and t["pnl_pct"] == 20.0 and t["tp_pct"] == 20 and t["sl_pct"] == 7 and t["rules"] == "afternoon"
+    t = _pm([[100, 100, 92.5, 95]])
+    assert t["status"] == "STOP" and abs(t["exit"] - 93.0) < 1e-9 and t["pnl_pct"] == -7.0
+    t = _pm([[100, 111, 100, 108], [108, 109, 104, 105]])                                   # +10% reached: stop -> +5%
+    assert t["status"] == "TRAIL" and abs(t["exit"] - 105) < 1e-9 and t["pnl_pct"] == 5.0
+    t = _pm([[100, 116, 100, 112], [112, 113, 109, 110]])                                   # +15% reached: stop -> +10%
+    assert t["status"] == "TRAIL" and abs(t["exit"] - 110) < 1e-9 and t["pnl_pct"] == 10.0
+    morning = stream_trades.run_trades([_setup(0, hour=12)], lambda x: _opt([[100, 100, 100, 100], [100, 121, 99, 118]], start="2026-11-06 12:00"))["trades"][0]
+    assert morning["rules"] == "morning" and morning["status"] == "OPEN" and morning["tp_pct"] == 40 and morning["sl_pct"] == 10      # entered before 13:00: morning rules
+
+
+def test_daily_limit_message_for_the_top_of_the_page():
+    idx = pd.date_range("2026-11-09 09:30", periods=80, freq="min", tz="Asia/Kolkata")
+    rows = []
+    for i in range(80):
+        rows.append([100, 100, 85, 90] if i % 2 else [100, 100, 100, 100])                  # every second candle hits the stop
+    df = pd.DataFrame(rows, columns=["o", "h", "l", "c"], index=idx)
+    sets = [{"time": idx[i], "side": "CALL", "strike": 24700, "level": "VAH 1", "tag": ""} for i in range(0, 20, 4)]
+    res = stream_trades.run_trades(sets, lambda s: df)
+    assert res["limit"] and ("limit" in res["limit"].lower())
+    one = stream_trades.run_trades(sets[:1], lambda s: df)
+    assert one["limit"] is None
+    assert stream_trades.to_json(res, 19800)["limit"] == res["limit"]
+
+
+def test_telegram_message_shows_the_afternoon_target_and_stop():
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tools"))
+    import tg_style
+    txt = "TRADE 5 (paper): CALL 25100 CE on VAH 1 (bounce)\nentry 13:10 at 100.00  target 120.00 (+20%)  stop 93.00 (-7%)"
+    assert tg_style.classify(txt) == "trade_open"
+    kind, html = tg_style.to_html(txt)
+    assert "(+20%)" in html and "−7%" in html

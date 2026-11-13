@@ -33,6 +33,9 @@ def _hm(t):
     return (t.hour, t.minute)
 
 
+# Rules by the time a trade is ENTERED (it keeps them until it closes). From 13:00 IST: target +20%, stop -7%, and the stop trails at +10% (to +5%) and +15% (to +10%).
+RULES = (((0, 0), {"target": TARGET, "stop": STOP, "trail": TRAIL, "name": "morning"}),
+         ((13, 0), {"target": 0.20, "stop": 0.07, "trail": ((0.15, 0.10), (0.10, 0.05)), "name": "afternoon"}))
 CONTRA_IN_NEGATIVE = True   # in NEGATIVE gamma a setup against the move (CALL below the gamma flip, PUT above it) is listed, not traded
 REGIME_BUFFER = 0.05        # when the gamma regime turns against an open trade that is in profit, its stop moves up to 5% below the current premium
 
@@ -47,16 +50,31 @@ def _contra(s, rg):
 EARLIEST = (9, 25)      # no trade in the first 10 minutes after the 09:15 open (the setup is still listed, as "no trade before 9:25")
 
 
-def _earliest(day):
-    """First minute a trade may start. Regular days only; a special session (Muhurat) keeps no such wait."""
+def _regular(day):
+    """False on a special session (Muhurat), which keeps neither the 10-minute wait nor the afternoon rules."""
     try:
         import nse_calendar
         ss = nse_calendar.sessions(day)
         if ss and ss[0] != nse_calendar.REGULAR:
-            return (0, 0)
+            return False
     except Exception:
         pass
-    return EARLIEST
+    return True
+
+
+def _earliest(day):
+    """First minute a trade may start. Regular days only; a special session (Muhurat) keeps no such wait."""
+    return EARLIEST if _regular(day) else (0, 0)
+
+
+def rules_for(t):
+    """The target / stop / trailing rules for a trade entered at time t."""
+    chosen = RULES[0][1]
+    if _regular(t.date()):
+        for start, r in RULES:
+            if _hm(t) >= start:
+                chosen = r
+    return chosen
 
 
 def _take(s, df, n, last_minute=LAST_MINUTE, regime_at=None):
@@ -70,8 +88,9 @@ def _take(s, df, n, last_minute=LAST_MINUTE, regime_at=None):
     entry = float(before["c"].iloc[-1])
     if entry <= 0:
         return None
-    tp, sl = entry * (1 + TARGET), entry * (1 - STOP)
-    tr = {"n": n, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "entry_time": t, "entry": entry, "target": tp, "stop": sl, "stop_now": sl,
+    rl = rules_for(t)
+    tp, sl = entry * (1 + rl["target"]), entry * (1 - rl["stop"])
+    tr = {"rules": rl["name"], "tp_pct": round(rl["target"] * 100), "sl_pct": round(rl["stop"] * 100), "n": n, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "entry_time": t, "entry": entry, "target": tp, "stop": sl, "stop_now": sl,
           "status": "OPEN", "exit_time": None, "exit": None, "last": entry, "shifts": []}
     prev_reg = None
     if regime_at is not None:
@@ -88,7 +107,7 @@ def _take(s, df, n, last_minute=LAST_MINUTE, regime_at=None):
         if r["h"] >= tp:
             tr.update(status="TARGET", exit_time=ts, exit=tp)
             break
-        for reach, lock in TRAIL:                           # the stop moves up for the next candle; the first (highest) level reached counts
+        for reach, lock in rl["trail"]:                     # the stop moves up for the next candle; the first (highest) level reached counts
             if r["h"] >= entry * (1 + reach):
                 if entry * (1 + lock) > sl:                 # the stop moves up (it is in force from the next candle): remember when, for the page's pop-up and the journal
                     sl = entry * (1 + lock)
@@ -154,7 +173,12 @@ def run_trades(setups, option_frame, cutoff=None, regime_at=None):
                 cur = tr
                 status = f"TRADE {tr['n']}"
         signals.append({"time": t, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "status": status, "regime": rg["regime"] if rg else None})
-    return {"trades": trades, "signals": signals, "total_pct": round(sum(tr["pnl_pct"] for tr in trades), 1), "cutoff": "%d:%02d" % tuple(cutoff)}
+    limit = None
+    if len(trades) >= MAX_TRADES:
+        limit = f"Daily limit reached: {MAX_TRADES} trades taken, no more trades today"
+    elif sum(x["pnl_pct"] for x in trades if x["exit_time"] is not None) <= -MAX_LOSS_PCT:
+        limit = f"Daily loss limit reached (-{MAX_LOSS_PCT:.0f}%), no more trades today"
+    return {"trades": trades, "signals": signals, "total_pct": round(sum(tr["pnl_pct"] for tr in trades), 1), "cutoff": "%d:%02d" % tuple(cutoff), "limit": limit}
 
 
 def to_json(res, shift):
@@ -174,4 +198,4 @@ def to_json(res, shift):
             markers.append({"time": ep(tr["exit_time"]), "kind": "exit", "side": tr["side"], "text": f"T{tr['n']} {tr['status']} {tr['pnl_pct']:+.0f}%"})
     sig = [{"when": hm(x["time"]), "time": ep(x["time"]), "side": x["side"], "strike": f"{x['strike']} {'CE' if x['side'] == 'CALL' else 'PE'}", "level": x["level"],
             "status": x["status"], "regime": x.get("regime")} for x in res["signals"]]
-    return {"trades": trades, "signals": sig, "markers": markers, "total_pct": res["total_pct"], "cutoff": res.get("cutoff", f"{CUTOFF[0]}:{CUTOFF[1]:02d}")}
+    return {"trades": trades, "signals": sig, "markers": markers, "total_pct": res["total_pct"], "cutoff": res.get("cutoff", f"{CUTOFF[0]}:{CUTOFF[1]:02d}"), "limit": res.get("limit")}

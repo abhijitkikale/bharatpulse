@@ -13,7 +13,7 @@ import re
 PUBLIC = {"gex", "trade_open", "trade_target", "trade_stop", "trade_closed"}
 FOOTER = "\n<i>Paper trades and live levels for education. Not investment advice.</i>"
 
-_OPEN = re.compile(r"^TRADE (\d+) \(paper\): (CALL|PUT) (\d+) (CE|PE) on (.+)\nentry (\d\d:\d\d) at ([\d.]+)\s+target ([\d.]+) \(\+40%\)\s+stop ([\d.]+)", re.S)
+_OPEN = re.compile(r"^TRADE (\d+) \(paper\): (CALL|PUT) (\d+) (CE|PE) on (.+)\nentry (\d\d:\d\d) at ([\d.]+)\s+target ([\d.]+) \(\+(\d+)%\)\s+stop ([\d.]+) \(-(\d+)%\)", re.S)
 _CLOSE = re.compile(r"^TRADE (\d+) closed: (\w+) ([+-][\d.]+)%\s+\((CALL|PUT) (\d+) (CE|PE), out (\d\d:\d\d) at ([\d.]+)\)")
 
 
@@ -46,9 +46,9 @@ def to_html(text):
     kind = classify(t)
     m = _OPEN.match(t)
     if m:
-        n, side, strike, opt, level, hm, entry, target, stop = m.groups()
+        n, side, strike, opt, level, hm, entry, target, tp_pct, stop, sl_pct = m.groups()
         body = (f"\U0001F7E0 <b>TRADE {n} TAKEN</b> \u00b7 paper\n<b>{side} {strike} {opt}</b> on {html.escape(level)}\n"
-                f"Entry <b>{entry}</b> at {hm}\n\U0001F3AF Target <b>{target}</b> (+40%)\n\U0001F6D1 Stop-loss <b>{stop}</b> (\u221210%)")
+                f"Entry <b>{entry}</b> at {hm}\n\U0001F3AF Target <b>{target}</b> (+{tp_pct}%)\n\U0001F6D1 Stop-loss <b>{stop}</b> (\u2212{sl_pct}%)")
         return kind, body + FOOTER
     m = _CLOSE.match(t)
     if m:

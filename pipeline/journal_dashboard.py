@@ -143,7 +143,7 @@ tr.taken td{background:var(--soft)}
 @media (max-width:640px){.cell{min-height:64px;padding:4px 5px}.cell .r{font-size:12px}.cell .n{display:none}}
 .band.small{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 </style></head><body><div class="wrap">
-<header><div><h1>Trading Journal</h1><div class="sub">Paper trades from the BharatPulse stream page. +40% target, &minus;10% stop that trails up (+20% &rarr; +5%, +30% &rarr; +15%, +35% &rarr; +30%), no trade in the first 10 minutes (before 9:25), one trade at a time, one lot of 65 on a &#8377;25,000 capital. A record of what the rules did, not advice.</div></div></header>
+<header><div><h1>Trading Journal</h1><div class="sub">Paper trades from the BharatPulse stream page. +40% target, &minus;10% stop that trails up (+20% &rarr; +5%, +30% &rarr; +15%, +35% &rarr; +30%); trades entered from 13:00: +20% target, &minus;7% stop, trailing +10% &rarr; +5% and +15% &rarr; +10%; no trade in the first 10 minutes (before 9:25), one trade at a time, one lot of 65 on a &#8377;25,000 capital. A record of what the rules did, not advice.</div></div></header>
 <div id="home" class="wrap" style="gap:18px">
 <section class="panel"><div class="mhead"><div class="nav"><button class="btn" id="prev" aria-label="Previous month">&lsaquo;</button><span class="t" id="mname"></span><button class="btn" id="next" aria-label="Next month">&rsaquo;</button></div><div id="msum" class="num"></div></div><div class="cal" id="cal"></div><div class="legend"><span>Each box is one trading day: result in rupees and number of trades. Click a day for its details.</span></div></section>
 <section><h2>Overall</h2><div class="band small" id="stats"></div></section>
