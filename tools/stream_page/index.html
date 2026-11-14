@@ -185,6 +185,8 @@ function draw(s){
       tb.style.display='flex';
       const cur=T.trades.length?T.trades[T.trades.length-1]:null,pc=v=>(v>0?'+':'')+v.toFixed(1)+'%',mx=T.max_trades||5;
       const rules='Until 13:00: target +40%, stop −10%, trailing +20%→+5%, +30%→+15%, +35%→+30%. From 13:00: target +20%, stop −7%, trailing +10%→+5%, +15%→+10%. No trade before 9:25, none after '+T.cutoff+'. Max '+mx+' trades a day.';
+      const sk=[...new Set((T.signals||[]).filter(x=>x.would).map(x=>`${x.when} ${x.side} ${x.would.pnl_pct>0?'+':''}${x.would.pnl_pct.toFixed(1)}%`))].slice(-2).join(' · ');
+      const skTxt=sk?`<span class="k" style="font-size:.62em;opacity:.8" title="Testing: setups that were not taken, and what each would have returned with the same stop, target and trailing rules">skipped, if taken (testing): ${sk}</span>`:'';
       tb.title=rules;
       if(!cur){tb.className='tr one';tb.innerHTML=`<span>No trade yet</span><span class="k">first setup from 9:25 · max ${mx} trades a day · hover the strip for the rules</span>`}
       else{
@@ -201,7 +203,7 @@ function draw(s){
           `<span><span class="k">in</span>${cur.entry.toFixed(2)} <span class="k">${open?'now':'out '+cur.exit_time}</span>${px.toFixed(2)}</span>`+
           `<span><span class="k">stop ${(sq>=0?'+':'−')+Math.abs(sq).toFixed(0)}%</span>${sn.toFixed(2)} <span class="k">target +${tq}%</span>${cur.target.toFixed(2)}</span>`+
           `<span class="big" style="color:${pnl>=0?G():R()}">${pc(pnl)}</span>`+
-          `<span style="margin-left:auto"><span class="k">day · ${T.trades.length} of ${mx} trades</span><span class="big" style="color:${T.total_pct>=0?G():R()}">${pc(T.total_pct)}</span></span>`}
+          skTxt+`<span style="margin-left:auto"><span class="k">day · ${T.trades.length} of ${mx} trades</span><span class="big" style="color:${T.total_pct>=0?G():R()}">${pc(T.total_pct)}</span></span>`}
     }
   }
   renderLevels(s);
@@ -328,7 +330,7 @@ chart.subscribeCrosshairMove(p=>{
   const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   let h='';
   sg.forEach(x=>{const g=GR[x.when+'|'+x.side];
-    h+=`<div><b style="color:${x.side==='CALL'?G():R()}">${x.when} ${x.side} ${x.strike}</b> · ${esc(x.level)}<br><span class="r">${esc(x.status)}</span>`+(g?`<br>Grade <b>${g.grade}</b> (${g.score>=0?'+':''}${g.score})${g.late?' · graded late':''}<br><span class="r">${g.reasons.map(esc).join('<br>')||'no reasons: nothing nearby, no penalty'}</span>`:'')+'</div>'});
+    h+=`<div><b style="color:${x.side==='CALL'?G():R()}">${x.when} ${x.side} ${x.strike}</b> · ${esc(x.level)}<br><span class="r">${esc(x.status)}</span>`+(x.would?`<br><span class="r" style="font-size:.78em">testing · if taken: ${x.would.pnl_pct>0?'+':''}${x.would.pnl_pct.toFixed(1)}% (${esc(x.would.status)}${x.would.exit_time?' '+x.would.exit_time:''})</span>`:'')+(g?`<br>Grade <b>${g.grade}</b> (${g.score>=0?'+':''}${g.score})${g.late?' · graded late':''}<br><span class="r">${g.reasons.map(esc).join('<br>')||'no reasons: nothing nearby, no penalty'}</span>`:'')+'</div>'});
   sh.forEach(t=>{h+=`<div>🔒 ${esc(t)}</div>`});
   TIP.innerHTML=h;TIP.style.display='block';
   const W=el.clientWidth,Hh=el.clientHeight,w=TIP.offsetWidth,hh=TIP.offsetHeight;

@@ -198,3 +198,21 @@ def test_node_rules_are_off_by_default_and_can_skip_by_grade_or_flag():
     assert stream_trades.run_trades([_setup(0)], f, grade_of=lambda s: None, rules={"min_grade": "A"})["signals"][0]["status"] == "TRADE 1"      # no grade yet: not blocked
     j = stream_trades.to_json(r, 19800)
     assert j["signals"][0]["grade"] == "C"
+
+
+def test_would_have_been_result_for_setups_a_rule_kept_out():
+    # option: 100 at 10:00, +25% candle at 10:01 -> an untaken setup would have hit the +20% afternoon... use morning rules: +40% target not reached, trail +20% -> +5%
+    df = _opt([[100, 100, 100, 100], [100, 125, 100, 120], [120, 121, 104, 105]])
+    f = lambda s: df
+    r = stream_trades.run_trades([_setup(0, "CALL")], f, regime_at=_rg("NEGATIVE", -1))             # a CALL below the flip in negative gamma: not taken, tested anyway
+    sg = r["signals"][0]
+    assert sg["status"].startswith("not taken") and sg["would"]["status"] == "TRAIL" and sg["would"]["pnl_pct"] == 5.0 and not r["trades"]
+    gc = lambda s: {"grade": "C", "flags": []}
+    r2 = stream_trades.run_trades([_setup(0, "CALL")], f, grade_of=gc, rules={"min_grade": "B"})
+    assert r2["signals"][0]["would"]["pnl_pct"] == 5.0
+    r3 = stream_trades.run_trades([_setup(0, "CALL"), _setup(1, "PUT")], f)                          # the second is only ignored while trade 1 is open: no test result for it
+    assert r3["signals"][1]["status"].startswith("ignored") and r3["signals"][1]["would"] is None and r3["signals"][0]["would"] is None
+    j = stream_trades.to_json(r, 19800)
+    assert j["signals"][0]["would"] == {"pnl_pct": 5.0, "status": "TRAIL", "exit_time": "10:02"}
+    early = stream_trades.run_trades([_setup(5, hour=9)], lambda s: _opt([[100, 100, 100, 100], [100, 100, 89, 90]], start="2026-11-06 09:05"))
+    assert early["signals"][0]["status"].startswith("no trade before") and early["signals"][0]["would"]["pnl_pct"] == -10.0

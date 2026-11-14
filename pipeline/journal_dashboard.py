@@ -208,7 +208,7 @@ function card(t){
 }
 function setups(d){
   if(!d.setups.length) return '<div class="empty">No setups recorded.</div>';
-  return `<table><thead><tr><th>Time</th><th>Side</th><th>Strike</th><th>Level</th><th>What happened</th></tr></thead><tbody>${d.setups.map(q=>{const [txt,c]=status(q.status);return `<tr class="${q.status.startsWith('TRADE')?'taken':''}"><td class="num">${q.time}</td><td><span class="chip ${q.side==='CALL'?'call':'put'}">${q.side}</span></td><td class="num">${q.strike}</td><td>${esc(q.level)}</td><td><span class="chip ${c}">${esc(txt)}</span>${q.status.startsWith('TRADE')?' '+esc(q.status):''}</td></tr>`;}).join('')}</tbody></table>`;
+  return `<table><thead><tr><th>Time</th><th>Side</th><th>Strike</th><th>Level</th><th>What happened</th><th title="Testing: what a setup that was not taken would have returned with the same stop, target and trailing rules">If taken (testing)</th></tr></thead><tbody>${d.setups.map(q=>{const [txt,c]=status(q.status);return `<tr class="${q.status.startsWith('TRADE')?'taken':''}"><td class="num">${q.time}</td><td><span class="chip ${q.side==='CALL'?'call':'put'}">${q.side}</span></td><td class="num">${q.strike}</td><td>${esc(q.level)}</td><td><span class="chip ${c}">${esc(txt)}</span>${q.status.startsWith('TRADE')?' '+esc(q.status):''}</td><td class="num" style="font-size:.78em;color:var(--mut)">${q.would_pct==null?'':`${q.would_pct>0?'+':''}${q.would_pct.toFixed(1)}% ${esc(q.would_status||'')}${q.would_exit?' '+q.would_exit:''}`}</td></tr>`;}).join('')}</tbody></table>`;
 }
 function levels(d){
   const e=Object.entries(d.levels).sort((a,b)=>b[1]-a[1]); if(!e.length) return '<div class="empty">No levels saved.</div>';

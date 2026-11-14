@@ -199,7 +199,16 @@ def run_trades(setups, option_frame, cutoff=None, regime_at=None, grade_of=None,
                 trades.append(tr)
                 cur = tr
                 status = f"TRADE {tr['n']}"
-        signals.append({"time": t, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "status": status, "regime": rg["regime"] if rg else None, "grade": gr["grade"] if gr else None})
+        would = None
+        if status.startswith(("not taken", "no trade before")):          # TESTING: what a setup kept out by a rule would have returned (same entry, stop, target, trailing); it never changes the day
+            try:
+                w = _take(s, option_frame(s), 0, last_minute, regime_at)
+            except Exception:
+                w = None
+            if w:
+                would = {"pnl_pct": w["pnl_pct"], "status": w["status"], "exit_time": w["exit_time"]}
+        signals.append({"time": t, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "status": status, "regime": rg["regime"] if rg else None,
+                        "grade": gr["grade"] if gr else None, "would": would})
     limit = None
     if len(trades) >= MAX_TRADES:
         limit = f"Daily limit reached: {MAX_TRADES} trades taken, no more trades today"
@@ -224,5 +233,6 @@ def to_json(res, shift):
         if tr["exit_time"] is not None:
             markers.append({"time": ep(tr["exit_time"]), "kind": "exit", "side": tr["side"], "text": f"T{tr['n']} {tr['status']} {tr['pnl_pct']:+.0f}%"})
     sig = [{"when": hm(x["time"]), "time": ep(x["time"]), "side": x["side"], "strike": f"{x['strike']} {'CE' if x['side'] == 'CALL' else 'PE'}", "level": x["level"],
-            "status": x["status"], "regime": x.get("regime"), "grade": x.get("grade")} for x in res["signals"]]
+            "status": x["status"], "regime": x.get("regime"), "grade": x.get("grade"),
+            "would": None if not x.get("would") else {"pnl_pct": x["would"]["pnl_pct"], "status": x["would"]["status"], "exit_time": hm(x["would"]["exit_time"])}} for x in res["signals"]]
     return {"trades": trades, "signals": sig, "markers": markers, "total_pct": res["total_pct"], "cutoff": res.get("cutoff", f"{CUTOFF[0]}:{CUTOFF[1]:02d}"), "limit": res.get("limit"), "max_trades": MAX_TRADES}
