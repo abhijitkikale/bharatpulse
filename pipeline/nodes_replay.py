@@ -104,7 +104,7 @@ function draw(){
     const near=r.k.map((k,i)=>[k,r.n[i]]).filter(([k])=>Math.abs(k-r.spot)<=600).sort((a,c)=>c[0]-a[0]);
     const mx=Math.max(...r.n.map(Math.abs))||1,rh=Math.min(16,(bh-10)/Math.max(near.length,1));b.font='11px system-ui';b.textBaseline='middle';
     near.forEach(([k,v],i)=>{const y=5+i*rh+rh/2,w=Math.abs(v)/mx*(BW-110);if(Math.abs(k-r.spot)<=25){b.fillStyle='rgba(122,162,255,.18)';b.fillRect(0,y-rh/2,BW,rh)}
-      b.fillStyle=css('--mut');b.textAlign='right';b.fillText(k,44,y);b.fillStyle=v>=0?css('--pos'):css('--neg');b.fillRect(50,y-rh/2+2,Math.max(w,1),rh-4);
+      b.fillStyle=css('--mut');b.textAlign='right';b.fillText(k,44,y);const fr=Math.abs(v)/mx;b.globalAlpha=fr>=.6?1:fr>=.25?.6:.25;b.fillStyle=v>=0?css('--pos'):css('--neg');b.fillRect(50,y-rh/2+2,Math.max(w,1),rh-4);b.globalAlpha=1;if(k===king){b.strokeStyle=css('--txt');b.lineWidth=2;b.strokeRect(50,y-rh/2+2,Math.max(w,1),rh-4)}
       b.fillStyle=css('--txt');b.textAlign='left';if(Math.abs(v)/mx>=.25)b.fillText(Math.round(Math.abs(v)/mx*100)+'%'+(k===king?' ★':''),54+w,y)});
   }
   show();

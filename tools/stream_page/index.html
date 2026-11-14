@@ -41,7 +41,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 #orbs{position:absolute;left:0;top:0;pointer-events:none;z-index:3}
 #hm{position:absolute;left:8px;top:8px;z-index:4;pointer-events:none;display:none;transition:left .6s ease,top .6s ease,opacity .4s;background:rgba(11,15,22,.80);border:1px solid #263040;border-radius:8px;padding:4px 6px;font-size:calc(var(--fs)*.78);color:#c9d1d9}
 #hm table{border-collapse:collapse}#hm th{font-weight:600;color:#8b97a8;padding:0 5px;text-align:center}#hm td{padding:0 5px;text-align:center;min-width:3.2em;color:#fff;text-shadow:0 0 3px #000}
-#hm td.k{color:#c9d1d9;text-shadow:none;text-align:right;font-weight:600}#hm tr.sp td{outline:1px solid #ffffff99;outline-offset:-1px}#hm .cap{font-size:.85em;color:#8b97a8;margin-bottom:2px}
+#hm td.k{color:#c9d1d9;text-shadow:none;text-align:right;font-weight:600}#hm tr.sp td{outline:1px solid #ffffff99;outline-offset:-1px}#hm .keys{margin-top:4px;line-height:1.7;width:0;min-width:100%}#hm .kc{display:inline-block;border-radius:5px;padding:0 5px;margin:0 3px 2px 0;font-size:.9em;font-weight:800;color:#0b0f16;white-space:nowrap}#hm .cap{font-size:.85em;color:#8b97a8;margin-bottom:2px}
 .gd{display:inline-block;min-width:1.5em;text-align:center;border-radius:5px;padding:0 4px;margin-left:5px;font-size:.9em;color:#0b0f16}.gA{background:#2ecc9a}.gB{background:#ffb300}.gC{background:#8b97a8}
 .tr.one{flex-wrap:nowrap;white-space:nowrap;overflow:hidden;gap:calc(var(--fs)*1);font-size:calc(var(--fs)*1);align-items:center;padding:calc(var(--fs)*.2) calc(var(--fs)*.8)}
 .tr.one .pill{border:1px solid;border-radius:8px;padding:0 7px;font-size:.88em;font-weight:700}.tr.one .sep{color:var(--line)}.tr.one .big{font-size:1.25em}
@@ -299,7 +299,9 @@ function drawNodes(){
   NODES.nodes.slice(0,7).forEach(n=>{
     const y=cs.priceToCoordinate(n.k);if(y==null||y<0||y>h)return;
     const r=(7+17*Math.sqrt(n.pct/100))*sc,king=(n.roles||[]).includes('king');
-    g.beginPath();g.arc(x0,y,r,0,6.283);g.fillStyle=nodeCol(n.sign,.55);g.fill();g.lineWidth=king?3:1.5;g.strokeStyle=king?'#ffffff':nodeCol(n.sign,.95);g.stroke();
+    const mainN=n.pct>=60;g.save();if(king){g.shadowColor=n.sign==='+'?'#ffe082':'#f3b3ff';g.shadowBlur=18}
+    g.beginPath();g.arc(x0,y,r,0,6.283);g.fillStyle=king?(n.sign==='+'?'#fff176':'#f48fff'):nodeCol(n.sign,mainN?.85:.35);g.fill();g.restore();
+    g.beginPath();g.arc(x0,y,r,0,6.283);g.lineWidth=king?3.5:mainN?2:1.2;g.strokeStyle=king?'#ffffff':nodeCol(n.sign,mainN?1:.7);g.stroke();
     if(king){g.fillStyle='#0b0f16';g.textAlign='center';g.fillText('★',x0,y+1)}
     const role=nodeRole(n),txt=`${n.k.toFixed(0)} · ${Math.round(n.pct)}%${role?' · '+role:''}${(n.flags||[]).includes('decoy')?' (far)':''}${nodeArrow(n)}${n.fresh?'':' ·'+n.touches+'x'}`;
     g.textAlign='right';g.lineWidth=4;g.strokeStyle='rgba(11,15,22,.85)';g.strokeText(txt,x0-r-8,y);g.fillStyle=nodeCol(n.sign,1);g.fillText(txt,x0-r-8,y);
@@ -315,9 +317,17 @@ function drawHeat(hm){
   const rr=narrow||HMCOMPACT?4:7,ks=all.slice(Math.max(0,ci-rr),ci+rr+1),near=all[ci];
   const val=(c,k)=>{const r=c.strikes.find(x=>x.k===k);return r||null};
   let html=`<div class="cap">Gamma nodes · ${NODES.regime.now==='NEGATIVE'?'negative':'positive'} regime${NODES.expected?' · day moved '+(NODES.expected.pace>=0?'+':'−')+Math.abs(NODES.expected.pace).toFixed(1)+'σ of ±'+Math.round(NODES.expected.sigma):(NODES.exp_move?' · exp. move ±'+Math.round(NODES.exp_move):'')}</div><table><tr><th></th>`+cols.map(c=>`<th>${+c.expiry.slice(8)} ${MON[+c.expiry.slice(5,7)-1]}</th>`).join('')+'</tr>';
-  ks.forEach(k=>{html+=`<tr${k===near?' class="sp"':''}><td class="k">${k.toFixed(0)}</td>`+cols.map(c=>{const r=val(c,k);if(!r)return'<td></td>';const a=.1+.8*r.pct/100;
-    return `<td style="background:${nodeCol(r.net>=0?'+':'-',a.toFixed(2))}">${r.pct>=25?Math.round(r.pct)+(c.king===k?'★':''):''}</td>`}).join('')+'</tr>'});
-  hm.innerHTML=html+'</table>';hm.style.display='block';
+  ks.forEach(k=>{html+=`<tr${k===near?' class="sp"':''}><td class="k">${k.toFixed(0)}</td>`+cols.map(c=>{const r=val(c,k);if(!r)return'<td></td>';
+    const pos=r.net>=0,king=c.king===k,main=r.pct>=60;let bg,fg='#fff',extra='';
+    if(king){bg=pos?'#fff176':'#f48fff';fg='#0b0f16';extra=';outline:2px solid #fff;outline-offset:-2px;font-weight:900'}          // the King: solid and ringed
+    else if(main){bg=pos?'rgba(255,193,7,.92)':'rgba(190,120,255,.92)';fg='#0b0f16';extra=';font-weight:800'}                           // main nodes: bright
+    else if(r.pct>=25){bg=nodeCol(pos?'+':'-',(.28+.3*(r.pct-25)/35).toFixed(2));extra=';font-weight:600'}                              // minor but significant: medium
+    else bg=nodeCol(pos?'+':'-','.07');                                                                                                  // the rest: almost invisible
+    return `<td style="background:${bg};color:${fg}${extra}">${r.pct>=25?(king?'★ ':'')+Math.round(r.pct):''}</td>`}).join('')+'</tr>'});
+  const key=[];const nd=NODES.nodes||[],byRole=r=>nd.find(n=>(n.roles||[]).includes(r)),chip=(txt,n)=>`<span class="kc" style="background:${n.sign==='+'?'#ffd54f':'#e1a8ff'}">${txt}</span>`;
+  const kg=byRole('king');if(kg)key.push(chip(`★ King ${kg.k.toFixed(0)} · ₹${Math.round(Math.abs(kg.net)).toLocaleString('en-IN')} cr`,kg));
+  [['gatekeeper','Gate'],['ceiling','Ceiling'],['floor','Floor']].forEach(([r,l])=>{const n=byRole(r);if(n&&n!==kg)key.push(chip(`${l} ${n.k.toFixed(0)} · ${Math.round(n.pct)}%`,n))});
+  hm.innerHTML=html+'</table>'+(key.length?'<div class="keys">'+key.join('')+'</div>':'');hm.style.display='block';
 }
 // hover card: hover a candle that has a setup marker to see the setup, its status, grade and reasons (and any stop moves)
 const TIP=document.getElementById('tip');
