@@ -39,7 +39,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 @keyframes slin{from{transform:translateY(-30px);opacity:0}to{transform:none;opacity:1}}
 #limitbar{flex:none;background:#5a1d1d;border-bottom:2px solid #ef5b5b;color:#ffd0d0;font-weight:700;font-size:calc(var(--fs)*1.2);padding:calc(var(--fs)*.35) calc(var(--fs)*1);text-align:center}
 #orbs{position:absolute;left:0;top:0;pointer-events:none;z-index:3}
-#hm{position:absolute;left:8px;top:8px;z-index:4;pointer-events:none;display:none;background:rgba(11,15,22,.80);border:1px solid #263040;border-radius:8px;padding:4px 6px;font-size:calc(var(--fs)*.78);color:#c9d1d9}
+#hm{position:absolute;left:8px;top:8px;z-index:4;pointer-events:none;display:none;transition:left .6s ease,top .6s ease,opacity .4s;background:rgba(11,15,22,.80);border:1px solid #263040;border-radius:8px;padding:4px 6px;font-size:calc(var(--fs)*.78);color:#c9d1d9}
 #hm table{border-collapse:collapse}#hm th{font-weight:600;color:#8b97a8;padding:0 5px;text-align:center}#hm td{padding:0 5px;text-align:center;min-width:3.2em;color:#fff;text-shadow:0 0 3px #000}
 #hm td.k{color:#c9d1d9;text-shadow:none;text-align:right;font-weight:600}#hm tr.sp td{outline:1px solid #ffffff99;outline-offset:-1px}#hm .cap{font-size:.85em;color:#8b97a8;margin-bottom:2px}
 .gd{display:inline-block;min-width:1.5em;text-align:center;border-radius:5px;padding:0 4px;margin-left:5px;font-size:.9em;color:#0b0f16}.gA{background:#2ecc9a}.gB{background:#ffb300}.gC{background:#8b97a8}
@@ -165,7 +165,7 @@ function draw(s){
   // CALL / PUT setups: markers on the chart (grade letter on each), details in the hover card; one-line trade strip on top. Not shown on the clean address.
   const st=s.setups||{table:[],markers:[]};
   const T=s.trades,tb=document.getElementById('trade');slCheck(T);{const lb=document.getElementById('limitbar');if(T&&T.limit){lb.style.display='block';lb.textContent='⛔ '+T.limit}else lb.style.display='none'}
-  if(CLEAN){cs.setMarkers([]);tb.style.display='none'}
+  if(CLEAN){MARKS=[];cs.setMarkers([]);tb.style.display='none'}
   else{
     const cc=x=>x.side==='CALL'?G():R();
     const sigAt={};if(T)T.signals.forEach(x=>{sigAt[x.time+'|'+x.side]=x});
@@ -177,7 +177,8 @@ function draw(s){
         :m.kind==='shift'?{time:m.time,position:m.side==='CALL'?'aboveBar':'belowBar',color:'#ffb300',shape:'square',text:m.text}
         :{time:m.time,position:m.side==='CALL'?'aboveBar':'belowBar',color:m.text.includes('+')?G():R(),shape:'circle',text:m.text}));
     }else mk=st.markers.map(m=>({time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:cc(m),shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text}));
-    cs.setMarkers(mk.sort((a,b)=>a.time-b.time));
+    MARKS=mk.map(m=>({time:m.time,position:m.position==='aboveBar'?'above':'below',color:m.color,text:m.text||'',shape:m.shape}));
+    cs.setMarkers(mk.map(m=>({...m,text:''})).sort((a,b)=>a.time-b.time));
     // one-line trade strip: past trades as small pills, the open (or latest) trade, the day total
     if(!T){tb.style.display='none'}
     else{
@@ -215,11 +216,54 @@ const gb=(when,side)=>{const g=GR[when+'|'+side];return g?` <b class="gd g${g.gr
 const nodeRole=n=>{const r=n.roles||[];return r.includes('king')?'KING':r.includes('gatekeeper')?'GATE':r.includes('ceiling')?'CEIL':r.includes('floor')?'FLOOR':r.includes('pika')?'+':r.includes('barney')?'−':''};
 const nodeArrow=n=>n.v5==null?'':n.v5>=3?' ▲':n.v5<=-3?' ▼':'';
 const nodeCol=(sign,a)=>sign==='+'?`rgba(255,213,79,${a})`:`rgba(179,136,255,${a})`;
+let MARKS=[],HMI=-1,HMCOMPACT=false;
+// marker labels: drawn on the overlay so they never sit on top of each other (pushed up or down, with a thin line back to their candle)
+function drawMarks(g,w,h,obst){
+  if(CLEAN||!MARKS.length||!LASTS||!LASTS.candles)return;
+  const byT=new Map(LASTS.candles.map(c=>[c.time,c])),fs=Math.round(axisFont()*.72),step=fs+5;
+  g.font=`700 ${fs}px sans-serif`;g.textBaseline='middle';g.textAlign='left';
+  const grp={};MARKS.forEach(m=>{if(!m.text)return;const k=m.time+'|'+m.position;(grp[k]=grp[k]||{time:m.time,position:m.position,items:[]}).items.push(m)});
+  const items=[];
+  Object.values(grp).forEach(q=>{
+    const c=byT.get(q.time);if(!c)return;const x=chart.timeScale().timeToCoordinate(q.time);if(x==null||x<0||x>w)return;
+    const yb=cs.priceToCoordinate(q.position==='above'?c.high:c.low);if(yb==null)return;
+    items.push({x,yb,above:q.position==='above',text:q.items.map(i=>i.text).join(' · '),color:q.items[0].color});
+  });
+  items.sort((a,b)=>a.x-b.x);
+  const placed=[],hit=(r)=>placed.some(o=>o[0]<r[2]&&o[2]>r[0]&&o[1]<r[3]&&o[3]>r[1]);
+  items.forEach(it=>{
+    const tw=g.measureText(it.text).width,x0=it.x+9;
+    let y=it.yb+(it.above?-16:16),r,tries=0;
+    do{r=[x0-2,y-fs/2-2,x0+tw+2,y+fs/2+2];if(!hit(r))break;y+=it.above?-step:step;tries++}while(tries<8);
+    placed.push(r);obst.push(r);
+    if(Math.abs(y-it.yb)>22){g.beginPath();g.moveTo(it.x,it.yb);g.lineTo(x0-2,y);g.lineWidth=1;g.strokeStyle=it.color;g.globalAlpha=.55;g.stroke();g.globalAlpha=1}
+    g.lineWidth=3.5;g.strokeStyle='rgba(11,15,22,.9)';g.strokeText(it.text,x0,y);g.fillStyle=it.color;g.fillText(it.text,x0,y);
+  });
+}
+// the heatmap panel floats to the emptiest corner or edge of the chart (fewest candles and labels under it) and only moves when another spot is clearly emptier
+function placeHeat(hm,w,h,obst){
+  const pw=hm.offsetWidth,ph=hm.offsetHeight;if(!pw||!LASTS)return;
+  const W=w-chart.priceScale('right').width(),H=h-chart.timeScale().height(),m=8;
+  const NX=6,NY=5,cands=[];
+  for(let j=0;j<NY;j++)for(let i=0;i<NX;i++)cands.push({x:Math.max(0,m+(W-pw-2*m)*i/(NX-1)),y:Math.max(0,m+(H-ph-2*m)*j/(NY-1)),corner:(i==0||i==NX-1)&&(j==0||j==NY-1)});
+  cands.sort((a,b)=>(b.corner?1:0)-(a.corner?1:0));         // corners first, so they win a tie
+  const rects=[];
+  (LASTS.candles||[]).forEach(c=>{const x=chart.timeScale().timeToCoordinate(c.time);if(x==null||x<0||x>W)return;
+    const y1=cs.priceToCoordinate(c.high),y2=cs.priceToCoordinate(c.low);if(y1==null||y2==null)return;rects.push([x-1.5,Math.min(y1,y2),x+1.5,Math.max(y1,y2),1])});
+  obst.forEach(r=>rects.push([r[0],r[1],r[2],r[3],12]));
+  const score=p=>{let s=0;rects.forEach(r=>{if(r[0]<p.x+pw&&r[2]>p.x&&r[1]<p.y+ph&&r[3]>p.y)s+=r[4]});return s};
+  const sc=cands.map(score);let best=0;sc.forEach((v,i)=>{if(v<sc[best])best=i});
+  if(HMI<0||sc[best]+6<sc[HMI])HMI=best;
+  if(sc[HMI]>0&&!HMCOMPACT){HMCOMPACT=true;drawHeat(hm);return placeHeat(hm,w,h,obst)}      // still covering something: shrink to 9 strikes and look again
+  hm.style.left=cands[HMI].x+'px';hm.style.top=cands[HMI].y+'px';hm.style.opacity=sc[HMI]>0?'.6':'.95';
+}
 function drawNodes(){
   const cv=document.getElementById('orbs'),hm=document.getElementById('hm');if(!cv)return;
   const w=el.clientWidth,h=el.clientHeight,dpr=window.devicePixelRatio||1;
   if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);cv.style.width=w+'px';cv.style.height=h+'px'}
   const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
+  const obst=[];
+  drawMarks(g,w,h,obst);
   if(!NODES_ON||!nodeFresh()||!NODES.nodes){hm.style.display='none';return}
   const sc=Math.max(.7,Math.min(1.4,w/1300)),x0=w-chart.priceScale('right').width()-30*sc;
   g.font=`600 ${Math.round(axisFont()*.85)}px sans-serif`;g.textBaseline='middle';
@@ -230,14 +274,16 @@ function drawNodes(){
     if(king){g.fillStyle='#0b0f16';g.textAlign='center';g.fillText('★',x0,y+1)}
     const role=nodeRole(n),txt=`${n.k.toFixed(0)} · ${Math.round(n.pct)}%${role?' · '+role:''}${(n.flags||[]).includes('decoy')?' (far)':''}${nodeArrow(n)}${n.fresh?'':' ·'+n.touches+'x'}`;
     g.textAlign='right';g.lineWidth=4;g.strokeStyle='rgba(11,15,22,.85)';g.strokeText(txt,x0-r-8,y);g.fillStyle=nodeCol(n.sign,1);g.fillText(txt,x0-r-8,y);
+    const tw=g.measureText(txt).width;obst.push([x0-r-8-tw,y-9,x0+r,y+9]);
   });
   drawHeat(hm);
+  placeHeat(hm,w,h,obst);
 }
 function drawHeat(hm){
-  const cols=NODES.columns||[];if(!cols.length||!cols[0].strikes.length){hm.style.display='none';return}
+  const narrow=el.clientWidth<700,cols=(NODES.columns||[]).slice(0,narrow?2:4);if(!cols.length||!cols[0].strikes.length){hm.style.display='none';return}
   const spot=NODES.spot,all=cols[0].strikes.map(r=>r.k).sort((a,b)=>b-a);
   let ci=0;all.forEach((k,i)=>{if(Math.abs(k-spot)<Math.abs(all[ci]-spot))ci=i});
-  const ks=all.slice(Math.max(0,ci-7),ci+8),near=all[ci];
+  const rr=narrow||HMCOMPACT?4:7,ks=all.slice(Math.max(0,ci-rr),ci+rr+1),near=all[ci];
   const val=(c,k)=>{const r=c.strikes.find(x=>x.k===k);return r||null};
   let html=`<div class="cap">Gamma nodes · ${NODES.regime.now==='NEGATIVE'?'negative':'positive'} regime${NODES.exp_move?' · exp. move ±'+Math.round(NODES.exp_move):''}</div><table><tr><th></th>`+cols.map(c=>`<th>${+c.expiry.slice(8)} ${MON[+c.expiry.slice(5,7)-1]}</th>`).join('')+'</tr>';
   ks.forEach(k=>{html+=`<tr${k===near?' class="sp"':''}><td class="k">${k.toFixed(0)}</td>`+cols.map(c=>{const r=val(c,k);if(!r)return'<td></td>';const a=.1+.8*r.pct/100;
