@@ -483,6 +483,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 s = FEED.state
             body = json.dumps(s if s else {"status": FEED.msg, "candles": [], "levels": []}, separators=(",", ":")).encode()
             return self._send(200, body, "application/json")
+        if path == "/nodes.json":                       # written by tools/nodes_agent.py; {} when the agent is not running
+            try:
+                body = (ROOT / "data" / "nodes" / "latest.json").read_bytes()
+            except OSError:
+                body = b"{}"
+            return self._send(200, body, "application/json")
         if path == "/calendar.json":
             try:
                 body = json.dumps(nse_calendar.to_json(), separators=(",", ":")).encode()

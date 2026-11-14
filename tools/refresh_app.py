@@ -184,6 +184,21 @@ def start_tv_paste():
         pass
 
 
+NODES = {"proc": None}
+
+
+def start_nodes_agent():
+    """Morning routine: the nodes agent (tools/nodes_agent.py) builds the Nifty node snapshot every minute for the live page. It holds a lock, so a second copy exits at once."""
+    try:
+        if NODES["proc"] and NODES["proc"].poll() is None:
+            return
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        NODES["proc"] = subprocess.Popen([sys.executable, str(ROOT / "tools" / "nodes_agent.py")], cwd=str(ROOT), creationflags=flags,
+                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
 def start_live():
     """Run the 5-minute live loop in a background thread of this helper (no second window). Does nothing if it already runs."""
     with LOCK:
@@ -193,6 +208,7 @@ def start_live():
         live_loop.set_state(running=True, msg="starting", last=None, next=None)        # set now so a double click cannot start two
         threading.Thread(target=live_loop.run_loop, kwargs={"push": True, "stop": S["stop"], "log": lambda *a: None}, daemon=True).start()
         start_tv_paste()
+        start_nodes_agent()
         try:                                     # the live stream page (http://127.0.0.1:8766/) runs alongside the live updates
             stream_server.start_in_thread()
             open_stream_page()
