@@ -118,3 +118,25 @@ def test_columns_and_snapshot_from_a_synthetic_chain():
     snap = nodes.build_snapshot(_chain(), now, _candles([[25110, 25090]] * 3))
     assert snap["front"] == "2026-11-17" and snap["structure"]["king"] in (25300, 25000) and snap["nodes"][0]["pct"] == 100.0
     assert len(snap["columns"]) == 3 and all(abs(r["k"] - 25100) <= 1025 for r in snap["columns"][0]["strikes"]) and snap["regime"]["now"] in ("POSITIVE", "NEGATIVE")
+
+
+def test_expected_move_levels_and_pace():
+    e = nodes.expected_move(25200.0, 25000.0, 14.0)
+    sig = 25000.0 * 0.14 * (1 / 365) ** 0.5
+    assert abs(e["sigma"] - round(sig, 1)) < 1e-9 and e["up1"] == round(25000 + sig, 1) and e["dn2"] == round(25000 - 2 * sig, 1)
+    assert abs(e["pace"] - round(200 / sig, 2)) < 1e-9 and e["basis"] == "previous close"
+    assert nodes.expected_move(25000.0, None, 14.0) is None and nodes.expected_move(25000.0, 25000.0, None) is None
+
+
+def test_grade_flags_blocked_midpoint_contra_nonode():
+    now = pd.Timestamp("2026-11-13 11:10", tz=IST)
+    snap = _snap([_n(25100, 30), _n(25110, 60, ["gatekeeper"])])
+    g = nodes.grade_setup({"when": "11:08", "side": "CALL", "level": "Now VWAP 25100.00 (bounce)"}, snap, [], None, "2026-11-13", now)
+    assert "blocked" in g["flags"]
+    snap = _snap([_n(25050, 70, ["floor"]), _n(25150, 80, ["ceiling"])])
+    snap["structure"] = {"floor": 25050, "ceiling": 25150, "midpoint": True}
+    g = nodes.grade_setup({"when": "11:08", "side": "CALL", "level": "Now VWAP 25100.00 (bounce)"}, snap, [], None, "2026-11-13", now)
+    assert "midpoint" in g["flags"] and any("middle of the range 25050-25150" in r for r in g["reasons"])
+    neg = _snap([_n(25100, 70)], {"now": "NEGATIVE", "side": -1, "flip": 25200.0})
+    assert "contra" in nodes.grade_setup({"when": "11:09", "side": "CALL", "level": "Now VWAP 25100.00 (bounce)"}, neg, [], None, "2026-11-13", now)["flags"]
+    assert "nonode" in nodes.grade_setup({"when": "11:09", "side": "PUT", "level": "Now VWAP 25100.00 (bounce)"}, _snap([_n(25500, 100)]), [], None, "2026-11-13", now)["flags"]

@@ -135,9 +135,30 @@ def _take(s, df, n, last_minute=LAST_MINUTE, regime_at=None):
     return tr
 
 
-def run_trades(setups, option_frame, cutoff=None, regime_at=None):
+GRADE_ORDER = {"A": 3, "B": 2, "C": 1}
+
+
+def _grade_rule(g, rules):
+    """Why a graded setup is not traded under the node rules (data/nodes_rules.json, every switch off by default), or None.
+    g: {"grade", "flags"} from the nodes agent; no grade yet = nothing is blocked."""
+    if not g or not rules:
+        return None
+    flags = g.get("flags") or []
+    mg = rules.get("min_grade")
+    if mg in GRADE_ORDER and GRADE_ORDER.get(g.get("grade"), 3) < GRADE_ORDER[mg]:
+        return f"not taken: grade {g['grade']} is below the minimum grade {mg}"
+    if rules.get("skip_blocked") and "blocked" in flags:
+        return "not taken: a node sits just ahead of it (blocked)"
+    if rules.get("skip_midpoint") and "midpoint" in flags:
+        return "not taken: in the middle of the range between two nodes"
+    return None
+
+
+def run_trades(setups, option_frame, cutoff=None, regime_at=None, grade_of=None, rules=None):
     """setups: chronological list from stream_setups.find_setups. option_frame(setup) -> DataFrame of that contract's 1-minute candles or None.
     regime_at(time) -> {"regime", "side"} or None (the live gamma regime at that time; None = unknown, then no regime rule applies).
+    grade_of(setup) -> {"grade", "flags"} or None: the nodes agent's grade of that setup; recorded on every signal, and with `rules` (min_grade, skip_blocked,
+    skip_midpoint) it can keep a setup from being traded.
     Returns {"trades": [...], "signals": [...], "total_pct": float}; signals lists every setup with what happened to it."""
     trades, signals, cur = [], [], None
     last_minute = LAST_MINUTE
@@ -152,6 +173,10 @@ def run_trades(setups, option_frame, cutoff=None, regime_at=None):
             rg = regime_at(t) if regime_at else None
         except Exception:
             rg = None
+        try:
+            gr = grade_of(s) if grade_of else None
+        except Exception:
+            gr = None
         if _hm(t) < earliest:                                # the first minutes after the open: the setup is listed, not traded
             status = f"no trade before {earliest[0]}:{earliest[1]:02d}"
         elif cur is not None and (cur["exit_time"] is None or t < cur["exit_time"]):
@@ -164,6 +189,8 @@ def run_trades(setups, option_frame, cutoff=None, regime_at=None):
             status = f"no new trade after {cutoff[0]}:{cutoff[1]:02d}"
         elif _contra(s, rg):
             status = "not taken: against the move in negative gamma"
+        elif _grade_rule(gr, rules):
+            status = _grade_rule(gr, rules)
         else:
             tr = _take(s, option_frame(s), len(trades) + 1, last_minute, regime_at)
             if tr is None:
@@ -172,7 +199,7 @@ def run_trades(setups, option_frame, cutoff=None, regime_at=None):
                 trades.append(tr)
                 cur = tr
                 status = f"TRADE {tr['n']}"
-        signals.append({"time": t, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "status": status, "regime": rg["regime"] if rg else None})
+        signals.append({"time": t, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "status": status, "regime": rg["regime"] if rg else None, "grade": gr["grade"] if gr else None})
     limit = None
     if len(trades) >= MAX_TRADES:
         limit = f"Daily limit reached: {MAX_TRADES} trades taken, no more trades today"
@@ -197,5 +224,5 @@ def to_json(res, shift):
         if tr["exit_time"] is not None:
             markers.append({"time": ep(tr["exit_time"]), "kind": "exit", "side": tr["side"], "text": f"T{tr['n']} {tr['status']} {tr['pnl_pct']:+.0f}%"})
     sig = [{"when": hm(x["time"]), "time": ep(x["time"]), "side": x["side"], "strike": f"{x['strike']} {'CE' if x['side'] == 'CALL' else 'PE'}", "level": x["level"],
-            "status": x["status"], "regime": x.get("regime")} for x in res["signals"]]
+            "status": x["status"], "regime": x.get("regime"), "grade": x.get("grade")} for x in res["signals"]]
     return {"trades": trades, "signals": sig, "markers": markers, "total_pct": res["total_pct"], "cutoff": res.get("cutoff", f"{CUTOFF[0]}:{CUTOFF[1]:02d}"), "limit": res.get("limit"), "max_trades": MAX_TRADES}

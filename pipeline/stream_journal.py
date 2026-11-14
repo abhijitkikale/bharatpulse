@@ -39,7 +39,7 @@ def build_day(day, res, replay, index_df, opt_frames, meta, extra=None):
                        "setups_ignored_while_open": [f"{s['time']:%H:%M} {s['side']} {s['strike']} {s['level']}" for s in ign], "option_candles_hm_ohlcv": rows})
     return {"date": str(day), "symbol": "NIFTY", "levels_used": {"close": (replay or {}).get("close"), "levels": (replay or {}).get("levels")},
             "total_pct": res["total_pct"], "trades": trades,
-            "setups": [{"time": s["time"].strftime("%H:%M"), "side": s["side"], "strike": s["strike"], "level": s["level"], "status": s["status"], "regime": s.get("regime")} for s in res["signals"]],
+            "setups": [{"time": s["time"].strftime("%H:%M"), "side": s["side"], "strike": s["strike"], "level": s["level"], "status": s["status"], "regime": s.get("regime"), "grade": s.get("grade")} for s in res["signals"]],
             "index_candles_hm_ohlcv": candle_rows(index_df), **(extra or {})}
 
 

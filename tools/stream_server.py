@@ -22,6 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "pipeline"))
 import fetch_fyers  # noqa: E402
 import live_gex  # noqa: E402
+import nodes  # noqa: E402
 import nse_calendar  # noqa: E402
 import stream_journal  # noqa: E402
 import stream_levels  # noqa: E402
@@ -66,6 +67,16 @@ def signals_from_tradingview():
         return json.loads(RELAY.read_text(encoding="utf-8")).get("signals_from") != "fyers"
     except Exception:
         return True
+
+
+NODE_RULES = ROOT / "data" / "nodes_rules.json"     # {"min_grade": null | "A" | "B" | "C", "skip_blocked": false, "skip_midpoint": false}: all off unless you switch them on
+
+
+def node_rules():
+    try:
+        return json.loads(NODE_RULES.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
 
 def market_hours(t=None):
@@ -189,7 +200,7 @@ class Feed:
         trades, res = None, None
         if setups:
             try:
-                res = stream_trades.run_trades(setups, self.option_frame, regime_at=self.regime_fn(df, sday))
+                res = stream_trades.run_trades(setups, self.option_frame, regime_at=self.regime_fn(df, sday), grade_of=self.grade_fn(sday), rules=node_rules())
                 trades = stream_trades.to_json(res, stream_levels.SHIFT)
             except Exception:
                 trades = None
@@ -202,6 +213,18 @@ class Feed:
         with self.lock:
             self.state = state
         OUT.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
+
+    def grade_fn(self, day):
+        """grade_of(setup) for the trade rules and the journal: the grade the nodes agent gave that setup when it appeared (data/nodes/grades_<day>.json)."""
+        try:
+            kept = json.loads((ROOT / "data" / "nodes" / f"grades_{day}.json").read_text(encoding="utf-8"))
+        except Exception:
+            kept = {}
+
+        def grade_of(s):
+            key = nodes.setup_key(str(s["time"].date()), s["time"].strftime("%H:%M"), s["side"], s["level"] + s.get("tag", ""))
+            return kept.get(key)
+        return grade_of
 
     def readings(self, day):
         """The day's live gamma flip readings (loaded from disk the first time)."""

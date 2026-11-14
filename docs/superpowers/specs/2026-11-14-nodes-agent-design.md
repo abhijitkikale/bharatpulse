@@ -76,5 +76,11 @@ Phase 3 (end-of-day page): node replay from the saved buffer, a reaction ledger 
 - Expiry day: the Front column is 0DTE; the model runs with one day left, as the live levels already do.
 - The agent reads `data/stream_state.json` for levels and setups; if it is missing or stale, grades are skipped, nodes still publish.
 
+## Phase 2 (built 2026-11-14)
+- **Node alerts** (page only): a pop-up when price comes within 15 points of a key node (King, gatekeeper, floor, ceiling, or any node of 40% or more) and another when it touches it (within 5 points); re-armed once price is 40 points away; nothing for what is already true when the page opens.
+- **Expected-move levels**: from the Front at-the-money implied volatility, 1 sigma = previous close x IV x sqrt(1/365), drawn as fixed dotted lines at plus/minus 1 and 2 sigma (only the ones inside the chart's price range), with "day moved x sigma" in the heatmap caption (Atlas and Tempest draw it the same way: a band price can reach and break). No forward cone: the chart has no room to the right of the last candle.
+- **Rules in the trade logic, all OFF by default** (`data/nodes_rules.json`, read every cycle): `min_grade` ("A", "B", "C" or null), `skip_blocked` (a 40%+ node within 25 points ahead), `skip_midpoint` (level in the middle of the floor-ceiling range). A skipped setup is listed as "not taken: ...", never traded. They use the grade the agent gave when the setup appeared (`data/nodes/grades_<day>.json`); with no grade yet nothing is blocked. The grade of every setup is also saved in the journal's setup list for calibration. Grades gained flags (blocked, midpoint, contra, nonode) and a midpoint penalty of 1 point.
+- **Not built**: wider trailing stop through air pockets (needs the index path of each trade and has no evidence yet; revisit with the reaction ledger).
+
 ## Calls made (not asked)
-Front column ranking, 4 expiries, the 25% / 10% / 30-point thresholds and grade weights, a 60-second cycle, file-based hand-off, and saving the buffer from day one.
+Front column ranking, 4 expiries, the 25% / 10% / 30-point thresholds and grade weights, a 60-second cycle, file-based hand-off, and saving the buffer from day one. Phase 2: the 15 / 5 / 40-point alert distances, the expected-move formula, rules off by default (grades stay information until the owner switches a rule on), air-pocket trailing left out.

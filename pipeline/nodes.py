@@ -45,7 +45,7 @@ def columns(chain, now, n_exp=N_EXP):
         ce = {r["StrkPric"]: r["ltp"] for r in rows if r["XpryDt"] == e and r["OptnTp"] == "CE" and r["ltp"] > 0}
         pe = {r["StrkPric"]: r["ltp"] for r in rows if r["XpryDt"] == e and r["OptnTp"] == "PE" and r["ltp"] > 0}
         both = sorted(set(ce) & set(pe), key=lambda k: abs(k - spot))
-        out.append({"expiry": e, "days": (pd.Timestamp(e).date() - today).days, "flip": n["flip"], "total_cr": n["total_cr"], "k": list(n["k"]),
+        out.append({"expiry": e, "days": (pd.Timestamp(e).date() - today).days, "flip": n["flip"], "total_cr": n["total_cr"], "k": list(n["k"]), "atm_iv": (g.get("atm_iv") or {}).get(e),
                     "net": list(n["net"]), "call": list(n["call"]), "put": list(n["put"]),
                     "straddle": round(ce[both[0]] + pe[both[0]], 2) if both else None})
     return out
@@ -143,6 +143,17 @@ def regime(col, spot):
     return {"now": "POSITIVE" if col["total_cr"] > 0 else "NEGATIVE", "side": 0 if flip is None else (1 if spot > flip else -1), "flip": flip}
 
 
+def expected_move(spot, ref, iv_pct):
+    """The one-day move the options price (1 sigma = reference price x IV x sqrt(1/365)), as fixed levels around a reference (the previous close), and how much of it
+    the day has used so far ("pace", in sigma). None when there is no volatility or reference. A fixed band, as Atlas draws it: price can reach and break it."""
+    if not iv_pct or not ref:
+        return None
+    sig = float(ref) * float(iv_pct) / 100.0 * (1.0 / 365.0) ** 0.5
+    return {"basis": "previous close", "ref": round(float(ref), 2), "iv": round(float(iv_pct), 2), "sigma": round(sig, 1),
+            "up1": round(ref + sig, 1), "dn1": round(ref - sig, 1), "up2": round(ref + 2 * sig, 1), "dn2": round(ref - 2 * sig, 1),
+            "pace": round((float(spot) - float(ref)) / sig, 2)}
+
+
 def _first_number(text):
     m = re.search(r"\d+(?:\.\d+)?", text or "")
     return float(m.group(0)) if m else None
@@ -160,7 +171,7 @@ def grade_setup(setup, snap, levels, candles, day, now):
         return None
     side = setup["side"]
     nodes = snap["nodes"]
-    score, why = 0, []
+    score, why, flags = 0, [], []
     # 1 backing node on the protected side
     prot = [n for n in nodes if (L - BACK_PTS <= n["k"] <= L + 10)] if side == "CALL" else [n for n in nodes if (L - 10 <= n["k"] <= L + BACK_PTS)]
     back = max(prot, key=lambda n: n["pct"]) if prot else None
@@ -177,6 +188,7 @@ def grade_setup(setup, snap, levels, candles, day, now):
             why.append(f"room: next node {ahead[0]['k']:.0f} is {d:.0f} points away +1")
         elif d < ROOM_BLOCK and ahead[0]["pct"] >= 40:
             score -= 1
+            flags.append("blocked")
             why.append(f"blocked: node {ahead[0]['k']:.0f} ({ahead[0]['pct']:.0f}%) only {d:.0f} points away -1")
     else:
         score += 1
@@ -202,10 +214,19 @@ def grade_setup(setup, snap, levels, candles, day, now):
     if rg.get("now") == "NEGATIVE" and rg.get("side"):
         with_move = (rg["side"] < 0 and side == "PUT") or (rg["side"] > 0 and side == "CALL")
         score += 1 if with_move else -2
+        if not with_move:
+            flags.append("contra")
         why.append("negative gamma, " + ("with the move +1" if with_move else "against the move -2"))
+    # 5b in the middle of the range between the floor and the ceiling
+    stc = snap.get("structure") or {}
+    if stc.get("midpoint") and stc.get("floor") is not None and stc.get("ceiling") is not None and stc["floor"] <= L <= stc["ceiling"]:
+        score -= 1
+        flags.append("midpoint")
+        why.append(f"in the middle of the range {stc['floor']:.0f}-{stc['ceiling']:.0f} -1")
     # 6 nothing nearby
     if not any(abs(n["k"] - L) <= NEAR_NODE_PTS for n in nodes):
         score -= 1
+        flags.append("nonode")
         why.append(f"no significant node within {NEAR_NODE_PTS:.0f} points -1")
     grade = "A" if score >= 3 else "B" if score >= 1 else "C"
     late = False
@@ -213,10 +234,10 @@ def grade_setup(setup, snap, levels, candles, day, now):
         late = (now - pd.Timestamp(f"{day} {setup['when']}", tz="Asia/Kolkata")) > pd.Timedelta(minutes=LATE_MIN)
     except Exception:
         pass
-    return {"grade": grade, "score": score, "reasons": why, "late": late}
+    return {"grade": grade, "score": score, "reasons": why, "flags": flags, "late": late}
 
 
-def build_snapshot(chain, now, candles=None, hist=None):
+def build_snapshot(chain, now, candles=None, hist=None, prev_close=None):
     """The agent's snapshot of one Nifty chain (no grades yet). hist: deque of (Timestamp, {strike: Front value}) for velocity."""
     spot = float(chain["spot"])
     cols = columns(chain, now)
@@ -243,4 +264,4 @@ def build_snapshot(chain, now, candles=None, hist=None):
         out_cols.append({"expiry": c["expiry"], "days": c["days"], "flip": c["flip"], "total_cr": c["total_cr"], "straddle": c["straddle"],
                          "king": c["k"][absn.index(kmax)] if kmax else None, "strikes": rows})
     return {"asof": now.isoformat(timespec="seconds"), "symbol": "NIFTY", "spot": round(spot, 2), "front": front["expiry"],
-            "exp_move": exp_move, "regime": regime(front, spot), "columns": out_cols, "nodes": cl["nodes"], "structure": cl["structure"]}
+            "exp_move": exp_move, "expected": expected_move(spot, prev_close, front.get("atm_iv")), "regime": regime(front, spot), "columns": out_cols, "nodes": cl["nodes"], "structure": cl["structure"]}

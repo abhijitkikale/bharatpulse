@@ -68,11 +68,14 @@ def read_state():
 
 
 def today_candles():
-    frames, _ = fetch_fyers.fetch_intraday(days=2, symbols=(SYM,))
+    """(today's 1-minute candles, the previous session's last close) or (None, None)."""
+    frames, _ = fetch_fyers.fetch_intraday(days=3, symbols=(SYM,))
     df = frames.get(SYM)
     if df is None or df.empty:
-        return None
-    return df[df.index.date == df.index.max().date()]
+        return None, None
+    day = df.index.max().date()
+    prev = df[df.index.date < day]
+    return df[df.index.date == day], (float(prev["c"].iloc[-1]) if len(prev) else None)
 
 
 def load_hist(day):
@@ -130,8 +133,8 @@ def cycle(hist, last_save, force_save=False):
     chains, status = fetch_fyers.fetch_chains(strikes=40, symbols=(SYM,), max_expiries=nodes.N_EXP)
     if SYM not in chains:
         return None, last_save, status
-    candles = today_candles()
-    snap = nodes.build_snapshot(chains[SYM], now, candles, hist)
+    candles, prev_close = today_candles()
+    snap = nodes.build_snapshot(chains[SYM], now, candles, hist, prev_close)
     if snap is None:
         return None, last_save, "no usable chain"
     snap["grades"] = grade_all(snap, read_state(), candles, now)
@@ -153,6 +156,9 @@ def cycle(hist, last_save, force_save=False):
 def summary(snap):
     s = snap["structure"]
     print(f"{snap['asof']}  spot {snap['spot']}  front {snap['front']}  regime {snap['regime']['now']} (flip {snap['regime']['flip']})  expected move {snap['exp_move']}")
+    if snap.get("expected"):
+        e = snap["expected"]
+        print(f"expected move (1 sigma {e['sigma']} from {e['ref']}): {e['dn1']} - {e['up1']}   used so far: {e['pace']:+.2f} sigma")
     print(f"King {s.get('king')}  gatekeeper {s.get('gatekeeper')}  floor {s.get('floor')}  ceiling {s.get('ceiling')}  midpoint {s.get('midpoint')}  air pockets {s.get('air_pockets')}")
     for n in snap["nodes"][:8]:
         print(f"  {n['k']:.0f} {n['sign']} {n['pct']:5.1f}%  {','.join(n['roles']) or '-':22} touches {n['touches']}  {','.join(n['flags'])}")

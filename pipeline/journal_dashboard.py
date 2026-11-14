@@ -166,7 +166,7 @@ const cls = x => x>0 ? 'up' : x<0 ? 'dn' : '';
 const wk = d => new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
 const mins = hm => { const [h,m]=hm.split(':').map(Number); return h*60+m-(9*60+15); };
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function status(s){ if(s.startsWith('TRADE')) return ['Taken','tgt']; if(s.startsWith('ignored')) return ['Ignored: a trade was open','mut']; if(s.startsWith('no new trade')) return ['After the 14:45 cutoff','mut']; if(s.startsWith('not taken')) return ['Against the move in negative gamma','mut']; if(s.startsWith('no trade before')) return ['In the first 10 minutes (no trade)','mut']; return [s,'mut']; }
+function status(s){ if(s.startsWith('TRADE')) return ['Taken','tgt']; if(s.startsWith('ignored')) return ['Ignored: a trade was open','mut']; if(s.startsWith('no new trade')) return ['After the 14:45 cutoff','mut']; if(s.startsWith('not taken')) return [s.includes('against the move')?'Against the move in negative gamma':s.replace('not taken: ','Not taken: '),'mut']; if(s.startsWith('no trade before')) return ['In the first 10 minutes (no trade)','mut']; return [s,'mut']; }
 function chart(d){
   const W=1000,H=320,L=56,R=84,T=14,B=26, n=375, iw=W-L-R, ih=H-T-B;
   const cs = d.candles; if(!cs.length) return '<div class="empty">No index candles were saved for this day.</div>';

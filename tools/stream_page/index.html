@@ -35,7 +35,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 .row.px{background:var(--px);border-left-color:var(--txt);color:var(--txt)}
 #slpop{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
 .slp{background:#10202b;border:2px solid #ffb300;color:#ffe082;border-radius:12px;padding:10px 18px;font-weight:700;font-size:calc(var(--fs)*1.25);box-shadow:0 6px 24px #000a;animation:slin .35s ease-out;transition:opacity .8s}
-.slp small{display:block;font-weight:500;color:#cfd8e3;font-size:.8em;margin-top:2px}
+.slp.nd{border-color:#7aa2ff;color:#cfe0ff;background:#0f1a2e}.slp small{display:block;font-weight:500;color:#cfd8e3;font-size:.8em;margin-top:2px}
 @keyframes slin{from{transform:translateY(-30px);opacity:0}to{transform:none;opacity:1}}
 #limitbar{flex:none;background:#5a1d1d;border-bottom:2px solid #ef5b5b;color:#ffd0d0;font-weight:700;font-size:calc(var(--fs)*1.2);padding:calc(var(--fs)*.35) calc(var(--fs)*1);text-align:center}
 #orbs{position:absolute;left:0;top:0;pointer-events:none;z-index:3}
@@ -216,6 +216,27 @@ const gb=(when,side)=>{const g=GR[when+'|'+side];return g?` <b class="gd g${g.gr
 const nodeRole=n=>{const r=n.roles||[];return r.includes('king')?'KING':r.includes('gatekeeper')?'GATE':r.includes('ceiling')?'CEIL':r.includes('floor')?'FLOOR':r.includes('pika')?'+':r.includes('barney')?'−':''};
 const nodeArrow=n=>n.v5==null?'':n.v5>=3?' ▲':n.v5<=-3?' ▼':'';
 const nodeCol=(sign,a)=>sign==='+'?`rgba(255,213,79,${a})`:`rgba(179,136,255,${a})`;
+// node alerts: a pop-up when price comes within 15 points of a key node (approach) or touches it (tap); re-armed once price is 40 points away. Not shown for what is already true when the page opens.
+let NSTATE=null;
+function nodePop(txt,sub){
+  const box=document.getElementById('slpop'),d=document.createElement('div');d.className='slp nd';d.innerHTML=`${txt}<small>${sub}</small>`;box.appendChild(d);
+  setTimeout(()=>{d.style.opacity='0';setTimeout(()=>d.remove(),900)},15000);
+}
+function nodeAlerts(){
+  if(!NODES||!LASTS||!LASTS.last)return;
+  const px=LASTS.last,key=NODES.nodes.filter(n=>(n.roles||[]).some(r=>r==='king'||r==='gatekeeper'||r==='ceiling'||r==='floor')||n.pct>=40);
+  const first=NSTATE===null;if(first)NSTATE={};
+  key.forEach(n=>{
+    const d=Math.abs(px-n.k),st=NSTATE[n.k]||'far';let nx=st;
+    if(d<=5)nx='tap';else if(d<=15)nx=st==='tap'?'tap':'near';else if(d>40)nx='far';else if(st==='tap')nx='near';
+    if(!first&&nx!==st){
+      const role=({KING:'King',GATE:'gatekeeper',CEIL:'ceiling',FLOOR:'floor'})[nodeRole(n)]||'node',how=n.fresh?'fresh, not touched today':'touched '+n.touches+'x today';
+      if(nx==='tap')nodePop(`📍 Price tapped the ${n.k.toFixed(0)} ${role} node`,`${Math.round(n.pct)}% of King · ${how}`);
+      else if(nx==='near'&&st==='far')nodePop(`🎯 Price approaching the ${n.k.toFixed(0)} ${role} node`,`${d.toFixed(0)} points away · ${Math.round(n.pct)}% of King · ${how}`);
+    }
+    NSTATE[n.k]=nx;
+  });
+}
 let MARKS=[],HMI=-1,HMCOMPACT=false;
 // marker labels: drawn on the overlay so they never sit on top of each other (pushed up or down, with a thin line back to their candle)
 function drawMarks(g,w,h,obst){
@@ -267,6 +288,12 @@ function drawNodes(){
   if(!NODES_ON||!nodeFresh()||!NODES.nodes){hm.style.display='none';return}
   const sc=Math.max(.7,Math.min(1.4,w/1300)),x0=w-chart.priceScale('right').width()-30*sc;
   g.font=`600 ${Math.round(axisFont()*.85)}px sans-serif`;g.textBaseline='middle';
+  nodeAlerts();
+  const ex=NODES.expected;                                  // the day's priced move (1 and 2 sigma around the previous close): fixed dotted lines
+  if(ex){const Wp=w-chart.priceScale('right').width();g.save();g.setLineDash([2,5]);g.lineWidth=1.2;g.textAlign='left';g.font=`600 ${Math.round(axisFont()*.7)}px sans-serif`;
+    [['+2σ',ex.up2],['+1σ',ex.up1],['−1σ',ex.dn1],['−2σ',ex.dn2]].forEach(([lb,v])=>{const y=cs.priceToCoordinate(v);if(y==null||y<0||y>h)return;
+      g.strokeStyle='rgba(122,162,255,.55)';g.beginPath();g.moveTo(0,y);g.lineTo(Wp,y);g.stroke();g.fillStyle='rgba(150,180,255,.95)';g.fillText(`${lb} ${v.toFixed(0)} (day)`,6,y-7)});
+    g.restore()}
   NODES.nodes.slice(0,7).forEach(n=>{
     const y=cs.priceToCoordinate(n.k);if(y==null||y<0||y>h)return;
     const r=(7+17*Math.sqrt(n.pct/100))*sc,king=(n.roles||[]).includes('king');
@@ -285,7 +312,7 @@ function drawHeat(hm){
   let ci=0;all.forEach((k,i)=>{if(Math.abs(k-spot)<Math.abs(all[ci]-spot))ci=i});
   const rr=narrow||HMCOMPACT?4:7,ks=all.slice(Math.max(0,ci-rr),ci+rr+1),near=all[ci];
   const val=(c,k)=>{const r=c.strikes.find(x=>x.k===k);return r||null};
-  let html=`<div class="cap">Gamma nodes · ${NODES.regime.now==='NEGATIVE'?'negative':'positive'} regime${NODES.exp_move?' · exp. move ±'+Math.round(NODES.exp_move):''}</div><table><tr><th></th>`+cols.map(c=>`<th>${+c.expiry.slice(8)} ${MON[+c.expiry.slice(5,7)-1]}</th>`).join('')+'</tr>';
+  let html=`<div class="cap">Gamma nodes · ${NODES.regime.now==='NEGATIVE'?'negative':'positive'} regime${NODES.expected?' · day moved '+(NODES.expected.pace>=0?'+':'−')+Math.abs(NODES.expected.pace).toFixed(1)+'σ of ±'+Math.round(NODES.expected.sigma):(NODES.exp_move?' · exp. move ±'+Math.round(NODES.exp_move):'')}</div><table><tr><th></th>`+cols.map(c=>`<th>${+c.expiry.slice(8)} ${MON[+c.expiry.slice(5,7)-1]}</th>`).join('')+'</tr>';
   ks.forEach(k=>{html+=`<tr${k===near?' class="sp"':''}><td class="k">${k.toFixed(0)}</td>`+cols.map(c=>{const r=val(c,k);if(!r)return'<td></td>';const a=.1+.8*r.pct/100;
     return `<td style="background:${nodeCol(r.net>=0?'+':'-',a.toFixed(2))}">${r.pct>=25?Math.round(r.pct)+(c.king===k?'★':''):''}</td>`}).join('')+'</tr>'});
   hm.innerHTML=html+'</table>';hm.style.display='block';

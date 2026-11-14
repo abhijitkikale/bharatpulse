@@ -181,3 +181,20 @@ def test_telegram_message_shows_the_afternoon_target_and_stop():
     assert tg_style.classify(txt) == "trade_open"
     kind, html = tg_style.to_html(txt)
     assert "(+20%)" in html and "−7%" in html
+
+
+def test_node_rules_are_off_by_default_and_can_skip_by_grade_or_flag():
+    df = _opt([[100, 100, 100, 100], [100, 100, 99, 100]])
+    f = lambda s: df
+    gc = lambda s: {"grade": "C", "flags": ["blocked", "midpoint"]}
+    ga = lambda s: {"grade": "A", "flags": []}
+    r = stream_trades.run_trades([_setup(0)], f, grade_of=gc)                                    # grades are recorded, nothing is blocked without rules
+    assert r["signals"][0]["status"] == "TRADE 1" and r["signals"][0]["grade"] == "C"
+    assert stream_trades.run_trades([_setup(0)], f, grade_of=gc, rules={})["signals"][0]["status"] == "TRADE 1"
+    assert stream_trades.run_trades([_setup(0)], f, grade_of=gc, rules={"min_grade": "B"})["signals"][0]["status"] == "not taken: grade C is below the minimum grade B"
+    assert stream_trades.run_trades([_setup(0)], f, grade_of=ga, rules={"min_grade": "B"})["signals"][0]["status"] == "TRADE 1"
+    assert "blocked" in stream_trades.run_trades([_setup(0)], f, grade_of=gc, rules={"skip_blocked": True})["signals"][0]["status"]
+    assert "middle of the range" in stream_trades.run_trades([_setup(0)], f, grade_of=gc, rules={"skip_midpoint": True})["signals"][0]["status"]
+    assert stream_trades.run_trades([_setup(0)], f, grade_of=lambda s: None, rules={"min_grade": "A"})["signals"][0]["status"] == "TRADE 1"      # no grade yet: not blocked
+    j = stream_trades.to_json(r, 19800)
+    assert j["signals"][0]["grade"] == "C"
