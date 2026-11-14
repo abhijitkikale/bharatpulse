@@ -518,6 +518,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 body = b"{}"
             return self._send(200, body, "application/json")
+        if path in ("/nodes-replay", "/nodes-replay/"):                 # the end-of-day node replay and reaction ledger, built fresh from the saved days
+            try:
+                import nodes_replay
+                return self._send(200, nodes_replay.build_html().encode("utf-8"), "text/html; charset=utf-8")
+            except Exception as e:
+                return self._send(500, ("node replay failed: " + str(e)).encode("utf-8"), "text/plain; charset=utf-8")
         if path in ("/journal", "/journal/"):
             try:
                 import journal_dashboard
