@@ -198,4 +198,4 @@ def to_json(res, shift):
             markers.append({"time": ep(tr["exit_time"]), "kind": "exit", "side": tr["side"], "text": f"T{tr['n']} {tr['status']} {tr['pnl_pct']:+.0f}%"})
     sig = [{"when": hm(x["time"]), "time": ep(x["time"]), "side": x["side"], "strike": f"{x['strike']} {'CE' if x['side'] == 'CALL' else 'PE'}", "level": x["level"],
             "status": x["status"], "regime": x.get("regime")} for x in res["signals"]]
-    return {"trades": trades, "signals": sig, "markers": markers, "total_pct": res["total_pct"], "cutoff": res.get("cutoff", f"{CUTOFF[0]}:{CUTOFF[1]:02d}"), "limit": res.get("limit")}
+    return {"trades": trades, "signals": sig, "markers": markers, "total_pct": res["total_pct"], "cutoff": res.get("cutoff", f"{CUTOFF[0]}:{CUTOFF[1]:02d}"), "limit": res.get("limit"), "max_trades": MAX_TRADES}

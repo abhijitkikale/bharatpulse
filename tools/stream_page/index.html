@@ -43,6 +43,10 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 #hm table{border-collapse:collapse}#hm th{font-weight:600;color:#8b97a8;padding:0 5px;text-align:center}#hm td{padding:0 5px;text-align:center;min-width:3.2em;color:#fff;text-shadow:0 0 3px #000}
 #hm td.k{color:#c9d1d9;text-shadow:none;text-align:right;font-weight:600}#hm tr.sp td{outline:1px solid #ffffff99;outline-offset:-1px}#hm .cap{font-size:.85em;color:#8b97a8;margin-bottom:2px}
 .gd{display:inline-block;min-width:1.5em;text-align:center;border-radius:5px;padding:0 4px;margin-left:5px;font-size:.9em;color:#0b0f16}.gA{background:#2ecc9a}.gB{background:#ffb300}.gC{background:#8b97a8}
+.tr.one{flex-wrap:nowrap;white-space:nowrap;overflow:hidden;gap:calc(var(--fs)*1);font-size:calc(var(--fs)*1);align-items:center;padding:calc(var(--fs)*.2) calc(var(--fs)*.8)}
+.tr.one .pill{border:1px solid;border-radius:8px;padding:0 7px;font-size:.88em;font-weight:700}.tr.one .sep{color:var(--line)}.tr.one .big{font-size:1.25em}
+#tip{position:absolute;display:none;z-index:6;pointer-events:none;max-width:420px;background:rgba(11,15,22,.94);border:1px solid #3a4a60;border-radius:8px;padding:6px 10px;color:#e8eaed;font-size:calc(var(--fs)*.85);line-height:1.35}
+#tip .r{color:#9fb0c4;font-weight:400}
 </style>
 </head>
 <body>
@@ -52,10 +56,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
   <div class="hd"><span class="t">NIFTY 50 · 1 min</span><span class="p" id="px">–</span><span class="m" id="meta"></span><span class="chip" id="chip">connecting…</span><span class="chip btn" id="th" title="Light / dark background">☀ Light</span></div>
   <div id="limitbar" style="display:none"></div>
   <div class="tr" id="trade" style="display:none"></div>
-  <div class="sg" id="setups" style="display:none"></div>
   <div class="body">
     <div class="left"><div id="regime"><div id="r1"></div><div id="r2"></div></div><div id="lv"></div></div>
-    <div class="main"><div id="chart"></div><canvas id="orbs"></canvas><div id="hm"></div><div id="cd"><div class="a" id="cd-a"></div><div class="t" id="cd-t"></div><div class="b" id="cd-b"></div></div></div>
+    <div class="main"><div id="chart"></div><canvas id="orbs"></canvas><div id="hm"></div><div id="tip"></div><div id="cd"><div class="a" id="cd-a"></div><div class="t" id="cd-t"></div><div class="b" id="cd-b"></div></div></div>
   </div>
   <div class="ban"><span id="b2"></span></div>
 </div>
@@ -159,43 +162,45 @@ function draw(s){
     document.getElementById('r1').innerHTML=r.eod?`<span style="color:${col(r.eod)}">EOD: ${r.eod} gamma</span>`:'';
     document.getElementById('r2').innerHTML=r.now?`<span style="color:${col(r.now)}">NOW: ${r.now} gamma${r.now_time?' ('+r.now_time+')':''}</span>`:''}
   else box.style.display='none';
-  // CALL / PUT setups (not shown on the clean address)
-  const sb=document.getElementById('setups'),st=s.setups||{table:[],markers:[]};
+  // CALL / PUT setups: markers on the chart (grade letter on each), details in the hover card; one-line trade strip on top. Not shown on the clean address.
+  const st=s.setups||{table:[],markers:[]};
   const T=s.trades,tb=document.getElementById('trade');slCheck(T);{const lb=document.getElementById('limitbar');if(T&&T.limit){lb.style.display='block';lb.textContent='⛔ '+T.limit}else lb.style.display='none'}
-  if(CLEAN){sb.style.display='none';cs.setMarkers([]);tb.style.display='none'}
+  if(CLEAN){cs.setMarkers([]);tb.style.display='none'}
   else{
-    sb.style.display='flex';
     const cc=x=>x.side==='CALL'?G():R();
-    const sigs=T?T.signals.slice().reverse().slice(0,4):null;
-    const stc=x=>x.status.startsWith('TRADE')?'font-weight:700':'color:#8b97a8';
-    const chip=x=>`<span class="c"><span style="color:${cc(x)};font-weight:700">${x.side} ${x.strike}</span>${gb(x.when,x.side)} · ${x.when} · ${x.level} <span style="${x.status?stc(x):''}">→ ${x.status||''}</span></span>`;
-    sb.innerHTML='<span class="h">Setups</span>'+(T&&sigs.length?sigs.slice(0,4).map(chip).join(''):(st.table.length?st.table.slice(0,3).map(x=>chip({side:x.side,strike:x.strike,when:x.when.slice(7),level:x.level,status:''})).join(''):'<span class="h">none yet</span>'));
-    // markers: trade entries and exits are bold, other setups are small and grey
+    const sigAt={};if(T)T.signals.forEach(x=>{sigAt[x.time+'|'+x.side]=x});
+    const gl=(time,side)=>{const x=sigAt[time+'|'+side],g=x&&GR[x.when+'|'+x.side];return g?' '+g.grade:''};
     let mk=[];
     if(T){
-      T.signals.filter(x=>!x.status.startsWith('TRADE')).forEach(x=>mk.push({time:x.time,position:x.side==='CALL'?'belowBar':'aboveBar',color:'#8b97a8',shape:x.side==='CALL'?'arrowUp':'arrowDown',text:''}));
-      T.markers.forEach(m=>mk.push(m.kind==='entry'?{time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:cc(m),shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text}
+      T.signals.filter(x=>!x.status.startsWith('TRADE')).forEach(x=>mk.push({time:x.time,position:x.side==='CALL'?'belowBar':'aboveBar',color:'#8b97a8',shape:x.side==='CALL'?'arrowUp':'arrowDown',text:(gl(x.time,x.side)||'').trim()}));
+      T.markers.forEach(m=>mk.push(m.kind==='entry'?{time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:cc(m),shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text+gl(m.time,m.side)}
         :m.kind==='shift'?{time:m.time,position:m.side==='CALL'?'aboveBar':'belowBar',color:'#ffb300',shape:'square',text:m.text}
         :{time:m.time,position:m.side==='CALL'?'aboveBar':'belowBar',color:m.text.includes('+')?G():R(),shape:'circle',text:m.text}));
     }else mk=st.markers.map(m=>({time:m.time,position:m.side==='CALL'?'belowBar':'aboveBar',color:cc(m),shape:m.side==='CALL'?'arrowUp':'arrowDown',text:m.text}));
     cs.setMarkers(mk.sort((a,b)=>a.time-b.time));
-    // trade strip: the open trade, or the latest closed one, with the day total
+    // one-line trade strip: past trades as small pills, the open (or latest) trade, the day total
     if(!T){tb.style.display='none'}
     else{
       tb.style.display='flex';
-      const cur=T.trades.length?T.trades[T.trades.length-1]:null,pc=v=>(v>0?'+':'')+v.toFixed(1)+'%';
-      if(!cur){tb.className='tr';tb.innerHTML=`<span>No trade yet</span><span class="k">the first setup becomes the trade · until 13:00: target +40%, stop −10%, trailing +20%→+5%, +30%→+15%, +35%→+30% · from 13:00: target +20%, stop −7%, trailing +10%→+5%, +15%→+10% · no trade before 9:25 · no new trade after ${T.cutoff}</span>`}
+      const cur=T.trades.length?T.trades[T.trades.length-1]:null,pc=v=>(v>0?'+':'')+v.toFixed(1)+'%',mx=T.max_trades||5;
+      const rules='Until 13:00: target +40%, stop −10%, trailing +20%→+5%, +30%→+15%, +35%→+30%. From 13:00: target +20%, stop −7%, trailing +10%→+5%, +15%→+10%. No trade before 9:25, none after '+T.cutoff+'. Max '+mx+' trades a day.';
+      tb.title=rules;
+      if(!cur){tb.className='tr one';tb.innerHTML=`<span>No trade yet</span><span class="k">first setup from 9:25 · max ${mx} trades a day · hover the strip for the rules</span>`}
       else{
-        const chipT=t=>{const c=t.pnl_pct>=0?G():R(),ic=t.status==='TARGET'||t.status==='TRAIL'?'✔':t.status==='STOP'?'✖':t.status==='OPEN'?'▶':'■';
-          return `<span style="border:1px solid ${c};color:${c};border-radius:8px;padding:0 10px;font-size:.82em;white-space:nowrap">${ic} T${t.n} ${t.side} ${t.strike} ${t.side==='CALL'?'CE':'PE'} on ${(t.level||'').replace(/ [0-9.]+ /,' ')} · ${t.entry_time} @ ${t.entry.toFixed(2)} → ${t.exit_time?t.exit_time+' @ '+t.exit.toFixed(2):'open'} · ${pc(t.pnl_pct)}</span>`};
-        const prev=T.trades.slice(0,-1).map(chipT).join('');
+        const ic=t=>t.status==='TARGET'||t.status==='TRAIL'?'✔':t.status==='STOP'?'✖':t.status==='OPEN'?'▶':'■';
+        const pill=t=>{const c=t.pnl_pct>=0?G():R();
+          return `<span class="pill" style="color:${c};border-color:${c}" title="T${t.n} ${t.side} ${t.strike} ${t.side==='CALL'?'CE':'PE'} on ${(t.level||'').replace(/ [0-9.]+ /,' ')} · ${t.entry_time} @ ${t.entry.toFixed(2)} → ${t.exit_time?t.exit_time+' @ '+t.exit.toFixed(2):'open'} · ${t.status}">${ic(t)} T${t.n} ${pc(t.pnl_pct)}</span>`};
+        const prev=T.trades.slice(0,-1).map(pill).join('');
         const open=cur.status==='OPEN',px=cur.exit!=null?cur.exit:cur.last,pnl=cur.pnl_pct,typ=cur.side==='CALL'?'CE':'PE';
-        const gbg=gb(cur.entry_time,cur.side),head=open?`▶ TRADE ${cur.n} OPEN${gbg}`:cur.status==='TARGET'?`✔ TRADE ${cur.n} TARGET HIT`:cur.status==='STOP'?`✖ TRADE ${cur.n} STOP HIT`:cur.status==='TRAIL'?`✔ TRADE ${cur.n} TRAILING STOP HIT`:`■ TRADE ${cur.n} CLOSED (day end)`;
-        tb.className='tr '+(pnl>=0?'win':'loss');
-        tb.innerHTML=prev+`<span style="color:${cur.side==='CALL'?G():R()}">${head}</span><span>${cur.side} ${cur.strike} ${typ}</span><span><span class="k">in ${cur.entry_time} at</span>${cur.entry.toFixed(2)}</span>`+
-          `<span><span class="k">target +${Math.round((cur.target/cur.entry-1)*100)}%</span>${cur.target.toFixed(2)}</span><span><span class="k">stop ${(()=>{const sn=cur.stop_now!=null?cur.stop_now:cur.stop,q=(sn/cur.entry-1)*100;return (q>=0?'+':'−')+Math.abs(q).toFixed(0)+'%'})()}</span>${(cur.stop_now!=null?cur.stop_now:cur.stop).toFixed(2)}</span>`+
-          `<span><span class="k">${open?'now':'out '+cur.exit_time+' at'}</span>${px.toFixed(2)}</span><span class="big" style="color:${pnl>=0?G():R()}">${pc(pnl)}</span>`+
-          `<span style="margin-left:auto"><span class="k">day total (${T.trades.length} trade${T.trades.length>1?'s':''})</span><span class="big" style="color:${T.total_pct>=0?G():R()}">${pc(T.total_pct)}</span></span>`}
+        const sn=cur.stop_now!=null?cur.stop_now:cur.stop,sq=(sn/cur.entry-1)*100,tq=Math.round((cur.target/cur.entry-1)*100);
+        const word=open?'OPEN':cur.status==='TARGET'?'TARGET HIT':cur.status==='STOP'?'STOP HIT':cur.status==='TRAIL'?'TRAILING STOP HIT':'CLOSED (day end)';
+        tb.className='tr one '+(pnl>=0?'win':'loss');
+        tb.innerHTML=prev+(prev?'<span class="sep">│</span>':'')+
+          `<span style="color:${cur.side==='CALL'?G():R()};font-weight:800">${ic(cur)} T${cur.n} ${word}${gb(cur.entry_time,cur.side)}</span><span>${cur.side} ${cur.strike} ${typ}</span>`+
+          `<span><span class="k">in</span>${cur.entry.toFixed(2)} <span class="k">${open?'now':'out '+cur.exit_time}</span>${px.toFixed(2)}</span>`+
+          `<span><span class="k">stop ${(sq>=0?'+':'−')+Math.abs(sq).toFixed(0)}%</span>${sn.toFixed(2)} <span class="k">target +${tq}%</span>${cur.target.toFixed(2)}</span>`+
+          `<span class="big" style="color:${pnl>=0?G():R()}">${pc(pnl)}</span>`+
+          `<span style="margin-left:auto"><span class="k">day · ${T.trades.length} of ${mx} trades</span><span class="big" style="color:${T.total_pct>=0?G():R()}">${pc(T.total_pct)}</span></span>`}
     }
   }
   renderLevels(s);
@@ -239,6 +244,23 @@ function drawHeat(hm){
     return `<td style="background:${nodeCol(r.net>=0?'+':'-',a.toFixed(2))}">${r.pct>=25?Math.round(r.pct)+(c.king===k?'★':''):''}</td>`}).join('')+'</tr>'});
   hm.innerHTML=html+'</table>';hm.style.display='block';
 }
+// hover card: hover a candle that has a setup marker to see the setup, its status, grade and reasons (and any stop moves)
+const TIP=document.getElementById('tip');
+chart.subscribeCrosshairMove(p=>{
+  const T=LASTS&&LASTS.trades;
+  if(CLEAN||!T||!p||!p.time||!p.point){TIP.style.display='none';return}
+  const sg=T.signals.filter(x=>Math.abs(x.time-p.time)<=30),sh=[];
+  T.trades.forEach(t=>(t.shifts||[]).forEach(x=>{if(Math.abs(x.time-p.time)<=30)sh.push(`T${t.n} stop moved to ${x.lock>=0?'+':'−'}${Math.abs(x.lock)}% (${x.stop.toFixed(2)}) · ${x.why||'premium reached +'+x.reach+'%'}`)}));
+  if(!sg.length&&!sh.length){TIP.style.display='none';return}
+  const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  let h='';
+  sg.forEach(x=>{const g=GR[x.when+'|'+x.side];
+    h+=`<div><b style="color:${x.side==='CALL'?G():R()}">${x.when} ${x.side} ${x.strike}</b> · ${esc(x.level)}<br><span class="r">${esc(x.status)}</span>`+(g?`<br>Grade <b>${g.grade}</b> (${g.score>=0?'+':''}${g.score})${g.late?' · graded late':''}<br><span class="r">${g.reasons.map(esc).join('<br>')||'no reasons: nothing nearby, no penalty'}</span>`:'')+'</div>'});
+  sh.forEach(t=>{h+=`<div>🔒 ${esc(t)}</div>`});
+  TIP.innerHTML=h;TIP.style.display='block';
+  const W=el.clientWidth,Hh=el.clientHeight,w=TIP.offsetWidth,hh=TIP.offsetHeight;
+  TIP.style.left=Math.max(4,Math.min(W-w-4,p.point.x+14))+'px';TIP.style.top=Math.max(4,Math.min(Hh-hh-4,p.point.y+14))+'px';
+});
 async function pollNodes(){
   try{const r=await fetch('/nodes.json',{cache:'no-store'});const j=await r.json();NODES=j&&j.asof?j:null}catch(e){NODES=null}
   GR={};((NODES&&NODES.grades)||[]).forEach(x=>{if(!GR[x.when+'|'+x.side])GR[x.when+'|'+x.side]=x});
