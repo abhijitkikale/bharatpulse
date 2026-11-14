@@ -147,6 +147,7 @@ tr.taken td{background:var(--soft)}
 <div id="home" class="wrap" style="gap:18px">
 <section class="panel"><div class="mhead"><div class="nav"><button class="btn" id="prev" aria-label="Previous month">&lsaquo;</button><span class="t" id="mname"></span><button class="btn" id="next" aria-label="Next month">&rsaquo;</button></div><div id="msum" class="num"></div></div><div class="cal" id="cal"></div><div class="legend"><span>Each box is one trading day: result in rupees and number of trades. Click a day for its details.</span></div></section>
 <section><h2>Overall</h2><div class="band small" id="stats"></div></section>
+<section class="panel"><h2>Rules scoreboard <span class="sub" style="font-weight:400">testing: what each rule kept out, and how the taken trades did by grade</span></h2><div class="tablewrap" id="score"></div></section>
 <section class="panel"><h2>Result after each trade</h2><div class="chartbox" id="curve"></div></section>
 <section class="panel"><h2>All days</h2><div class="tablewrap"><table id="all"></table></div></section>
 </div>
@@ -205,6 +206,31 @@ function card(t){
   return `<div class="card"><div class="top"><span class="name">Trade ${t.n} &middot; <span class="chip ${t.side==='CALL'?'call':'put'}">${t.side}</span> ${t.strike} ${t.side==='CALL'?'CE':'PE'}</span><span class="chip ${win?'tgt':t.result==='STOP'?'stp':'open'}">${t.result==='TARGET'?'Target':t.result==='TRAIL'?'Trailing stop':t.result==='STOP'?'Stop':esc(t.result||'Open')} ${rs(tradeRs(t))} (${pct(t.pnl_pct)})</span></div>
   <div class="sub" style="margin:0">${esc(t.setup)}</div>${spark(t)}
   <div class="kv num"><span>In</span><span>${t.entry_time} at ${t.entry}</span><span>Out</span><span>${t.exit_time||'&ndash;'}${t.exit!=null?' at '+t.exit:''}${dur!=null?' ('+dur+' min)':''}</span><span>Cost of one lot</span><span>₹${Math.round(t.entry*LOT).toLocaleString('en-IN')}${t.entry*LOT>CAP?' (more than the capital)':''}</span><span>Expiry</span><span>${t.expiry||''}</span><span>Setups skipped meanwhile</span><span>${t.ignored}</span></div>${(t.shifts&&t.shifts.length)?`<div class="sub" style="margin:6px 0 0">${t.shifts.map(esc).join('<br>')}</div>`:''}</div>`;
+}
+// Rules scoreboard: every setup a rule kept out is run through the same stop / target / trailing rules (would_pct), so each rule can be judged in numbers
+function scoreHtml(days){
+  const st=(a)=>{const v=a.filter(x=>x!=null&&isFinite(x));if(!v.length)return null;const w=v.filter(x=>x>0).length,sum=v.reduce((p,c)=>p+c,0);return {n:v.length,w,avg:sum/v.length,sum}};
+  const cell=(x)=>x?`<td class="num">${x.n}</td><td class="num">${Math.round(x.w/x.n*100)}%</td><td class="num ${x.avg>=0?'up':'dn'}">${x.avg>=0?'+':''}${x.avg.toFixed(1)}%</td><td class="num ${x.sum>=0?'up':'dn'}">${x.sum>=0?'+':''}${x.sum.toFixed(1)}%</td>`:'<td class="num" colspan="4" style="color:var(--mut)">no results yet</td>';
+  const taken=[],byGrade={A:[],B:[],C:[]},kept={'Before 09:25 (first 10 minutes)':[],'Against the move in negative gamma':[],'Node rules (min grade, blocked, midpoint)':[]};
+  days.forEach(d=>{
+    d.trades.forEach(t=>taken.push(t.pnl_pct));
+    (d.setups||[]).forEach(q=>{
+      const s=q.status||'';
+      if(s.startsWith('TRADE')){const t=d.trades.find(x=>x.n===+s.slice(6));if(t&&q.grade&&byGrade[q.grade])byGrade[q.grade].push(t.pnl_pct)}
+      else if(q.would_pct!=null){
+        if(s.startsWith('no trade before'))kept['Before 09:25 (first 10 minutes)'].push(q.would_pct);
+        else if(s.includes('against the move'))kept['Against the move in negative gamma'].push(q.would_pct);
+        else if(s.startsWith('not taken'))kept['Node rules (min grade, blocked, midpoint)'].push(q.would_pct);
+      }
+    });
+  });
+  const row=(l,arr,cls)=>`<tr class="${cls||''}"><td>${l}</td>${cell(st(arr))}</tr>`;
+  return `<table><thead><tr><th>Group</th><th>Setups</th><th>Win</th><th>Average</th><th>Total</th></tr></thead><tbody>
+   <tr><td colspan="5" style="color:var(--mut);padding-top:8px">Taken trades (actual paper trades)</td></tr>
+   ${row('All taken trades',taken)}${['A','B','C'].map(g=>row('&nbsp;&nbsp;Grade '+g,byGrade[g])).join('')}
+   <tr><td colspan="5" style="color:var(--mut);padding-top:10px">Kept out by a rule: result if they had been taken (testing)</td></tr>
+   ${Object.entries(kept).map(([l,a])=>row(l,a)).join('')}</tbody></table>
+   <div class="foot" style="margin-top:6px">A rule is helping when the setups it keeps out do worse than the trades taken. Win = result above zero; each setup is tested alone with the same stop, target and trailing rules, so the totals are not a day's profit. Small samples move a lot; give it weeks.</div>`;
 }
 function setups(d){
   if(!d.setups.length) return '<div class="empty">No setups recorded.</div>';
@@ -291,6 +317,7 @@ function dayview(){
   <div class="two" style="margin-top:18px"><div><h2>Setups, in time order</h2><div class="tablewrap">${setups(d)}</div></div><div><h2>Levels the page used</h2>${levels(d)}</div></div>`;
 }
 function alltable(){
+  $('score').innerHTML = scoreHtml(days);
   $('all').innerHTML = `<thead><tr><th>Date</th><th>Trades</th><th>Target</th><th>Trail</th><th>Stop</th><th>Result</th><th>% of capital</th><th>Opening candles</th></tr></thead><tbody>${days.map(d=>`<tr class="row" tabindex="0" data-d="${d.date}"><td>${wk(d.date)} ${d.date.slice(0,4)}</td><td class="num">${d.trades.length}</td><td class="num">${d.trades.filter(t=>t.result==='TARGET').length}</td><td class="num">${d.trades.filter(t=>t.result==='TRAIL').length}</td><td class="num">${d.trades.filter(t=>t.result==='STOP').length}</td><td class="num ${cls(dayRs(d))}">${rs(dayRs(d))}</td><td class="num ${cls(dayRs(d))}">${pct(dayRs(d)/CAP*100)}</td><td>${esc(d.opening||'n/a')}</td></tr>`).join('')}</tbody>`;
   $('all').querySelectorAll('tr.row').forEach(r=>{const f=()=>go(r.dataset.d);r.onclick=f;r.onkeydown=e=>{if(e.key==='Enter')f();};});
 }

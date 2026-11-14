@@ -110,6 +110,9 @@ footer th{background:none;position:static}
 #infoBox .ih{display:flex;align-items:center;gap:10px;margin-bottom:6px}#infoBox h3{margin:0;font-size:17px;flex:1}
 #infoBody p{margin:8px 0}#infoBody ul{margin:6px 0 6px 18px;padding:0}#infoBody li{margin:5px 0}
 .livebn{border:1px solid #1f6b52;background:#0f2a22;color:#c9f2e0;border-radius:10px;padding:7px 12px;margin:8px 0;font-size:13px}.livebn b{color:#2ecc9a}
+.ngrid{border-collapse:collapse;font-size:12.5px}.ngrid th{color:var(--mut);font-weight:600;padding:3px 9px;text-align:center}.ngrid th small{display:block;font-weight:400}
+.ngrid td{padding:3px 9px;text-align:center;min-width:66px}.ngrid td.k{text-align:right;color:var(--mut);font-weight:600}.ngrid tr.sp td{outline:1px solid #ffffffb0;outline-offset:-1px}
+.kchip{display:inline-block;border-radius:6px;padding:1px 9px;margin:0 6px 4px 0;font-weight:800;color:#0b0f16;font-size:12.5px;white-space:nowrap}
 .regime{border-radius:10px;padding:10px 14px;margin:8px 0 10px;border:1px solid;line-height:1.55}
 .regime .rt{font-weight:800;letter-spacing:.4px;margin-bottom:2px}
 .regime.pos{background:#0f2a22;border-color:#1f6b52}.regime.pos .rt{color:var(--pos)}
@@ -242,6 +245,10 @@ footer th{background:none;position:static}
         <div class="hint" id="op-oi-note" style="margin-bottom:6px"></div>
         <div style="overflow-x:auto"><div id="op-ladder" class="chart" style="height:740px;min-width:860px"></div></div>
         <div class="hint" id="op-gex-note" style="line-height:1.6"></div></div>
+      <div class="card c12" id="op-nodes-card"><div class="hd"><div><h2>Tomorrow's nodes <span class="badge b-n">model estimate</span> <button class="info" data-info="nodes" title="How to read the nodes">ⓘ</button></h2><div class="sub" id="op-nodes-sub"></div></div></div>
+        <div id="op-nodes-keys" style="margin:6px 0"></div><div id="op-nodes-move" style="margin:4px 0 10px;line-height:1.55"></div>
+        <div class="scroll" style="max-height:none"><table id="op-nodes-grid" class="ngrid"></table></div>
+        <div class="hint" id="op-nodes-note" style="line-height:1.6;margin-top:8px"></div></div>
       <div class="card c12"><div class="hd"><div><h2>Levels for TradingView</h2><div class="sub" id="op-tv-sub"></div></div>
         <div style="display:flex;gap:8px;align-items:center"><span class="hint" id="op-tv-ok"></span><button class="btn" id="op-tv-copy">Copy levels</button></div></div>
         <textarea id="op-tv-text" readonly rows="12" spellcheck="false" style="width:100%;box-sizing:border-box;background:#0b0f16;color:#e6edf3;border:1px solid #263040;border-radius:8px;padding:10px;font:12.5px/1.5 ui-monospace,Consolas,monospace;resize:vertical"></textarea>
@@ -660,6 +667,7 @@ const INFO={
   <ul><li><b>Put wall</b> – the strike with the most put open interest at or below the index. Often watched as possible support.</li><li><b>Call wall</b> – the strike with the most call open interest at or above the index. Often watched as possible resistance.</li><li><b>Max pain</b> – the expiry level at which option writers pay out the least.</li></ul>
   <p><b>What you can get from it.</b> Where the market's positions are stacked, which strikes may attract price near expiry, and whether new positions are being built today (rising OI) or closed (falling OI).</p>
   <p class="hint">Walls are positioning, not guarantees – price can and does break through them. All levels are index levels (add the futures basis if you chart futures). Use "Strike range" to zoom in on strikes near the index.</p>`},
+ nodes:{t:'Tomorrow\'s nodes',h:`<p><b>What it is.</b> The strikes where option dealers carry the most gamma exposure, laid out by strike and expiry. The biggest is the <b>King</b>. A big node between price and the King is a <b>gatekeeper</b>; the nearest significant nodes below and above price are the <b>floor</b> and <b>ceiling</b>.</p><p><b>How to read it.</b> Price often stalls, reacts or pins near large nodes, and moves faster through empty strikes. Size matters more than colour. Treat it as context for how price reacts at a level, not a signal on its own.</p><p><b>Priced move.</b> The range the front expiry\'s options imply for one day (1σ and 2σ around the close).</p><p class="hint">Model estimate from end-of-day data; not investment advice.</p>`},
  gex:{t:'Gamma exposure (GEX) and gamma flip',h:`<p><b>What it is.</b> A model of how much index exposure option dealers must buy or sell to stay hedged when the index moves 1%. It is estimated from end-of-day option prices and open interest, assuming dealers are long calls and short puts (the standard convention).</p>
   <ul><li><b>Positive-gamma regime</b> (spot above the flip) – dealers sell rallies and buy dips. That tends to <b>dampen moves</b> and keep ranges tighter.</li><li><b>Negative-gamma regime</b> (spot below the flip) – dealers buy rallies and sell falls. That tends to <b>amplify moves</b> and raise volatility.</li><li><b>Gamma flip</b> – the index level where total GEX crosses zero, the line between the two regimes. Positive gamma is on the side of the flip where the index closed.</li><li><b>Call wall / put wall (GEX)</b> – the strikes with the largest positive / negative gamma above / below the index.</li></ul>
   <p><b>What you can get from it.</b> A view on whether hedging flows are likely to calm or accelerate moves, and which levels matter most for those flows.</p>
@@ -765,6 +773,33 @@ async function pollLive(){
 const SYMNAME={NIFTY:'Nifty 50',BANKNIFTY:'Bank Nifty'};
 const ord=n=>{n=Math.round(n);const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])};
 const emaArr=(a,span=10)=>{const k=2/(span+1);const o=[a[0]];for(let i=1;i<a.length;i++)o.push(a[i]*k+o[i-1]*(1-k));return o};
+// Tomorrow's nodes: the same reading as the live page. Cells are faint when minor, bright when main, solid with a ring for the King of each expiry.
+function renderNodesCard(){
+  const card=$('#op-nodes-card'),blk=D.options&&D.options.symbols[OS.sym],nd=blk&&blk.gex&&blk.gex.nodes;
+  if(!nd||!nd.grid||!nd.grid.k.length){card.style.display='none';return}
+  card.style.display='';
+  const MONS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],fr=nd.front,st=fr.structure,gr=nd.grid,spot=blk.chain.spot;
+  $('#op-nodes-sub').innerHTML=`${SYMNAME[OS.sym]} · built from the ${blk.chain.asof} close · ranked on the ${fr.expiry} expiry (${fr.dte} day${fr.dte===1?'':'s'} away, the column the next session trades) · gamma exposure in ₹ crore per 1% move`;
+  const nodeBy=r=>fr.nodes.find(n=>n.roles.includes(r)),chip=(t,n)=>`<span class="kchip" style="background:${n.sign==='+'?'#ffd54f':'#e1a8ff'}">${t}</span>`,fmt=n=>Math.round(Math.abs(n)).toLocaleString('en-IN');
+  const kg=nodeBy('king');let keys='';
+  if(kg)keys+=chip(`★ King ${kg.k} · ₹${fmt(kg.net)} cr${(kg.flags||[]).includes('decoy')?' (far)':''}`,kg);
+  [['gatekeeper','Gatekeeper'],['ceiling','Ceiling'],['floor','Floor']].forEach(([r,l])=>{const n=nodeBy(r);if(n&&n!==kg)keys+=chip(`${l} ${n.k} · ${Math.round(n.pct)}%`,n)});
+  if(st.midpoint)keys+='<span class="hint">Spot sits mid-range between floor and ceiling.</span>';
+  $('#op-nodes-keys').innerHTML=keys||'<span class="hint">No node stands out for this expiry.</span>';
+  const ex=nd.expected;
+  $('#op-nodes-move').innerHTML=ex?`<b>Priced move for the next day:</b> ±${num(ex.sigma,0)} points (1σ) → <b>${num(ex.dn1,0)}</b> to <b>${num(ex.up1,0)}</b>; 2σ → ${num(ex.dn2,0)} to ${num(ex.up2,0)}. <span class="hint">From the front expiry's at-the-money volatility (${ex.iv}%) and the close ${num(ex.ref,0)}; options price roughly two-thirds of days inside 1σ.</span>`:'';
+  const near=gr.k.reduce((b,k)=>Math.abs(k-spot)<Math.abs(b-spot)?k:b,gr.k[0]);
+  let h='<tr><th></th>'+gr.cols.map(c=>{const d=c.e.split('-');return `<th>${+d[2]} ${MONS[+d[1]-1]}<small>${c.dte}d</small></th>`}).join('')+'</tr>';
+  gr.k.slice().reverse().forEach(k=>{const i=gr.k.indexOf(k);
+    h+=`<tr${k===near?' class="sp"':''}><td class="k">${k}</td>`+gr.cols.map(c=>{const pct=c.pct[i],net=c.net[i],pos=net>=0,king=c.king===k;let bg,fg='var(--txt)',ex2='';
+      if(king){bg=pos?'#fff176':'#f48fff';fg='#0b0f16';ex2=';outline:2px solid #fff;outline-offset:-2px;font-weight:900'}
+      else if(pct>=60){bg=pos?'rgba(255,193,7,.92)':'rgba(190,120,255,.92)';fg='#0b0f16';ex2=';font-weight:800'}
+      else if(pct>=25){bg=(pos?'rgba(255,213,79,':'rgba(179,136,255,')+(.28+.3*(pct-25)/35).toFixed(2)+')';ex2=';font-weight:600'}
+      else bg=(pos?'rgba(255,213,79,':'rgba(179,136,255,')+'.07)';
+      return `<td style="background:${bg};color:${fg}${ex2}" title="${k} · ${c.e}: ₹${net.toLocaleString('en-IN')} cr (${Math.round(pct)}% of this expiry's biggest)">${pct>=25?(king?'★ ':'')+Math.round(pct):''}</td>`}).join('')+'</tr>'});
+  $('#op-nodes-grid').innerHTML=h;
+  $('#op-nodes-note').innerHTML='Each cell is the net gamma exposure of one strike in one expiry (calls positive, puts negative, the same model as the panels above), shown as a share of that expiry\'s biggest strike. <b>Yellow</b> = positive, <b>purple</b> = negative; <b>★ solid ring</b> = the King (biggest node); bright = 60% or more; faint = under 25%. Gatekeeper = the biggest node between price and the King; floor / ceiling = the nearest significant nodes below / above. These are end-of-day estimates: open interest and prices move during the session, so the live stream page recomputes them every minute. Not investment advice.';
+}
 const OS={sym:'NIFTY',exp:0,metric:'oi',who:'FII',gex:'nearest',range:5,pcrR:'All',vixR:'1Y',vpw:1,ses:-1,s3:{sym:'NIFTY',metric:'net',range:10,lv:1}};
 const sma5=a=>a.map((_,i)=>{if(i<4)return null;const w=a.slice(i-4,i+1);return w.some(x=>x==null)?null:w.reduce((x,y)=>x+y,0)/5});
 const RNG={'1W':5,'1M':21,'3M':63,'6M':126,'1Y':252,'3Y':756,'All':1e9};
@@ -957,6 +992,7 @@ function renderOptions(){
     $('#op-gex-sub').innerHTML+=` · <b>volume profile</b> (${vpw.days} ${vpw.days===1?'session':'sessions'}: ${vpw.from===vpw.to?vpw.to:vpw.from+' → '+vpw.to}) · POC ${num(vpw.poc,0)} · VAH ${num(vpw.vah,0)} · VAL ${num(vpw.val,0)} (${vpw.share}% of volume in the value area) <span class="hint">${vpw.src==='volume'?'index volume from 5-minute candles':'NSE index volume spread over each day\'s range; approximate'}</span>${!vpAsked?' <b class="warn">(the '+OS.vpw+'-session profile is unavailable, showing '+vpw.days+')</b>':''}${vpw.to<ch.asof?' <b class="warn">(⚠ latest session available: '+vpw.to+')</b>':''}`;
   }
   addLine(ch.spot,'Spot','#e6edf3','dash','all');
+  renderNodesCard();
   // ---- plain-text levels for the TradingView indicator (every level, even those outside the chart range) ----
   {
     const spP=lv?lv.spot:ch.spot;                                          // live: today's last price; otherwise the close

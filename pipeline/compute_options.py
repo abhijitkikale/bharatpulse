@@ -187,6 +187,12 @@ def symbol_block(fo: pd.DataFrame, sym: str, max_expiries=4, band=0.10, ohlcv=No
         gex = compute_gex(cur, last, s0)
     except Exception:
         gex = None
+    if gex:
+        try:                  # tomorrow's nodes and the priced move (published as part of the GEX block)
+            import eod_nodes
+            gex["nodes"] = eod_nodes.block(gex, s0)
+        except Exception:
+            gex["nodes"] = None
     vp_ses = _vp(sym, ohlcv, intraday)
     return {"hist": {"d": hist_d, "pcr_oi": pcr_oi, "pcr_vol": pcr_vol, "und": und},
             "chain": {"asof": last.strftime("%Y-%m-%d"), "spot": _num(s0), "expiries": out_exp}, "gex": gex,
