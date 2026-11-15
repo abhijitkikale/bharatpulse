@@ -1,6 +1,7 @@
 """Control BharatPulse from your phone: commands to the Telegram bot (GEXINDICATORBOT), answered only for YOU.
 
   /status       what is running: Fyers sign-in, live updates, stream page, YouTube broadcast, today's trades
+  /orders_off   switch the order router OFF (an open broker stop-loss order stays)     /orders_dry   dry run only: nothing is sent. There is no command for "live".
   /pause        stop NEW entry signals (an open trade carries on)       /resume   allow them again
   /stream_on    start the YouTube broadcast now          /stream_off   stop it (it stays off for the rest of the day)
   /sleep        put this PC to sleep                     /shutdown     shut this PC down (after 30 seconds)
@@ -24,9 +25,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "pipeline"))
 import telegram_notify  # noqa: E402
+import order_manager  # noqa: E402
 import trading_pause  # noqa: E402
 
-COMMANDS = [("status", "What is running"), ("pause", "Pause new entry signals"), ("resume", "Allow new entry signals again"), ("stream_on", "Start the YouTube broadcast"), ("stream_off", "Stop the YouTube broadcast"),
+COMMANDS = [("status", "What is running"), ("orders_off", "Switch the order router OFF"), ("orders_dry", "Order router: dry run only"), ("pause", "Pause new entry signals"), ("resume", "Allow new entry signals again"), ("stream_on", "Start the YouTube broadcast"), ("stream_off", "Stop the YouTube broadcast"),
             ("sleep", "Put the PC to sleep"), ("shutdown", "Shut the PC down"), ("confirm", "Confirm sleep or shutdown"), ("cancel", "Cancel"), ("help", "List the commands")]
 CONFIRM_SECONDS = 60
 MAX_AGE = 120
@@ -62,6 +64,12 @@ class Control:
             return self.say("Commands: " + ", ".join("/" + c for c, _ in COMMANDS) + ".\n" + "\n".join(f"/{c}: {d}" for c, d in COMMANDS))
         if cmd == "status":
             return self.say(self.status_fn())
+        if cmd == "orders_off":
+            order_manager.save_mode("off")
+            return self.say("Order router is OFF. No new order will be sent. A stop-loss order already at the broker stays there; check the Fyers app.")
+        if cmd == "orders_dry":
+            order_manager.save_mode("dry_run")
+            return self.say("Order router is in DRY RUN: it tells you what it would do and sends nothing.")
         if cmd == "pause":
             new = trading_pause.pause(pd.Timestamp.now(tz="Asia/Kolkata"))
             return self.say("New entry signals are PAUSED until you send /resume (today only). An open trade keeps its stop, target and trailing moves." if new else "Already paused. /resume allows new signals again.")

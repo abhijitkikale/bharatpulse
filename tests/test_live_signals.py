@@ -83,3 +83,20 @@ def test_pause_resume_commands_from_telegram(tmp_path, monkeypatch):
     c.handle("resume")
     assert "PAUSED" in said[0] and "Already paused" in said[1] and "ON again" in said[2] and "Nothing was paused" in said[3]
     assert "pause" in [x for x, _ in tg_control.COMMANDS] and "resume" in [x for x, _ in tg_control.COMMANDS]
+
+
+def test_orders_off_and_dry_commands_only_change_the_mode_and_there_is_no_live_command(tmp_path, monkeypatch):
+    import json
+    import order_manager
+    cfg = tmp_path / "orders_config.json"
+    cfg.write_text(json.dumps({"mode": "live", "lots": 1}), encoding="utf-8")
+    monkeypatch.setattr(order_manager, "CONFIG", cfg)
+    said = []
+    c = tg_control.Control(lambda: "ok", 111, said.append)
+    c.handle("orders_off")
+    assert json.loads(cfg.read_text(encoding="utf-8")) == {"mode": "off", "lots": 1} and "OFF" in said[0]
+    c.handle("orders_dry")
+    assert json.loads(cfg.read_text(encoding="utf-8"))["mode"] == "dry_run" and "DRY RUN" in said[1]
+    c.handle("orders_live")
+    assert "Unknown command" in said[2] and json.loads(cfg.read_text(encoding="utf-8"))["mode"] == "dry_run"
+    assert "orders_live" not in [x for x, _ in tg_control.COMMANDS]

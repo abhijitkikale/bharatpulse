@@ -185,6 +185,19 @@ def start_tv_paste():
 
 
 NODES = {"proc": None}
+ROUTER = {"proc": None}
+
+
+def start_order_router():
+    """Starts tools/order_router.py with the live updates. It does nothing while data/orders_config.json says "off" (the default); a second copy exits at once."""
+    try:
+        if ROUTER["proc"] and ROUTER["proc"].poll() is None:
+            return
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        ROUTER["proc"] = subprocess.Popen([sys.executable, str(ROOT / "tools" / "order_router.py")], cwd=str(ROOT), creationflags=flags,
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
 
 
 def start_nodes_agent():
@@ -209,6 +222,7 @@ def start_live():
         threading.Thread(target=live_loop.run_loop, kwargs={"push": True, "stop": S["stop"], "log": lambda *a: None}, daemon=True).start()
         start_tv_paste()
         start_nodes_agent()
+        start_order_router()
         try:                                     # the live stream page (http://127.0.0.1:8766/) runs alongside the live updates
             stream_server.start_in_thread()
             open_stream_page()
@@ -481,6 +495,11 @@ def status_text():
         pass
     try:
         lines.append("Nodes agent: " + stream_server.nodes_status(t))
+    except Exception:
+        pass
+    try:
+        import order_manager
+        lines.append("Order router mode: " + order_manager.load_config()["mode"].upper() + " (off = nothing is sent)")
     except Exception:
         pass
     try:

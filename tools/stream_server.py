@@ -212,6 +212,9 @@ class Feed:
         if setups:
             try:
                 res = stream_trades.run_trades(setups, self.option_frame, regime_at=self.regime_fn(df, sday), grade_of=self.grade_fn(sday), rules=node_rules(), paused_at=trading_pause.paused_fn())
+                for _tr in res["trades"]:                   # the Fyers contract each trade was priced on (the order router sends orders for it)
+                    _m = self.meta.get((float(_tr["strike"]), "CE" if _tr["side"] == "CALL" else "PE")) or {}
+                    _tr["symbol"] = _m.get("symbol")
                 trades = stream_trades.to_json(res, stream_levels.SHIFT)
             except Exception:
                 trades = None
