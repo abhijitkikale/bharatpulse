@@ -68,7 +68,7 @@ def test_default_config_is_off_and_lots_are_capped(tmp_path):
     assert om.load_config(tmp_path / "none.json")["mode"] == "off"
     p = tmp_path / "c.json"
     p.write_text(json.dumps({"mode": "live", "lots": 9, "max_lots": 50}), encoding="utf-8")
-    assert om.load_config(p)["lots"] == 2                                                      # a hard ceiling of 2 lots
+    assert om.load_config(p)["lots"] == 1                                                      # one lot, whatever the file says
     om.save_mode("off", p)
     d = json.loads(p.read_text(encoding="utf-8"))
     assert d["mode"] == "off" and d["lots"] == 9                                                # the kill switch changes only the mode
@@ -208,3 +208,21 @@ def test_partial_fill_and_an_unreadable_status_never_leave_a_position_without_a_
     mb.step([trade()], ts("11:41", 5))
     out = mb.step([trade()], ts("11:42", 10))
     assert "CHECK YOUR BROKER NOW" in out[0] and mb.state["trades"]["1"]["phase"] == "check_manually"
+
+
+def test_the_daily_limit_counts_executed_entries_not_requests():
+    b = FakeBroker()
+    m = om.OrderManager(b, cfg(max_entries_per_day=2), label="LIVE")
+    for n, (hm_entry, sec) in enumerate([("11:41", 5), ("12:41", 5)], start=1):
+        m.step([trade(n, entry_time=hm_entry)], ts(hm_entry, sec))
+        b.fill(f"F{b.n}", avg=140.0)                                                            # the BUY fills
+        m.step([trade(n, entry_time=hm_entry)], ts(hm_entry, 30))
+        b.fill(f"F{b.n}", avg=127.0)                                                            # the stop fills
+        m.step([trade(n, status="STOP", entry_time=hm_entry, exit=126.0)], ts(hm_entry, 50))
+    assert m.state["entries"] == 2
+    out = m.step([trade(3, entry_time="13:41")], ts("13:41", 5))
+    assert "2 orders were already executed today" in out[0] and not [c for c in b.calls if c[0] == "place" and c[3] == 1 and c[1] and len(b.calls) > 8]
+    m2 = om.OrderManager(FakeBroker(), cfg(max_api_orders=3), label="LIVE")
+    m2.state["orders"] = 3
+    assert "runaway guard" in m2.step([trade(1)], ts("11:41", 5))[0]
+    assert om.DEFAULTS["max_entries_per_day"] == 5 and om.DEFAULTS["max_lots"] == 1

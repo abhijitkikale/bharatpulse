@@ -8,7 +8,7 @@ Modes (data/orders_config.json, key "mode"):
 One position at a time, as the page's engine works: BUY limit just above the reference price -> when filled, a stop-loss limit order at the broker at the
 engine's stop -> every trailing / regime stop move changes that order -> when the engine says the trade is over, the broker stop is checked, else it is
 cancelled and a marketable sell goes out; a failed entry is cancelled (never chased); a failed stop order exits at once; nothing new after the daily loss
-limit or the order cap; quantity = lots x lot size, never more than max_lots. All steps are idempotent (state in data/orders/<day>.json), so a restart
+limit or after max_entries_per_day EXECUTED entries (filled BUY orders); quantity = exactly one lot. All steps are idempotent (state in data/orders/<day>.json), so a restart
 repeats nothing. Pure logic: the broker is passed in, so the tests use a fake one. FyersBroker is written from Fyers' API v3 documentation and has NOT been
 exercised against the real service: check the first order by hand (small, with the Fyers app open) before trusting it."""
 import json
@@ -21,8 +21,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "data" / "orders_config.json"
 STATE_DIR = ROOT / "data" / "orders"
 TICK = 0.05
-DEFAULTS = {"mode": "off", "lots": 1, "lot_size": 65, "max_lots": 2, "entry_slip_pct": 2.0, "exit_slip_pct": 2.0, "sl_gap_pct": 1.5, "entry_wait_s": 45,
-            "max_daily_loss_inr": 5000, "max_orders_per_day": 40, "square_off": "15:15", "max_signal_age_min": 3}
+DEFAULTS = {"mode": "off", "lots": 1, "lot_size": 65, "max_lots": 1, "entry_slip_pct": 2.0, "exit_slip_pct": 2.0, "sl_gap_pct": 1.5, "entry_wait_s": 45,
+            "max_daily_loss_inr": 5000, "max_entries_per_day": 5, "max_api_orders": 60, "square_off": "15:15", "max_signal_age_min": 3}
 ACTIVE = ("entry_sent", "protected", "exit_sent")
 
 
@@ -32,7 +32,7 @@ def load_config(path=None):
         cfg.update({k: v for k, v in json.loads(pathlib.Path(path or CONFIG).read_text(encoding="utf-8")).items() if k in DEFAULTS})
     except (OSError, ValueError):
         pass
-    cfg["lots"] = max(1, min(int(cfg["lots"]), int(cfg["max_lots"]), 2))          # hard ceiling of 2 lots whatever the file says
+    cfg["lots"] = 1                                                                # one lot, always: the quantity is never more than one lot whatever the file says
     return cfg
 
 
@@ -162,7 +162,8 @@ class OrderManager:
                 age = (now - pd.Timestamp(f"{now.date()} {t['entry_time']}", tz=now.tz)).total_seconds() / 60
                 why = (st.get("halted") and f"orders halted ({st['halted']})") or (paused and "new entries are paused (/pause)") or (self._active() and "another position is still open") or \
                       (not t.get("symbol") and "the contract symbol is unknown") or (age > cfg["max_signal_age_min"] and f"the signal is {age:.0f} minutes old") or \
-                      (st.get("orders", 0) >= cfg["max_orders_per_day"] and "the daily order cap is used up")
+                      (st.get("entries", 0) >= cfg["max_entries_per_day"] and f"{st.get('entries', 0)} orders were already executed today (the daily limit)") or \
+                      (st.get("orders", 0) >= cfg["max_api_orders"] and "the runaway guard on order requests was reached")
                 if why:
                     st["trades"][n] = {"phase": "skipped", "why": why}
                     msgs.append(f"[{tag}] trade {n} ({t['side']} {t['strike']}) NOT ordered: {why}.")
@@ -236,6 +237,7 @@ class OrderManager:
         """The entry is filled (fully or in part): record it and place the broker stop-loss order for exactly what is held."""
         rec["qty"] = int(qty)
         rec["fill"] = float(avg or t["entry"])
+        self.state["entries"] = self.state.get("entries", 0) + 1                      # an EXECUTED entry: this is what the daily limit counts
         stop = tick_down(t["stop_now"])
         lim = tick_down(stop * (1 - self.cfg["sl_gap_pct"] / 100))
         r = self._place(rec["symbol"], rec["qty"], -1, 4, limit=lim, stop=stop, tag=f"bp{n}sl")
