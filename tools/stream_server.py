@@ -22,6 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "pipeline"))
 import fetch_fyers  # noqa: E402
 import live_gex  # noqa: E402
+import trading_pause  # noqa: E402
 import nodes  # noqa: E402
 import nse_calendar  # noqa: E402
 import stream_journal  # noqa: E402
@@ -77,6 +78,16 @@ def node_rules():
         return json.loads(NODE_RULES.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+
+def nodes_status(t):
+    """One line for the 09:31 check: is the nodes agent writing fresh readings?"""
+    try:
+        j = json.loads((ROOT / "data" / "nodes" / "latest.json").read_text(encoding="utf-8"))
+        age = (t - pd.Timestamp(j["asof"])).total_seconds() / 60
+        return f"running (last reading {pd.Timestamp(j['asof']):%H:%M})" if age <= 6 else f"STALE (last reading {pd.Timestamp(j['asof']):%H:%M}): node pop-ups and grades may be off"
+    except Exception:
+        return "NOT running: node pop-ups and grades are off"
 
 
 def market_hours(t=None):
@@ -200,7 +211,7 @@ class Feed:
         trades, res = None, None
         if setups:
             try:
-                res = stream_trades.run_trades(setups, self.option_frame, regime_at=self.regime_fn(df, sday), grade_of=self.grade_fn(sday), rules=node_rules())
+                res = stream_trades.run_trades(setups, self.option_frame, regime_at=self.regime_fn(df, sday), grade_of=self.grade_fn(sday), rules=node_rules(), paused_at=trading_pause.paused_fn())
                 trades = stream_trades.to_json(res, stream_levels.SHIFT)
             except Exception:
                 trades = None
@@ -350,6 +361,7 @@ class Feed:
                      "Live GEX: " + (f"ok ({self.live['time']})" if self.live else "not yet"),
                      "Opening candles: " + tv,
                      "End-of-day levels: " + (f"from the {self.eod['close']} close" if self.eod else "not loaded"),
+                     "Nodes agent: " + nodes_status(t),
                      f"Page: http://127.0.0.1:{PORT}/"]
             telegram_notify.send("\n".join(lines))
         except Exception:
@@ -371,7 +383,7 @@ class Feed:
                 except Exception:
                     pass
             before = len(self.sent)
-            for text in stream_alerts.new_messages(res, self.sent, t):
+            for text in stream_alerts.new_messages(res, self.sent, t, contracts=dict(self.meta)):
                 telegram_notify.send_alert(text)
             if len(self.sent) != before:
                 f.write_text(json.dumps({"day": str(sday), "keys": sorted(self.sent)}), encoding="utf-8")

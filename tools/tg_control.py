@@ -1,6 +1,7 @@
 """Control BharatPulse from your phone: commands to the Telegram bot (GEXINDICATORBOT), answered only for YOU.
 
   /status       what is running: Fyers sign-in, live updates, stream page, YouTube broadcast, today's trades
+  /pause        stop NEW entry signals (an open trade carries on)       /resume   allow them again
   /stream_on    start the YouTube broadcast now          /stream_off   stop it (it stays off for the rest of the day)
   /sleep        put this PC to sleep                     /shutdown     shut this PC down (after 30 seconds)
   /confirm      needed once after /sleep or /shutdown (within 60 seconds)     /cancel   cancel it, also an announced shutdown
@@ -16,14 +17,16 @@ import sys
 import threading
 import time
 
+import pandas as pd
 import requests
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "pipeline"))
 import telegram_notify  # noqa: E402
+import trading_pause  # noqa: E402
 
-COMMANDS = [("status", "What is running"), ("stream_on", "Start the YouTube broadcast"), ("stream_off", "Stop the YouTube broadcast"),
+COMMANDS = [("status", "What is running"), ("pause", "Pause new entry signals"), ("resume", "Allow new entry signals again"), ("stream_on", "Start the YouTube broadcast"), ("stream_off", "Stop the YouTube broadcast"),
             ("sleep", "Put the PC to sleep"), ("shutdown", "Shut the PC down"), ("confirm", "Confirm sleep or shutdown"), ("cancel", "Cancel"), ("help", "List the commands")]
 CONFIRM_SECONDS = 60
 MAX_AGE = 120
@@ -59,6 +62,12 @@ class Control:
             return self.say("Commands: " + ", ".join("/" + c for c, _ in COMMANDS) + ".\n" + "\n".join(f"/{c}: {d}" for c, d in COMMANDS))
         if cmd == "status":
             return self.say(self.status_fn())
+        if cmd == "pause":
+            new = trading_pause.pause(pd.Timestamp.now(tz="Asia/Kolkata"))
+            return self.say("New entry signals are PAUSED until you send /resume (today only). An open trade keeps its stop, target and trailing moves." if new else "Already paused. /resume allows new signals again.")
+        if cmd == "resume":
+            ok = trading_pause.resume(pd.Timestamp.now(tz="Asia/Kolkata"))
+            return self.say("New entry signals are ON again." if ok else "Nothing was paused.")
         if cmd == "stream_on":
             return self._bg(self._stream_on)
         if cmd == "stream_off":

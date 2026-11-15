@@ -154,11 +154,11 @@ def _grade_rule(g, rules):
     return None
 
 
-def run_trades(setups, option_frame, cutoff=None, regime_at=None, grade_of=None, rules=None):
+def run_trades(setups, option_frame, cutoff=None, regime_at=None, grade_of=None, rules=None, paused_at=None):
     """setups: chronological list from stream_setups.find_setups. option_frame(setup) -> DataFrame of that contract's 1-minute candles or None.
     regime_at(time) -> {"regime", "side"} or None (the live gamma regime at that time; None = unknown, then no regime rule applies).
     grade_of(setup) -> {"grade", "flags"} or None: the nodes agent's grade of that setup; recorded on every signal, and with `rules` (min_grade, skip_blocked,
-    skip_midpoint) it can keep a setup from being traded.
+    skip_midpoint) it can keep a setup from being traded. paused_at(time) -> True while you have paused new entries (Telegram /pause): the setup is listed, not traded.
     Returns {"trades": [...], "signals": [...], "total_pct": float}; signals lists every setup with what happened to it."""
     trades, signals, cur = [], [], None
     last_minute = LAST_MINUTE
@@ -187,6 +187,8 @@ def run_trades(setups, option_frame, cutoff=None, regime_at=None, grade_of=None,
             status = f"daily loss limit reached (-{MAX_LOSS_PCT:.0f}%)"
         elif _hm(t) > cutoff:
             status = f"no new trade after {cutoff[0]}:{cutoff[1]:02d}"
+        elif paused_at and paused_at(t):
+            status = "not taken: paused (you sent /pause)"
         elif _contra(s, rg):
             status = "not taken: against the move in negative gamma"
         elif _grade_rule(gr, rules):

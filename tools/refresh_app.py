@@ -475,6 +475,15 @@ def status_text():
         lines.append("YouTube broadcast: unknown")
     lines.append("TradingView pasting: " + ("running" if TVP["proc"] and TVP["proc"].poll() is None else "off"))
     try:
+        import trading_pause
+        lines.append("New entry signals: " + ("PAUSED (/resume to allow)" if trading_pause.is_paused_now(t) else "on"))
+    except Exception:
+        pass
+    try:
+        lines.append("Nodes agent: " + stream_server.nodes_status(t))
+    except Exception:
+        pass
+    try:
         j = json.loads((ROOT / "data" / "journal" / f"{t:%Y-%m-%d}.json").read_text(encoding="utf-8"))
         tr = j.get("trades", [])
         lines.append(f"Today: {len(tr)} trade(s), " + ", ".join(f"{x['side']} {x['strike']} {x['result']} {x['pnl_pct']:+.0f}%" for x in tr[-4:]) if tr else "Today: no trade yet")
