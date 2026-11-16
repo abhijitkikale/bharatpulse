@@ -60,3 +60,11 @@ def test_the_mailbox_leaves_a_half_written_line_and_the_page_reads_the_real_mess
     assert sg and sg["side"] == "CALL" and sg["time"].strftime("%H:%M") == "15:13" and "GEX call wall" in sg["level"]
     bar = stream_levels.parse_open_bar(BAR, day, max_days=4)
     assert bar and bar[0].strftime("%H:%M") == "09:29" and bar[1]["c"] == 25231.85
+
+
+def test_inbox_summary_counts_setups_and_opening_candles_of_one_day(tmp_path):
+    p = tmp_path / "m.jsonl"
+    tv_inbox.append([{"bar_time": "2026-11-16T04:01:00Z", "message": SIG}, {"bar_time": "2026-11-16T03:45:00Z", "message": BAR}, {"bar_time": "2026-11-16T03:46:00Z", "message": BAR},
+                     {"bar_time": "2026-11-13T04:01:00Z", "message": SIG}], p)
+    assert tv_inbox.summary("2026-11-16", p) == (1, 2) and tv_inbox.summary("2026-11-13", p) == (1, 0) and tv_inbox.summary("2026-11-17", p) == (0, 0)
+    assert tv_inbox.summary("2026-11-16", tmp_path / "none.jsonl") == (0, 0)

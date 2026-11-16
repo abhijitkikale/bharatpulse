@@ -380,6 +380,9 @@ class Feed:
                      "Opening candles: " + tv,
                      "End-of-day levels: " + (f"from the {self.eod['close']} close" if self.eod else "not loaded"),
                      "Nodes agent: " + nodes_status(t),
+                     "TradingView feed (alert log): " + ("%d setups, %d opening candles so far" % tv_inbox.summary(str(t.date())) if any(tv_inbox.summary(str(t.date()))) else
+                                                       "NOTHING yet: no setups can be booked from TradingView (is the hidden browser running?)") +
+                     f" | trades are booked from: {'TradingView' if signals_from_tradingview() else 'the page itself (Fyers)'}",
                      f"Fyers requests so far today: {fetch_fyers.usage_today()} of {fetch_fyers.DAILY_LIMIT}",
                      f"Page: http://127.0.0.1:{PORT}/"]
             telegram_notify.send("\n".join(lines))

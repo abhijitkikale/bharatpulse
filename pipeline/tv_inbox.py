@@ -42,3 +42,25 @@ def read_new(offset, path=None):
         if m:
             out.append(m)
     return out, offset + end + 1
+
+
+def summary(day, path=None):
+    """(setups, opening candles) in the mailbox for one day (a 'YYYY-MM-DD' string): what the 09:31 check reports about the TradingView feed."""
+    p = pathlib.Path(path or INBOX)
+    sigs = bars = 0
+    try:
+        for line in p.read_text(encoding="utf-8").splitlines():
+            try:
+                r = json.loads(line)
+                m = json.loads(r.get("message") or "{}")
+            except ValueError:
+                continue
+            if not str(r.get("bar_time", "")).startswith(day):
+                continue
+            if m.get("k") == "sig":
+                sigs += 1
+            elif "o" in m and "t" in m:
+                bars += 1
+    except OSError:
+        pass
+    return sigs, bars
