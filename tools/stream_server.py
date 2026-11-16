@@ -145,6 +145,8 @@ class Feed:
         self.rhist = {}                                # {date: [{"time", "flip", "pos_above", "pos"}]}: the live gamma flip readings of the day
         self.tv = self.load_tv()                       # opening 1-minute candles sent by the TradingView alert: {IST minute: bar}
         self.opt = {}                                  # (strike, "CE" / "PE") -> (fetched at, candles)
+        self.live_keys = set()                         # contracts of the trades that are open right now: only these are refreshed often
+        self.limit_told = False
         self.meta = {}                                 # (strike, "CE" / "PE") -> {"symbol", "expiry"} of the contract used
         self._jkey, self._jat = None, 0.0               # the last journal content written and when
         self.state = None
@@ -178,6 +180,15 @@ class Feed:
             self.msg = "live" if market_hours(t) else "market closed"
         else:
             self.msg = "Fyers sign-in needed (data shown is the last update)" if self.df is not None else "waiting for Fyers sign-in"
+            if "requests/day" in str(st) and not self.limit_told:        # Fyers' own daily cap: say so once, loudly
+                self.limit_told = True
+                self.msg = "Fyers daily request limit reached: the page is blind until tomorrow"
+                try:
+                    import telegram_notify
+                    telegram_notify.send("BharatPulse: the FYERS DAILY REQUEST LIMIT (5,000) is used up, so the stream page and the nodes agent have stopped getting data. "
+                                         "Use TradingView for prices; stop-loss orders at the broker are unaffected. The limit resets overnight.")
+                except Exception:
+                    pass
         if self.df is None:
             return
         day = self.df.index.max().date()
@@ -212,6 +223,7 @@ class Feed:
         if setups:
             try:
                 res = stream_trades.run_trades(setups, self.option_frame, regime_at=self.regime_fn(df, sday), grade_of=self.grade_fn(sday), rules=node_rules(), paused_at=trading_pause.paused_fn())
+                self.live_keys = {(float(_t["strike"]), "CE" if _t["side"] == "CALL" else "PE") for _t in res["trades"] if _t["status"] == "OPEN"}
                 for _tr in res["trades"]:                   # the Fyers contract each trade was priced on (the order router sends orders for it)
                     _m = self.meta.get((float(_tr["strike"]), "CE" if _tr["side"] == "CALL" else "PE")) or {}
                     _tr["symbol"] = _m.get("symbol")
@@ -365,6 +377,7 @@ class Feed:
                      "Opening candles: " + tv,
                      "End-of-day levels: " + (f"from the {self.eod['close']} close" if self.eod else "not loaded"),
                      "Nodes agent: " + nodes_status(t),
+                     f"Fyers requests so far today: {fetch_fyers.usage_today()} of {fetch_fyers.DAILY_LIMIT}",
                      f"Page: http://127.0.0.1:{PORT}/"]
             telegram_notify.send("\n".join(lines))
         except Exception:
@@ -445,7 +458,9 @@ class Feed:
         typ = "CE" if s["side"] == "CALL" else "PE"
         key = (float(s["strike"]), typ)
         hit = self.opt.get(key)
-        if hit and time.time() - hit[0] < 15:
+        recent = (now_ist() - s["time"]) <= pd.Timedelta(minutes=3)      # a setup that has just appeared needs a fresh entry price
+        ttl = 20 if (key in self.live_keys or recent) else 300           # every other contract (skipped setups, closed trades) only every 5 minutes
+        if hit and time.time() - hit[0] < ttl:
             return hit[1]
         day = s["time"].date()                          # the session being replayed (not necessarily today's date)
         rows = (self.chains or {}).get(SYM, {}).get("rows") or []
@@ -497,7 +512,7 @@ class Feed:
                 self.step()
             except Exception as e:                     # keep serving the last good state
                 self.msg = "update failed: " + type(e).__name__
-            stop.wait(10 if market_hours() else 120)
+            stop.wait(15 if market_hours() else 120)         # 15 s (was 10): Fyers allows 5,000 requests a day for everything
 
 
 FEED = Feed()

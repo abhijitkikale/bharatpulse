@@ -498,6 +498,10 @@ def status_text():
     except Exception:
         pass
     try:
+        lines.append(f"Fyers requests today: {stream_server.fetch_fyers.usage_today()} of {stream_server.fetch_fyers.DAILY_LIMIT}")
+    except Exception:
+        pass
+    try:
         import order_manager
         lines.append("Order router mode: " + order_manager.load_config()["mode"].upper() + " (off = nothing is sent)")
     except Exception:

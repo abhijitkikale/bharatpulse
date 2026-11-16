@@ -216,3 +216,15 @@ def test_would_have_been_result_for_setups_a_rule_kept_out():
     assert j["signals"][0]["would"] == {"pnl_pct": 5.0, "status": "TRAIL", "exit_time": "10:02"}
     early = stream_trades.run_trades([_setup(5, hour=9)], lambda s: _opt([[100, 100, 100, 100], [100, 100, 89, 90]], start="2026-11-06 09:05"))
     assert early["signals"][0]["status"].startswith("no trade before") and early["signals"][0]["would"]["pnl_pct"] == -10.0
+
+
+def test_setups_kept_out_by_the_daily_loss_limit_also_get_a_would_have_been_result():
+    idx = pd.date_range("2026-11-09 09:30", periods=80, freq="min", tz="Asia/Kolkata")
+    rows = []
+    for i in range(80):
+        rows.append([100, 100, 85, 90] if i % 2 else [100, 100, 100, 100])                       # every second candle hits the -10% stop
+    df = pd.DataFrame(rows, columns=["o", "h", "l", "c"], index=idx)
+    sets = [{"time": idx[i], "side": "CALL", "strike": 24700, "level": "VAH 1", "tag": ""} for i in (0, 4, 8, 12)]
+    res = stream_trades.run_trades(sets, lambda s: df)
+    last = res["signals"][-1]
+    assert last["status"].startswith("daily loss limit") and last["would"] is not None

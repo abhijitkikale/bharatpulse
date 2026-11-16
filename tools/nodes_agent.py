@@ -26,7 +26,7 @@ DIR = ROOT / "data" / "nodes"
 LATEST = DIR / "latest.json"
 STATE = ROOT / "data" / "stream_state.json"
 SYM = "NIFTY"
-CYCLE = 60            # seconds between snapshots
+CYCLE = 120           # seconds between snapshots (4 chain requests each: Fyers allows 5,000 requests a day for everything)
 SAVE_EVERY = 120      # seconds between lines of the saved buffer
 
 
@@ -68,14 +68,22 @@ def read_state():
 
 
 def today_candles():
-    """(today's 1-minute candles, the previous session's last close) or (None, None)."""
-    frames, _ = fetch_fyers.fetch_intraday(days=3, symbols=(SYM,))
-    df = frames.get(SYM)
-    if df is None or df.empty:
+    """(today's 1-minute candles with columns h and l, the previous session's last close) from the stream page's own state, so the agent makes no candle request
+    of its own; (None, None) when the page state is missing or stale."""
+    try:
+        if time.time() - STATE.stat().st_mtime > 600:
+            return None, None
+        s = json.loads(STATE.read_text(encoding="utf-8"))
+        shift = 19800                                                   # stream_levels.SHIFT: the page's chart times are IST read as UTC
+        rows = [(pd.Timestamp(c["time"] - shift, unit="s", tz="UTC").tz_convert("Asia/Kolkata"), c["high"], c["low"], c["close"]) for c in s.get("candles", [])]
+        if not rows:
+            return None, None
+        df = pd.DataFrame([[r[2], r[1], r[3]] for r in rows], columns=["l", "h", "c"], index=[r[0] for r in rows])
+        day = df.index.max().date()
+        prev = df[df.index.date < day]
+        return df[df.index.date == day], (float(prev["c"].iloc[-1]) if len(prev) else None)
+    except Exception:
         return None, None
-    day = df.index.max().date()
-    prev = df[df.index.date < day]
-    return df[df.index.date == day], (float(prev["c"].iloc[-1]) if len(prev) else None)
 
 
 def load_hist(day):

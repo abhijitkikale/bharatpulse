@@ -207,8 +207,8 @@ class OrderManager:
                 elif t["status"] != "OPEN" or square:
                     self.b.cancel(rec["sl_id"])
                     self._exit(rec, t, now, msgs, "the page says the trade is over" if t["status"] != "OPEN" else "square-off time")
-                elif t["stop_now"] - rec["stop"] >= 0.05:
-                    new = tick_down(t["stop_now"])
+                elif self._scaled_stop(rec, t) - rec["stop"] >= 0.05:
+                    new = tick_down(self._scaled_stop(rec, t))
                     lim = tick_down(new * (1 - cfg["sl_gap_pct"] / 100))
                     r = self.b.modify(rec["sl_id"], limit=lim, stop=new, qty=rec["qty"])
                     st["orders"] = st.get("orders", 0) + 1
@@ -233,12 +233,18 @@ class OrderManager:
                         msgs.append(f"[{tag}] trade {n}: exit re-priced to {lim:.2f} (try {rec['tries']}).")
         return msgs
 
+    @staticmethod
+    def _scaled_stop(rec, t):
+        """The engine's stop worked out for the price you actually paid: the same percentage from the fill as the engine's stop is from its own reference price
+        (the reference price is the 1-minute close of the setup candle and can still change in the first minute; the fill is what counts)."""
+        return rec["fill"] * t["stop_now"] / t["entry"]
+
     def _protect(self, rec, t, now, msgs, n, qty, avg):
         """The entry is filled (fully or in part): record it and place the broker stop-loss order for exactly what is held."""
         rec["qty"] = int(qty)
         rec["fill"] = float(avg or t["entry"])
         self.state["entries"] = self.state.get("entries", 0) + 1                      # an EXECUTED entry: this is what the daily limit counts
-        stop = tick_down(t["stop_now"])
+        stop = tick_down(self._scaled_stop(rec, t))
         lim = tick_down(stop * (1 - self.cfg["sl_gap_pct"] / 100))
         r = self._place(rec["symbol"], rec["qty"], -1, 4, limit=lim, stop=stop, tag=f"bp{n}sl")
         if r["ok"]:

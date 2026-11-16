@@ -113,6 +113,8 @@ def events_for_day(day, readings, candles):
     state, seen, out = {}, collections.Counter(), []
     closes = candles["c"].to_numpy(dtype=float)
     for i, (ts, row) in enumerate(candles.iterrows()):
+        if ts.hour * 60 + ts.minute < 9 * 60 + 20:                 # the opening minutes gap through the nodes: not a reaction to them
+            continue
         ri, nds = reading_at(ts)
         if ri is None:
             continue

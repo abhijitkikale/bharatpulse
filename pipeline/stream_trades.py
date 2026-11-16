@@ -202,7 +202,7 @@ def run_trades(setups, option_frame, cutoff=None, regime_at=None, grade_of=None,
                 cur = tr
                 status = f"TRADE {tr['n']}"
         would = None
-        if status.startswith(("not taken", "no trade before")):          # TESTING: what a setup kept out by a rule would have returned (same entry, stop, target, trailing); it never changes the day
+        if status.startswith(("not taken", "no trade before", "daily limit", "daily loss limit")):          # TESTING: what a setup kept out by a rule would have returned (same entry, stop, target, trailing); it never changes the day
             try:
                 w = _take(s, option_frame(s), 0, last_minute, regime_at)
             except Exception:

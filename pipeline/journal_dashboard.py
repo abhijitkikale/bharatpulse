@@ -211,7 +211,7 @@ function card(t){
 function scoreHtml(days){
   const st=(a)=>{const v=a.filter(x=>x!=null&&isFinite(x));if(!v.length)return null;const w=v.filter(x=>x>0).length,sum=v.reduce((p,c)=>p+c,0);return {n:v.length,w,avg:sum/v.length,sum}};
   const cell=(x)=>x?`<td class="num">${x.n}</td><td class="num">${Math.round(x.w/x.n*100)}%</td><td class="num ${x.avg>=0?'up':'dn'}">${x.avg>=0?'+':''}${x.avg.toFixed(1)}%</td><td class="num ${x.sum>=0?'up':'dn'}">${x.sum>=0?'+':''}${x.sum.toFixed(1)}%</td>`:'<td class="num" colspan="4" style="color:var(--mut)">no results yet</td>';
-  const taken=[],byGrade={A:[],B:[],C:[]},kept={'Before 09:25 (first 10 minutes)':[],'Against the move in negative gamma':[],'Node rules (min grade, blocked, midpoint)':[]};
+  const taken=[],byGrade={A:[],B:[],C:[]},kept={'Before 09:25 (first 10 minutes)':[],'Against the move in negative gamma':[],'Node rules (min grade, blocked, midpoint)':[],'After the daily limit (5 trades or -30%)':[]};
   days.forEach(d=>{
     d.trades.forEach(t=>taken.push(t.pnl_pct));
     (d.setups||[]).forEach(q=>{
@@ -220,6 +220,7 @@ function scoreHtml(days){
       else if(q.would_pct!=null){
         if(s.startsWith('no trade before'))kept['Before 09:25 (first 10 minutes)'].push(q.would_pct);
         else if(s.includes('against the move'))kept['Against the move in negative gamma'].push(q.would_pct);
+        else if(s.startsWith('daily'))kept['After the daily limit (5 trades or -30%)'].push(q.would_pct);
         else if(s.startsWith('not taken'))kept['Node rules (min grade, blocked, midpoint)'].push(q.would_pct);
       }
     });

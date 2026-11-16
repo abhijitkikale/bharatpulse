@@ -3,6 +3,7 @@ reports problems instead of raising so the build can fall back to the NSE / Yaho
 
 The token comes from the environment (FYERS_APP_ID, FYERS_TOKEN - set in GitHub secrets by tools/fyers_login.py) or, on a
 local PC, from data/fyers_token.json. It is never printed or written into any output; error text only says what failed."""
+import sys
 import datetime as dt
 import json
 import os
@@ -29,7 +30,43 @@ def _auth():
     return {"Authorization": f"{app}:{tok}"} if app and tok else None
 
 
+DAILY_LIMIT = 5000                       # the Fyers "Standard plan" cap on API requests a day (seen in its own error message)
+USAGE_DIR = pathlib.Path(__file__).resolve().parent.parent / "data" / "fyers_usage"
+_USED = {"day": None, "n": 0}
+
+
+def _count():
+    """Count one request in this process (data/fyers_usage/<program>-<pid>.json, one file per process and day) so usage_today() can add them up."""
+    try:
+        day = dt.datetime.now(dt.timezone(dt.timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d")
+        if _USED["day"] != day:
+            _USED["day"], _USED["n"] = day, 0
+        _USED["n"] += 1
+        if _USED["n"] % 5 == 1:                                         # write every 5th request, not every one
+            USAGE_DIR.mkdir(parents=True, exist_ok=True)
+            tag = f"{pathlib.Path(sys.argv[0]).stem or 'proc'}-{os.getpid()}"
+            (USAGE_DIR / f"{tag}.json").write_text(json.dumps({"day": day, "n": _USED["n"]}), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def usage_today():
+    """Fyers API requests made today by all BharatPulse programs on this PC (a close estimate: files are written every 5th request)."""
+    total = 0
+    try:
+        day = dt.datetime.now(dt.timezone(dt.timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d")
+        for f in USAGE_DIR.glob("*.json"):
+            d = json.loads(f.read_text(encoding="utf-8"))
+            if d.get("day") == day:
+                total += int(d.get("n", 0))
+        total = max(total, _USED["n"] if _USED["day"] == day else 0)
+    except Exception:
+        pass
+    return total
+
+
 def _get(path, headers, **params):
+    _count()
     r = requests.get(f"{BASE}/{path}", headers=headers, params=params, timeout=40)
     try:
         j = r.json()

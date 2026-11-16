@@ -82,9 +82,9 @@ def test_full_trade_entry_stop_moves_and_the_broker_stop_fills():
     assert m.step([trade()], ts("11:41", 20)) == [] and len(b.calls) == 1                                                     # not filled yet: wait, send nothing twice
     b.fill("F1", avg=141.5)
     out = m.step([trade()], ts("11:41", 30))
-    assert b.calls[1] == ("place", "NSE:NIFTY2611725150PE", 65, -1, 4, 124.1, 126.0) and "Stop-loss order placed" in out[0]    # stop-limit: trigger 126.00, limit 1.5% below
+    assert b.calls[1] == ("place", "NSE:NIFTY2611725150PE", 65, -1, 4, 125.4, 127.35) and "Stop-loss order placed" in out[0]    # fill 141.50: the stop is the same 10% below the fill (127.35), limit 1.5% below
     out = m.step([trade(stop_now=147.58)], ts("12:11"))
-    assert b.calls[2][:2] == ("modify", "F2") and b.calls[2][3] == 147.55 and "moved to trigger 147.55" in out[0]
+    assert b.calls[2][:2] == ("modify", "F2") and b.calls[2][3] == 149.15 and "moved to trigger 149.15" in out[0]                 # +5.4% of the entry price, applied to the fill
     assert m.step([trade(stop_now=147.58)], ts("12:12")) == []                                                                # the same stop is not sent again
     b.fill("F2", avg=147.0)
     out = m.step([trade(status="TRAIL", stop_now=147.58, exit=147.58)], ts("12:20"))
@@ -197,7 +197,7 @@ def test_partial_fill_and_an_unreadable_status_never_leave_a_position_without_a_
     m.step([trade()], ts("11:41", 5))
     b.orders["F1"]["filled"] = 30                                                              # 30 of 65 filled, the rest still working
     out = m.step([trade()], ts("11:42", 10))                                                   # the wait is over: cancel, then protect what is held
-    assert ("cancel", "F1") in b.calls and b.calls[-1] == ("place", "NSE:NIFTY2611725150PE", 30, -1, 4, 124.1, 126.0) and "BUY filled (30)" in out[0]
+    assert ("cancel", "F1") in b.calls and b.calls[-1] == ("place", "NSE:NIFTY2611725150PE", 30, -1, 4, 126.55, 128.5) and "BUY filled (30)" in out[0]
     assert m.state["trades"]["1"]["qty"] == 30 and m.state["trades"]["1"]["phase"] == "protected"
 
     class Blind(FakeBroker):
@@ -226,3 +226,13 @@ def test_the_daily_limit_counts_executed_entries_not_requests():
     m2.state["orders"] = 3
     assert "runaway guard" in m2.step([trade(1)], ts("11:41", 5))[0]
     assert om.DEFAULTS["max_entries_per_day"] == 5 and om.DEFAULTS["max_lots"] == 1
+
+
+def test_the_stop_follows_the_price_actually_paid_not_the_reference_price():
+    b = FakeBroker()
+    m = om.OrderManager(b, cfg(), label="LIVE")
+    m.step([trade(entry=100.0, stop_now=90.0)], ts("11:41", 5))
+    b.fill("F1", avg=104.0)                                                                    # filled 4% above the reference
+    m.step([trade(entry=100.0, stop_now=90.0)], ts("11:41", 30))
+    assert b.calls[1][-1] == 93.6                                                              # 10% below 104.00, not 90.00
+    assert m.step([trade(entry=100.5, stop_now=90.45)], ts("11:41", 50)) == []                 # the reference price drifting in the first minute moves nothing
