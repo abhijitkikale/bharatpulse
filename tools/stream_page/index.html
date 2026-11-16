@@ -53,7 +53,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);font-family
 <div id="slpop"></div>
 <div class="wrap">
   <div class="ban"><span id="b1"></span></div>
-  <div class="hd"><span class="t">NIFTY 50 · 1 min</span><span class="p" id="px">–</span><span class="m" id="meta"></span><span class="chip" id="chip">connecting…</span><span class="chip btn" id="th" title="Light / dark background">☀ Light</span></div>
+  <div class="hd"><span class="t">NIFTY 50 · 1 min</span><span class="p" id="px">–</span><span class="m" id="meta"></span><span class="chip" id="chip">connecting…</span><span class="chip" id="tvchip" style="margin-left:8px;display:none"></span><span class="chip btn" id="th" title="Light / dark background">☀ Light</span></div>
   <div id="limitbar" style="display:none"></div>
   <div class="tr" id="trade" style="display:none"></div>
   <div class="body">
@@ -348,6 +348,19 @@ chart.subscribeCrosshairMove(p=>{
   const W=el.clientWidth,Hh=el.clientHeight,w=TIP.offsetWidth,hh=TIP.offsetHeight;
   TIP.style.left=Math.max(4,Math.min(W-w-4,p.point.x+14))+'px';TIP.style.top=Math.max(4,Math.min(Hh-hh-4,p.point.y+14))+'px';
 });
+// TradingView connection chip (checked by the hidden browser at your sign-in, again before the open, and kept alive all session)
+async function pollTv(){
+  const c=document.getElementById('tvchip');if(!c||CLEAN)return;
+  try{
+    const s=await (await fetch('/tvstatus.json',{cache:'no-store'})).json();
+    if(!s||!s.lines){c.style.display='inline-block';c.className='chip bad';c.textContent='TradingView: no check yet';c.title='The hidden TradingView browser has not reported yet.';return}
+    const stale=(s.age_s||0)>180&&s.lines.some(l=>l.key==='feed'),bad=s.lines.filter(l=>l.ok===false);
+    c.style.display='inline-block';
+    c.className='chip '+((!s.ok||stale)?'bad':'ok');
+    c.textContent=(!s.ok||stale)?'TradingView: PROBLEM':'TradingView ✓';
+    c.title=(stale?'The feed has not reported for '+Math.round(s.age_s/60)+' minutes.\n':'')+s.lines.map(l=>(l.ok?'✓ ':l.ok===false?'✗ ':'• ')+l.text).join('\n')+'\nSetups are booked from: '+(s.source||'?');
+  }catch(e){c.style.display='inline-block';c.className='chip bad';c.textContent='TradingView: unknown'}
+}
 async function pollNodes(){
   try{const r=await fetch('/nodes.json',{cache:'no-store'});const j=await r.json();NODES=j&&j.asof?j:null}catch(e){NODES=null}
   GR={};((NODES&&NODES.grades)||[]).forEach(x=>{if(!GR[x.when+'|'+x.side])GR[x.when+'|'+x.side]=x});
@@ -380,7 +393,7 @@ function tickCountdown(){
 }
 loadCal();setInterval(loadCal,3600000);
 tickCountdown();setInterval(tickCountdown,1000);
-applyTheme();poll();setInterval(poll,5000);pollNodes();setInterval(pollNodes,20000);window.addEventListener('resize',()=>setTimeout(drawNodes,200));
+applyTheme();poll();setInterval(poll,5000);pollNodes();setInterval(pollNodes,20000);pollTv();setInterval(pollTv,30000);window.addEventListener('resize',()=>setTimeout(drawNodes,200));
 window.addEventListener('resize',()=>chart.applyOptions({layout:{fontSize:axisFont()}}));
 </script>
 </body>

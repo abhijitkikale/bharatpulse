@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT / "pipeline"))
 import fetch_fyers  # noqa: E402
 import live_gex  # noqa: E402
 import trading_pause  # noqa: E402
+import tv_health  # noqa: E402
 import tv_inbox  # noqa: E402
 import nodes  # noqa: E402
 import nse_calendar  # noqa: E402
@@ -65,6 +66,8 @@ def signals_from_tradingview():
     """True (the default) when the page books its paper trades from the setups TradingView reports. data/stream_relay.json {"signals_from": "fyers"}
     makes the page find the setups itself on the Fyers candles instead (the TradingView setups are then only recorded for comparison).
     The BP Live alert is renewed every morning by tools/tv_live_paste.py so that it carries that day's level text."""
+    if tv_health.source_override(now_ist().date()) == "fyers":          # the morning check found the TradingView feed broken: the page's own setups for today
+        return False
     try:
         return json.loads(RELAY.read_text(encoding="utf-8")).get("signals_from") != "fyers"
     except Exception:
@@ -556,6 +559,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 s = FEED.state
             body = json.dumps(s if s else {"status": FEED.msg, "candles": [], "levels": []}, separators=(",", ":")).encode()
             return self._send(200, body, "application/json")
+        if path == "/tvstatus.json":                    # the TradingView connection check (written by the hidden browser), for the chip on the page
+            st = tv_health.read(now=now_ist())
+            st["source"] = "TradingView" if signals_from_tradingview() else "the page itself"
+            return self._send(200, json.dumps(st, separators=(",", ":")).encode(), "application/json")
         if path == "/nodes.json":                       # written by tools/nodes_agent.py; {} when the agent is not running
             try:
                 body = (ROOT / "data" / "nodes" / "latest.json").read_bytes()

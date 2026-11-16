@@ -171,6 +171,20 @@ def live_running():
 TVP = {"proc": None}
 
 
+def check_tv_started():
+    """Two and a half minutes after the hidden TradingView browser was started: has it reported? If not, say so now, while you are still at the PC."""
+    try:
+        import tv_health
+        st = tv_health.read(now=live_loop.now_ist())
+        if st.get("age_s") is not None and st["age_s"] < 240:
+            return
+        import telegram_notify
+        telegram_notify.send("TradingView: the hidden browser has NOT reported after the sign-in, so no TradingView setups or opening candles will arrive. Look at data\\tv_paste_log.txt; "
+                             "if the hidden browser is signed out, run 'TradingView Sign-in.bat'. Today the page falls back to its own setups only if you restart the helper after fixing it.")
+    except Exception:
+        pass
+
+
 def start_tv_paste():
     """Morning routine: the hidden browser that pastes the live GEX text into the TradingView indicator every 5 minutes.
     Needs the one-time 'python tools/tv_live_paste.py --login'; without it nothing starts. Never runs twice."""
@@ -180,6 +194,9 @@ def start_tv_paste():
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         TVP["proc"] = subprocess.Popen([sys.executable, str(ROOT / "tools" / "tv_live_paste.py")], cwd=str(ROOT), creationflags=flags,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        t = threading.Timer(150, check_tv_started)
+        t.daemon = True
+        t.start()
     except Exception:
         pass
 
@@ -295,6 +312,18 @@ def finish_login(code):
         set_stage("error", f"Unexpected problem ({type(e).__name__}). Try again.")
 
 
+def tv_card():
+    """The TradingView connection check for the helper page: what the hidden browser found (data/tv_status.json), or that it has not reported."""
+    try:
+        import tv_health
+        st = tv_health.read(now=live_loop.now_ist())
+    except Exception:
+        st = {}
+    if not st.get("lines"):
+        return {"ok": None, "text": "no report yet from the hidden TradingView browser (it starts after the Fyers sign-in and reports within about a minute)", "lines": []}
+    return {"ok": st.get("ok"), "text": ("all OK" if st.get("ok") else "PROBLEM: see below") + f" (checked {st.get('checked_at', '')[11:16]} IST)", "lines": st["lines"]}
+
+
 def status():
     with LOCK:
         stage, err, url = S["stage"], S["error"], S["run_url"]
@@ -311,7 +340,7 @@ def status():
     return {"stage": stage, "error": err, "run_url": url, "steps": steps, "live": LIVE, "mode": S["mode"],
             "liveloop": {"running": ls["running"], "text": liveline, "can_start": (not ls["running"]) and live_loop.market_day_window() and token_info().get("valid", False)},
             "env_ok": bool(env("FYERS_APP_ID") and env("FYERS_APP_SECRET")), "gh_ok": gh_ok(), "token": token_info(),
-            "stream": {"up": stream_up()}, "obs": obs_info(), "obsmsg": S.get("obsmsg", ""), "snapmsg": S.get("snapmsg", "")}
+            "tv": tv_card(), "stream": {"up": stream_up()}, "obs": obs_info(), "obsmsg": S.get("obsmsg", ""), "snapmsg": S.get("snapmsg", "")}
 
 
 def logo():
@@ -344,6 +373,7 @@ ul{list-style:none;margin:0;padding:0}li{display:flex;align-items:center;gap:12p
 <div class="row"><span class="k">GitHub sign-in</span><span id="s-gh"></span></div>
 <div class="row"><span class="k">Today's data token</span><span id="s-tok"></span></div>
 <div class="row"><span class="k">Live updates</span><span id="s-live"></span></div></div>
+<div class="card"><div class="row"><span class="k">TradingView connection (setups and opening candles)</span><span id="s-tv"></span></div><div id="tvlines" class="small" style="margin-top:6px;line-height:1.6"></div></div>
 <div class="card"><div class="row"><span class="k">Live dashboard (stream page)</span><span id="s-str"></span></div>
 <div class="row"><span class="k">OBS</span><span id="s-obs"></span></div>
 <div class="row"><span class="k">YouTube broadcast</span><span id="s-brd"></span></div>
@@ -365,6 +395,8 @@ async function tick(){let d;try{d=await (await fetch('/status',{cache:'no-store'
  $('#s-live').textContent=d.liveloop.text;$('#s-live').className=d.liveloop.running?'ok':'warn';$('#startlive').style.display=d.liveloop.can_start?'inline-block':'none';
  let note='';if(!d.env_ok)note='Setup needed: set FYERS_APP_ID and FYERS_APP_SECRET on this PC (see the setup steps), then open this helper again.';else if(!d.gh_ok)note='Setup needed: sign in to GitHub with the GitHub CLI (gh auth login).';
  $('#note').textContent=note;
+ const tv=d.tv;$('#s-tv').textContent=tv.text;$('#s-tv').className=tv.ok===true?'ok':(tv.ok===false?'bad':'warn');
+ $('#tvlines').innerHTML=(tv.lines||[]).map(l=>(l.ok?'\u2713 ':l.ok===false?'\u2717 ':'\u2022 ')+l.text.replace(/</g,'&lt;')).join('<br>');
  $('#s-str').textContent=d.stream.up?'running':'not running (starts after the sign-in, or press the button)';$('#s-str').className=d.stream.up?'ok':'warn';
  const o=d.obs;$('#s-obs').textContent=!o.configured?'not set up (run tools/obs_setup.py)':(o.running?'running':'not running');$('#s-obs').className=o.running?'ok':'warn';
  $('#s-brd').textContent=o.live===true?'LIVE':(o.live===false?'off':'unknown');$('#s-brd').className=o.live?'ok':'warn';
@@ -488,6 +520,13 @@ def status_text():
     except Exception:
         lines.append("YouTube broadcast: unknown")
     lines.append("TradingView pasting: " + ("running" if TVP["proc"] and TVP["proc"].poll() is None else "off"))
+    try:
+        import tv_health
+        st = tv_health.read(now=t)
+        lines.append("TradingView connection: " + ("no report yet" if not st.get("lines") else ("OK" if st.get("ok") else "PROBLEM: " + "; ".join(l["text"][:70] for l in st["lines"] if l["ok"] is False)) +
+                                                    f" (checked {st.get('checked_at', '')[11:16]})"))
+    except Exception:
+        pass
     try:
         import trading_pause
         lines.append("New entry signals: " + ("PAUSED (/resume to allow)" if trading_pause.is_paused_now(t) else "on"))
