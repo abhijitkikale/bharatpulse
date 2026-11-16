@@ -228,3 +228,46 @@ def test_setups_kept_out_by_the_daily_loss_limit_also_get_a_would_have_been_resu
     res = stream_trades.run_trades(sets, lambda s: df)
     last = res["signals"][-1]
     assert last["status"].startswith("daily loss limit") and last["would"] is not None
+
+
+def _trig(rows, minute=0):
+    """Trigger tests: the setup candle is the first row (10:00); the entry trigger is switched ON."""
+    df = _opt(rows)
+    return stream_trades.run_trades([_setup(minute)], lambda s: df)
+
+
+def test_entry_trigger_trade_only_when_the_option_trades_above_the_setup_candle_high(monkeypatch):
+    monkeypatch.setattr(stream_trades, "ENTRY_TRIGGER", True)
+    # setup candle 10:00 high 101.5; 10:01 stays below; 10:02 trades up to 103 -> entry at 101.5 on 10:02; target/stop measured from 101.5 and checked from 10:03
+    r = _trig([[100, 101.5, 99, 100], [100, 101, 99.5, 100.5], [100.5, 103, 100, 102], [102, 148, 101, 147]])
+    t = r["trades"][0]
+    assert t["entry_time"].strftime("%H:%M") == "10:02" and t["entry"] == 101.5 and t["setup_time"].strftime("%H:%M") == "10:00" and t["trigger"] == 101.5
+    assert t["status"] == "TARGET" and abs(t["target"] - 101.5 * 1.4) < 1e-9 and r["signals"][0]["status"] == "TRADE 1"
+    # a gap above the high fills at the open of that candle
+    g = _trig([[100, 101.5, 99, 100], [105, 106, 104, 105], [105, 105, 90, 91]])["trades"][0]
+    assert g["entry"] == 105 and g["entry_time"].strftime("%H:%M") == "10:01"
+    # never crosses within 5 minutes: not taken, and tested with the OLD entry (the setup candle's close) to show what the trigger saved
+    nc = _trig([[100, 101.5, 99, 100]] + [[100, 101, 98, 99]] * 4 + [[99, 101, 80, 85]] * 2)
+    assert not nc["trades"] and nc["signals"][0]["status"].startswith("not taken: the option never crossed 101.50")
+    assert nc["signals"][0]["would"]["status"] == "STOP" and nc["signals"][0]["would"]["pnl_pct"] == -10.0
+
+
+def test_entry_trigger_pending_then_json_and_telegram(monkeypatch):
+    import json
+    monkeypatch.setattr(stream_trades, "ENTRY_TRIGGER", True)
+    pend = _trig([[100, 101.5, 99, 100], [100, 101, 99.5, 100.5]])                              # the data stops inside the 5-minute window
+    assert pend["signals"][0]["status"] == "waiting: buy only if the option trades above 101.50" and not pend["trades"] and pend["signals"][0]["would"] is None
+    done = _trig([[100, 101.5, 99, 100], [100, 103, 99.5, 102], [102, 103, 101, 102]])
+    j = stream_trades.to_json(done, 19800)
+    json.dumps(j, allow_nan=False)                                                               # the page embeds it
+    assert j["trades"][0]["setup_time"] == "10:00" and j["trades"][0]["entry_time"] == "10:01"
+    import stream_alerts
+    from test_live_signals import _ts
+    sig = {"time": _ts("10:00"), "side": "PUT", "strike": 25150, "level": "Now VWAP 25172.65 (bounce)", "status": "waiting: buy only if the option trades above 101.50"}
+    sent = set()
+    m1 = stream_alerts.new_messages({"trades": [], "signals": [sig]}, sent, _ts("10:01"), contracts={(25150.0, "PE"): {"symbol": "NSE:NIFTY2611725150PE"}})
+    assert len(m1) == 1 and m1[0].startswith("SETUP WAITING") and "above 101.50" in m1[0] and "NSE:NIFTY2611725150PE" in m1[0]
+    sig2 = dict(sig, status="not taken: the option never crossed 101.50 (the setup candle's high) within 5 minutes")
+    m2 = stream_alerts.new_messages({"trades": [], "signals": [sig2]}, sent, _ts("10:06"), fresh_minutes=10)
+    assert len(m2) == 1 and m2[0].startswith("Setup not taken")                                  # the waiting message did not use up the final message
+    assert stream_trades.ENTRY_WINDOW_MIN == 5

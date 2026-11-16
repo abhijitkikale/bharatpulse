@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT / "pipeline"))
 import fetch_fyers  # noqa: E402
 import live_gex  # noqa: E402
 import trading_pause  # noqa: E402
+import tv_inbox  # noqa: E402
 import nodes  # noqa: E402
 import nse_calendar  # noqa: E402
 import stream_journal  # noqa: E402
@@ -145,6 +146,7 @@ class Feed:
         self.rhist = {}                                # {date: [{"time", "flip", "pos_above", "pos"}]}: the live gamma flip readings of the day
         self.tv = self.load_tv()                       # opening 1-minute candles sent by the TradingView alert: {IST minute: bar}
         self.opt = {}                                  # (strike, "CE" / "PE") -> (fetched at, candles)
+        self.inbox_offset = 0                          # position in data/tv_inbox.jsonl (the alert log read by the hidden TradingView browser)
         self.live_keys = set()                         # contracts of the trades that are open right now: only these are refreshed often
         self.limit_told = False
         self.meta = {}                                 # (strike, "CE" / "PE") -> {"symbol", "expiry"} of the contract used
@@ -172,6 +174,7 @@ class Feed:
 
     def step(self):
         t = now_ist()
+        self.read_inbox()
         if self.eod is None or time.time() - self.eod_at > 900:
             self.load_eod()
         frames, st = fetch_fyers.fetch_intraday(days=8, symbols=(SYM,))
@@ -458,7 +461,7 @@ class Feed:
         typ = "CE" if s["side"] == "CALL" else "PE"
         key = (float(s["strike"]), typ)
         hit = self.opt.get(key)
-        recent = (now_ist() - s["time"]) <= pd.Timedelta(minutes=3)      # a setup that has just appeared needs a fresh entry price
+        recent = (now_ist() - s["time"]) <= pd.Timedelta(minutes=stream_trades.ENTRY_WINDOW_MIN + 1)      # a setup still inside its entry window needs fresh candles
         ttl = 20 if (key in self.live_keys or recent) else 300           # every other contract (skipped setups, closed trades) only every 5 minutes
         if hit and time.time() - hit[0] < ttl:
             return hit[1]
@@ -473,6 +476,27 @@ class Feed:
             df = journal_frame(day, key)                # Fyers has no candles for that day any more: use the ones saved in the journal
         self.opt[key] = (time.time(), df)
         return df
+
+    def handle_tv_text(self, text):
+        """One TradingView alert message (from the ntfy relay or from the alert log mailbox): a setup, or one of the opening 1-minute candles."""
+        sg = stream_levels.parse_signal(text, now_ist().date())
+        if sg:
+            self.add_sig(sg)
+            return
+        got = stream_levels.parse_open_bar(text, now_ist().date(), max_days=4)
+        if got:
+            self.tv[got[0]] = got[1]
+            self.save_tv(got[0].date())
+
+    def read_inbox(self):
+        """Take in the messages the hidden TradingView browser copied from TradingView's alert log (each is handled once; a repeat of what the relay also
+        delivered changes nothing)."""
+        try:
+            msgs, self.inbox_offset = tv_inbox.read_new(self.inbox_offset)
+            for m in msgs:
+                self.handle_tv_text(m)
+        except Exception:
+            pass
 
     def relay(self, stop):
         """Listen for the TradingView alert messages on the relay topic (outbound connection only) and keep the opening candles."""
@@ -493,14 +517,7 @@ class Feed:
                         except ValueError:
                             continue
                         if ev and ev.get("event") == "message":
-                            sg = stream_levels.parse_signal(ev.get("message", ""), now_ist().date())
-                            if sg:
-                                self.add_sig(sg)
-                                continue
-                            got = stream_levels.parse_open_bar(ev.get("message", ""), now_ist().date(), max_days=4)
-                            if got:
-                                self.tv[got[0]] = got[1]
-                                self.save_tv(got[0].date())
+                            self.handle_tv_text(ev.get("message", ""))
             except Exception:
                 pass
             stop.wait(wait)

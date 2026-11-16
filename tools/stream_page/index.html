@@ -185,6 +185,8 @@ function draw(s){
       tb.style.display='flex';
       const cur=T.trades.length?T.trades[T.trades.length-1]:null,pc=v=>(v>0?'+':'')+v.toFixed(1)+'%',mx=T.max_trades||5;
       const rules='Until 13:00: target +40%, stop −10%, trailing +20%→+5%, +30%→+15%, +35%→+30%. From 13:00: target +20%, stop −7%, trailing +10%→+5%, +15%→+10%. No trade before 9:25, none after '+T.cutoff+'. Max '+mx+' trades a day.';
+      const wt=(T.signals||[]).filter(x=>x.status.startsWith('waiting')).slice(-1)[0];
+      const wtTxt=wt?`<span style="color:#ffb300;font-weight:800" title="The trade starts only if the option's price trades above the high of the setup candle, within 5 minutes">⏳ ${wt.when} ${wt.side} ${wt.strike} ${wt.status.replace('waiting: ','')}</span>`:'';
       const sk=[...new Set((T.signals||[]).filter(x=>x.would).map(x=>`${x.when} ${x.side} ${x.would.pnl_pct>0?'+':''}${x.would.pnl_pct.toFixed(1)}%`))].slice(-2).join(' · ');
       const skTxt=sk?`<span class="k" style="font-size:.62em;opacity:.8" title="Testing: setups that were not taken, and what each would have returned with the same stop, target and trailing rules">skipped, if taken (testing): ${sk}</span>`:'';
       tb.title=rules;
@@ -203,7 +205,7 @@ function draw(s){
           `<span><span class="k">in</span>${cur.entry.toFixed(2)} <span class="k">${open?'now':'out '+cur.exit_time}</span>${px.toFixed(2)}</span>`+
           `<span><span class="k">stop ${(sq>=0?'+':'−')+Math.abs(sq).toFixed(0)}%</span>${sn.toFixed(2)} <span class="k">target +${tq}%</span>${cur.target.toFixed(2)}</span>`+
           `<span class="big" style="color:${pnl>=0?G():R()}">${pc(pnl)}</span>`+
-          skTxt+`<span style="margin-left:auto"><span class="k">day · ${T.trades.length} of ${mx} trades</span><span class="big" style="color:${T.total_pct>=0?G():R()}">${pc(T.total_pct)}</span></span>`}
+          wtTxt+skTxt+`<span style="margin-left:auto"><span class="k">day · ${T.trades.length} of ${mx} trades</span><span class="big" style="color:${T.total_pct>=0?G():R()}">${pc(T.total_pct)}</span></span>`}
     }
   }
   renderLevels(s);

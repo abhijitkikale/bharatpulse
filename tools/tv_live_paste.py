@@ -92,6 +92,24 @@ def paste(page, c, text=None, eod=None):
         page.wait_for_timeout(2500)
 
 
+def poll_fires(page, seen):
+    """Read TradingView's own alert log (the list the Alerts panel shows) and hand every NEW BP Live message to the stream page through data/tv_inbox.jsonl.
+    The relay (ntfy.sh) answers 429 to many of the alert's webhook messages; the log keeps all of them. `seen`: a set of fire ids already handed over.
+    Returns how many messages were handed over. Works from any logged-in TradingView page, even when the chart session is taken by another browser."""
+    import tv_inbox
+    j = _alerts_api(page, "list_fires", {"payload": {"limit": 80}})
+    rows = j.get("r") or []
+    new = []
+    for r in sorted(rows, key=lambda x: x.get("fire_time", "")):
+        fid = str(r.get("fire_id"))
+        if fid in seen:
+            continue
+        seen.add(fid)
+        if str(r.get("name", "")).startswith("BP Live") and r.get("message"):
+            new.append({"fire_id": fid, "bar_time": r.get("bar_time"), "message": r["message"], "http": (r.get("webhook") or {}).get("http_code")})
+    return tv_inbox.append(new)
+
+
 ALERT_DAY = ROOT / "data" / "tv_alert_day.txt"       # the day the BP Live alert was last made fresh, and its id
 
 
@@ -262,6 +280,7 @@ def main():
             eod_checked = False
             eod_retry = 0.0
             alert_retry = 0.0
+            fires_seen, fires_err = set(), 0
             while True:
                 t = live_loop.now_ist()
                 hm = (t.hour, t.minute)
@@ -318,6 +337,16 @@ def main():
                                 page.keyboard.press("Escape")
                             except Exception:
                                 pass
+                if hm >= START:                                              # TradingView's own alert log -> the stream page (no relay, no 429)
+                    try:
+                        n = poll_fires(page, fires_seen)
+                        if n:
+                            log("alert log:", n, "new message(s) handed to the stream page")
+                        fires_err = 0
+                    except Exception as ex:
+                        fires_err += 1
+                        if fires_err in (1, 10, 100):
+                            log("alert log read failed:", str(ex)[:160])
                 time.sleep(20)
         finally:
             try:

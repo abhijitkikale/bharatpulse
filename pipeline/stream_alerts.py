@@ -60,7 +60,12 @@ def new_messages(res, sent, now, fresh_minutes=3, contracts=None, lot=LOT):
         if s["status"].startswith("TRADE"):
             continue
         # the key leaves out every number of the level text: the VWAP value drifts a few paise each minute and would send the same setup again and again
-        add(f"S{_hm(s['time'])}{s['side']}{re.sub(r'[0-9.]+', '', s['level'])}", s["time"],
-            f"Setup not taken ({s['status']}): {s['side']} {s['strike']} {_opt(s['side'])} on {s['level']} at {_hm(s['time'])}")
+        waiting = s["status"].startswith("waiting")
+        key = f"{'W' if waiting else 'S'}{_hm(s['time'])}{s['side']}{re.sub(r'[0-9.]+', '', s['level'])}"
+        if waiting:                                         # a setup that has not triggered yet: you need the price to watch for
+            add(key, s["time"], f"SETUP WAITING, {s['side']} {s['strike']} {_opt(s['side'])} on {s['level']} at {_hm(s['time'])}: {s['status'][len('waiting: '):]} "
+                                f"({_contract(contracts, s)}), within 5 minutes. Not a trade until it crosses.")
+        else:
+            add(key, s["time"], f"Setup not taken ({s['status']}): {s['side']} {s['strike']} {_opt(s['side'])} on {s['level']} at {_hm(s['time'])}")
     out.sort(key=lambda x: x[0])
     return [t for _, t in out]

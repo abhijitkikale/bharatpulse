@@ -36,6 +36,10 @@ def _hm(t):
 # Rules by the time a trade is ENTERED (it keeps them until it closes). From 13:00 IST: target +20%, stop -7%, and the stop trails at +10% (to +5%) and +15% (to +10%).
 RULES = (((0, 0), {"target": TARGET, "stop": STOP, "trail": TRAIL, "name": "morning"}),
          ((13, 0), {"target": 0.20, "stop": 0.07, "trail": ((0.15, 0.10), (0.10, 0.05)), "name": "afternoon"}))
+# Entry confirmation: a setup becomes a trade only when the OPTION's price trades above the high of the setup candle (a buy-stop at that high), within
+# ENTRY_WINDOW_MIN minutes. The entry price is that high (or the candle's open when it gaps above it); stop, target and trailing are measured from it.
+ENTRY_TRIGGER = True
+ENTRY_WINDOW_MIN = 5
 CONTRA_IN_NEGATIVE = True   # in NEGATIVE gamma a setup against the move (CALL below the gamma flip, PUT above it) is listed, not traded
 REGIME_BUFFER = 0.05        # when the gamma regime turns against an open trade that is in profit, its stop moves up to 5% below the current premium
 
@@ -77,21 +81,37 @@ def rules_for(t):
     return chosen
 
 
-def _take(s, df, n, last_minute=LAST_MINUTE, regime_at=None):
-    """Open (and, if the candles allow, close) a trade for setup s on the option candles df (columns o h l c). None when there is no price."""
+def _take(s, df, n, last_minute=LAST_MINUTE, regime_at=None, trigger=None):
+    """Open (and, if the candles allow, close) a trade for setup s on the option candles df (columns o h l c). None when there is no price.
+    With the entry trigger (the default, `trigger=False` gives the old entry at the setup candle's close) it returns ("pending", high) while the option has not yet
+    traded above the setup candle's high and the window is still open, or ("expired", high) when it never did."""
     if df is None or df.empty:
         return None
-    t = s["time"]
-    before = df[df.index <= t]
+    t0 = s["time"]
+    before = df[df.index <= t0]
     if before.empty:
         return None
-    entry = float(before["c"].iloc[-1])
+    sig_hi = float(before["h"].iloc[-1])
+    use_trigger = ENTRY_TRIGGER if trigger is None else trigger
+    if use_trigger:
+        end = t0 + pd.Timedelta(minutes=ENTRY_WINDOW_MIN)
+        t, entry = None, 0.0
+        for ts, r in df[(df.index > t0) & (df.index <= end)].iterrows():
+            if float(r["h"]) >= sig_hi:
+                t, entry = ts, max(sig_hi, float(r["o"]))                 # a gap above the high fills at the open
+                break
+        if t is None:
+            waiting = df.index.max() < end and (end.hour, end.minute) <= (15, 30)
+            return ("pending" if waiting else "expired", sig_hi)
+    else:
+        t, entry = t0, float(before["c"].iloc[-1])
     if entry <= 0:
         return None
     rl = rules_for(t)
     tp, sl = entry * (1 + rl["target"]), entry * (1 - rl["stop"])
     tr = {"rules": rl["name"], "tp_pct": round(rl["target"] * 100), "sl_pct": round(rl["stop"] * 100), "n": n, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "entry_time": t, "entry": entry, "target": tp, "stop": sl, "stop_now": sl,
           "status": "OPEN", "exit_time": None, "exit": None, "last": entry, "shifts": []}
+    tr["setup_time"], tr["trigger"] = t0, (sig_hi if use_trigger else None)
     prev_reg = None
     if regime_at is not None:
         try:
@@ -197,17 +217,22 @@ def run_trades(setups, option_frame, cutoff=None, regime_at=None, grade_of=None,
             tr = _take(s, option_frame(s), len(trades) + 1, last_minute, regime_at)
             if tr is None:
                 status = "no option price"
+            elif isinstance(tr, tuple):
+                if tr[0] == "pending":
+                    status = f"waiting: buy only if the option trades above {tr[1]:.2f}"
+                else:
+                    status = f"not taken: the option never crossed {tr[1]:.2f} (the setup candle's high) within {ENTRY_WINDOW_MIN} minutes"
             else:
                 trades.append(tr)
                 cur = tr
                 status = f"TRADE {tr['n']}"
         would = None
         if status.startswith(("not taken", "no trade before", "daily limit", "daily loss limit")):          # TESTING: what a setup kept out by a rule would have returned (same entry, stop, target, trailing); it never changes the day
-            try:
-                w = _take(s, option_frame(s), 0, last_minute, regime_at)
+            try:                                             # a setup the trigger kept out is tested with the OLD entry (at the setup candle's close): what the trigger saved or cost
+                w = _take(s, option_frame(s), 0, last_minute, regime_at, trigger=(False if "never crossed" in status else None))
             except Exception:
                 w = None
-            if w:
+            if isinstance(w, dict):
                 would = {"pnl_pct": w["pnl_pct"], "status": w["status"], "exit_time": w["exit_time"]}
         signals.append({"time": t, "side": s["side"], "strike": s["strike"], "level": s["level"] + s["tag"], "status": status, "regime": rg["regime"] if rg else None,
                         "grade": gr["grade"] if gr else None, "would": would})
@@ -223,7 +248,7 @@ def to_json(res, shift):
     """JSON-ready copy (times as HH:MM, chart marker times shifted like the candles)."""
     hm = lambda t: None if t is None else t.strftime("%H:%M")
     ep = lambda t: int(t.timestamp()) + shift
-    trades = [{**{k: v for k, v in tr.items() if k not in ("entry_time", "exit_time", "shifts")},
+    trades = [{**{k: v for k, v in tr.items() if k not in ("entry_time", "exit_time", "shifts", "setup_time")}, "setup_time": hm(tr.get("setup_time")),
                "shifts": [{"when": hm(x["time"]), "time": ep(x["time"]), "reach": None if x.get("reach") is None else round(x["reach"] * 100), "lock": round(x["lock"] * 100), "stop": round(x["stop"], 2), "why": x.get("why")} for x in tr.get("shifts", [])], "entry_time": hm(tr["entry_time"]), "exit_time": hm(tr["exit_time"]),
                "entry": round(tr["entry"], 2), "target": round(tr["target"], 2), "stop": round(tr["stop"], 2), "stop_now": round(tr.get("stop_now", tr["stop"]), 2),
                "exit": None if tr["exit"] is None else round(tr["exit"], 2), "last": round(tr["last"], 2)} for tr in res["trades"]]
