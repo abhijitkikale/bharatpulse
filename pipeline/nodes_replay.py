@@ -14,6 +14,7 @@ import webbrowser
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import nodes_ledger  # noqa: E402
+import nodes_pull  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 NODES_DIR = ROOT / "data" / "nodes"
@@ -36,7 +37,7 @@ def build_data(nodes_dir=NODES_DIR, journal_dir=JOURNAL_DIR):
             "candles": [] if candles is None else [[t.strftime("%H:%M"), float(r.h), float(r.l), float(r.c)] for t, r in candles.iterrows()],
             "events": [{"time": e["time"], "k": e["k"], "outcome": e["outcome"], "role": e["role"], "pct": e["pct"], "sign": e["sign"]} for e in ev],
         })
-    return {"days": days, "summary": nodes_ledger.summarize(all_events), "events": len(all_events)}
+    return {"days": days, "summary": nodes_ledger.summarize(all_events), "events": len(all_events), "pull": nodes_pull.build_summary(nodes_dir, journal_dir)}
 
 
 PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Node replay</title>
@@ -70,6 +71,14 @@ function summaryHtml(){
   Object.entries(S.groups).forEach(([t,rs])=>{h+=`<div class="col card"><h2>${t}</h2><table><tr><th></th><th>n</th><th>held</th><th>passed</th><th>chop</th></tr>${rows(rs)}</table></div>`});
   return h+'</div>';
 }
+function pullHtml(){
+  const P=D.pull;if(!P||!P.days)return '';
+  const tab=h=>{const H=P.horizons[h];return `<div class="col card"><h2>${h} minutes later</h2><table><tr><th></th><th>closer</th><th>avg pts</th><th>touched</th></tr>${H.rows.map(r=>`<tr${r.level==='king'?' style="font-weight:700"':''}><td>${r.label}</td><td>${r.closer}%</td><td>${r.gain>0?'+':''}${r.gain}</td><td>${r.touched}%</td></tr>`).join('')}</table><div class="note">${H.n} readings, about ${H.independent} independent windows</div></div>`};
+  let h=`<div class="card"><h2>King pull scoreboard: does price drift toward the King?</h2><div class="note">For each reading: was price closer to the level some minutes later than at the reading (closer), by how many points on average, and did it touch the level in that time (touched). The other rows are controls: if price drifts toward them as much as toward the King, the King is not special. Readings two minutes apart overlap, so only the independent windows count as evidence.</div>
+  <div class="note" style="margin-top:8px"><b>Verdict:</b> ${P.verdict}</div></div><div class="row">${tab(15)}${tab(30)}${tab(60)}</div><div class="row">`;
+  Object.entries(P.splits).forEach(([t,rs])=>{if(!rs.length)return;h+=`<div class="col card"><h2>${t} (30 minutes)</h2><table><tr><th></th><th>windows</th><th>King closer</th><th>King pts</th><th>control closer</th><th>control pts</th></tr>${rs.map(r=>`<tr><td>${r.label}</td><td>${r.independent}</td><td>${r.king_closer}%</td><td>${r.king_gain>0?'+':''}${r.king_gain}</td><td>${r.shift_closer}%</td><td>${r.shift_gain>0?'+':''}${r.shift_gain}</td></tr>`).join('')}</table><div class="note">control = the King moved 50 points either way; windows = independent</div></div>`});
+  return h+'</div>';
+}
 function draw(){
   if(!D.days.length){app.innerHTML='<div class="card empty">No saved days yet. The nodes agent saves a reading every 2 minutes in market hours from the first live session; the replay and the ledger appear after that day.</div>';return}
   const sel=window.__day||D.days.length-1,day=D.days[sel];
@@ -77,7 +86,7 @@ function draw(){
    <button id="play">▶ Play</button><input id="sl" type="range" min="0" max="${day.readings.length-1}" value="0"><span id="tm" style="min-width:5em;font-weight:700"></span></div>
    <div class="kv" id="kv"></div></div>
    <div class="row"><div class="col card"><h2>Price and approaches</h2><canvas id="cv" height="380"></canvas><div class="note"><span class="pill" style="background:var(--up)">held</span> <span class="pill" style="background:var(--dn)">passed</span> <span class="pill" style="background:#8b97a8">chop</span> dots sit at the node's strike when price approached it.</div></div>
-   <div class="col card" style="flex:0 1 420px"><h2>Nodes at this reading</h2><canvas id="bars" height="380"></canvas></div></div>`+summaryHtml();
+   <div class="col card" style="flex:0 1 420px"><h2>Nodes at this reading</h2><canvas id="bars" height="380"></canvas></div></div>`+pullHtml()+summaryHtml();
   $('#dsel').onchange=e=>{window.__day=+e.target.value;stop();draw()};
   const sl=$('#sl');let timer=null;
   function stop(){if(timer){clearInterval(timer);timer=null;const b=$('#play');if(b)b.textContent='▶ Play'}}

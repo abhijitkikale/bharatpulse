@@ -45,7 +45,10 @@ def load_candles(day, journal_dir):
         if not rows:
             return None
         idx = [pd.Timestamp(f"{day} {r[0]}", tz="Asia/Kolkata") for r in rows]
-        return pd.DataFrame([[r[1], r[2], r[3], r[4]] for r in rows], columns=["o", "h", "l", "c"], index=idx)
+        df = pd.DataFrame([[r[1], r[2], r[3], r[4]] for r in rows], columns=["o", "h", "l", "c"], index=idx)
+        if all(len(r) > 5 for r in rows):
+            df["v"] = [float(r[5] or 0) for r in rows]                # volume, used for the VWAP control of the King pull scoreboard
+        return df
     except (OSError, ValueError):
         return None
 
