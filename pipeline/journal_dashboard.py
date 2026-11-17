@@ -9,10 +9,14 @@ import argparse
 import json
 import pathlib
 import sys
+import time
 import webbrowser
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FOLDER = ROOT / "data" / "journal"
+NODES = ROOT / "data" / "nodes"
+NOTES = ROOT / "data" / "journal_notes.json"          # {"2026-11-17": ["a paragraph", ...]}: your own notes, shown under that day's King analysis
 OUT = ROOT / "data" / "journal_dashboard.html"
 SETTINGS = ROOT / "data" / "journal_settings.json"     # {"capital": 25000, "lot": 65}: rupee results = (exit - entry) x lot; Nifty lot is 65 (NSE circular FAOP70616, from Jan 2026)
 DEFAULTS = {"capital": 25000, "lot": 65, "from": "2026-11-11"}      # "from": the first day the page shows; earlier journal files stay on disk, they are only left out
@@ -40,6 +44,36 @@ def load_days(folder=FOLDER, start=None):
     return days
 
 
+def load_notes(path=NOTES):
+    try:
+        d = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+        return {k: ([v] if isinstance(v, str) else list(v)) for k, v in d.items()}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+_KING_CACHE = {}
+
+
+def king_data(nodes_dir, folder, start=None):
+    """{"days": {date: analysis}, "pull": summary of the King pull scoreboard} from the nodes agent's saved days; empty when there are none (or on any problem)."""
+    key = (str(nodes_dir), str(folder), start, tuple((f.name, f.stat().st_size, f.stat().st_mtime_ns) for d_ in (nodes_dir, folder) if pathlib.Path(d_).exists() for f in sorted(pathlib.Path(d_).glob("????-??-??.json*"))))
+    c = _KING_CACHE
+    if c.get("key") == key or (c.get("key") and c["key"][:3] == key[:3] and time.time() - c["at"] < 120):
+        return c["val"]                                             # nothing changed (or the last analysis is under 2 minutes old): do not redo it at every journal save
+    try:
+        import king_journal
+        import nodes_pull
+        days = {d: a for d, a in king_journal.all_days(nodes_dir, folder).items() if not start or d >= start}
+        pull = nodes_pull.build_summary(nodes_dir, folder) if days else None
+        if pull:
+            pull = {"verdict": pull["verdict"], "days": pull["days"], "horizons": {h: {"n": v["n"], "independent": v["independent"], "rows": v["rows"]} for h, v in pull["horizons"].items()}}
+        _KING_CACHE.update(key=key, at=time.time(), val={"days": days, "pull": pull})
+        return _KING_CACHE["val"]
+    except Exception:           # the journal must always build, with or without the King analysis
+        return {"days": {}, "pull": None}
+
+
 def load_settings():
     s = dict(DEFAULTS)
     try:
@@ -49,15 +83,20 @@ def load_settings():
     return s
 
 
-def build_html(folder=FOLDER):
+def build_html(folder=FOLDER, nodes_dir=NODES, notes=NOTES):
     cfg = load_settings()
-    data = json.dumps({"days": load_days(folder, cfg.get("from")), "settings": cfg}, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
+    days = load_days(folder, cfg.get("from"))
+    kd, nt = king_data(nodes_dir, folder, cfg.get("from")), load_notes(notes)
+    for d in days:
+        d["king"] = kd["days"].get(d["date"])
+        d["notes"] = nt.get(d["date"], [])
+    data = json.dumps({"days": days, "settings": cfg, "pull": kd["pull"]}, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
     return TEMPLATE.replace("__DATA__", data)
 
 
-def write_file(folder=FOLDER, out=OUT):
+def write_file(folder=FOLDER, out=OUT, nodes_dir=NODES, notes=NOTES):
     out = pathlib.Path(out)
-    out.write_text(build_html(folder), encoding="utf-8")
+    out.write_text(build_html(folder, nodes_dir, notes), encoding="utf-8")
     return out
 
 
@@ -148,6 +187,7 @@ tr.taken td{background:var(--soft)}
 <section class="panel"><div class="mhead"><div class="nav"><button class="btn" id="prev" aria-label="Previous month">&lsaquo;</button><span class="t" id="mname"></span><button class="btn" id="next" aria-label="Next month">&rsaquo;</button></div><div id="msum" class="num"></div></div><div class="cal" id="cal"></div><div class="legend"><span>Each box is one trading day: result in rupees and number of trades. Click a day for its details.</span></div></section>
 <section><h2>Overall</h2><div class="band small" id="stats"></div></section>
 <section class="panel"><h2>Rules scoreboard <span class="sub" style="font-weight:400">testing: what each rule kept out, and how the taken trades did by grade</span></h2><div class="tablewrap" id="score"></div></section>
+<section class="panel"><h2>King pull <span class="sub" style="font-weight:400">does price drift toward the King node? all journaled days together</span></h2><div id="pull"></div></section>
 <section class="panel"><h2>Result after each trade</h2><div class="chartbox" id="curve"></div></section>
 <section class="panel"><h2>All days</h2><div class="tablewrap"><table id="all"></table></div></section>
 </div>
@@ -184,6 +224,8 @@ function chart(d){
   d.trades.forEach(t=>{ if(!t.entry_time||!t.exit_time) return; const a=x(mins(t.entry_time)), b=Math.max(x(mins(t.exit_time)),a+3);
     s+=`<rect x="${a}" y="${T}" width="${b-a}" height="${ih}" fill="${(t.result==='TARGET'||t.result==='TRAIL')?'var(--up)':'var(--dn)'}" opacity=".13"><title>Trade ${t.n}: ${t.entry_time} to ${t.exit_time}, ${pct(t.pnl_pct)}</title></rect>`; });
   lv.forEach(([k,v])=>{ s+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--vio)" stroke-dasharray="5 4" opacity=".7"/><text x="${W-R+6}" y="${y(v)+4}" style="fill:var(--vio)">${k} ${Math.round(v)}</text>`; });
+  if(d.king) d.king.king_steps.forEach(([a,b,k,sg])=>{ if(k<lo||k>hi) return; const xa=x(Math.max(mins(a),0)), xb=x(Math.min(mins(b),n)); if(xb<=xa) return;
+    s+=`<line x1="${xa}" x2="${xb}" y1="${y(k)}" y2="${y(k)}" stroke="${sg==='+'?'var(--amb)':'var(--vio)'}" stroke-width="5" opacity=".75"><title>King ${k} ${sg==='+'?'(positive)':'(negative)'} ${a} to ${b}</title></line>`; });
   s+=`<polyline fill="none" stroke="var(--acc)" stroke-width="1.6" points="${cs.map((c,i)=>x(i).toFixed(1)+','+y(c[3]).toFixed(1)).join(' ')}"/>`;
   d.setups.forEach(q=>{ const m=mins(q.time); if(m<0||m>=n) return; const taken=q.status.startsWith('TRADE'); const c=cs[Math.min(m,cs.length-1)]; const px=x(m), py=y(c[3]); const up=q.side==='CALL', col=up?'var(--up)':'var(--dn)';
     const tri = up ? `${px},${py+4} ${px-6},${py+15} ${px+6},${py+15}` : `${px},${py-4} ${px-6},${py-15} ${px+6},${py-15}`;
@@ -243,6 +285,34 @@ function levels(d){
   return `<div class="kv num">${e.map(([k,v])=>`<span>${esc(k)}</span><span>${v}</span>`).join('')}</div>`;
 }
 
+function kingHtml(d){
+  const K=d.king; if(!K&&!(d.notes&&d.notes.length)) return '';
+  let h='<h2 style="margin-top:18px">King analysis <span class="sub" style="font-weight:400">the largest gamma node: where it was, what price did at it, and whether price drifted toward it</span></h2>';
+  if(K){
+    h+=`<ul style="margin:0 0 10px;padding-left:20px">${K.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ul>`;
+    const cell=c=>!c?'':c.reached?`${c.time} &middot; ${c.o.toFixed(0)}/${c.h.toFixed(0)}/${c.l.toFixed(0)}/${c.c.toFixed(0)} &middot; from ${c.from}, closed ${c.closed}`:c.time?`closest ${c.closest} pts at ${c.time} (${c.o.toFixed(0)}/${c.h.toFixed(0)}/${c.l.toFixed(0)}/${c.c.toFixed(0)})`:'no candle';
+    const res=c=>!c||!c.reached?'<span class="chip mut">not reached</span>':c.outcome==='held'?'<span class="chip tgt">held, turned back</span>':c.outcome==='passed'?'<span class="chip stp">went through</span>':'<span class="chip mut">chop</span>';
+    h+=`<div class="tablewrap"><table><thead><tr><th>King</th><th>From</th><th>To</th><th>Min</th><th>Price at start &rarr; end</th><th title="Positive: price ended closer to the King than it started">Toward King</th><th title="The candle that first came within 15 points of the King (open/high/low/close), or the closest one">King's candle</th><th>Result</th></tr></thead><tbody>${K.runs.map(r=>`<tr><td class="num"><b>${r.king}</b> <span class="chip ${r.sign==='+'?'open':'mut'}">${r.sign==='+'?'+':'&minus;'}</span></td><td class="num">${r.from}</td><td class="num">${r.to}</td><td class="num">${r.minutes}</td><td class="num">${r.spot_start.toFixed(0)} &rarr; ${r.spot_end.toFixed(0)}</td><td class="num ${r.toward>0?'up':r.toward<0?'dn':''}">${r.toward>0?'+':''}${r.toward}</td><td class="num" style="white-space:normal">${cell(r.candle)}</td><td>${res(r.candle)}</td></tr>`).join('')}</tbody></table></div>`;
+    const P=K.pull; const hs=['15','30','60'].filter(x=>P[x]);
+    const pc=(r)=>r?r.closer+'% &middot; '+(r.gain>0?'+':'')+r.gain:'';
+    if(hs.length) h+=`<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Drift toward the King</th>${hs.map(x=>`<th>${x} min later</th>`).join('')}</tr></thead><tbody>
+      <tr><td>King: closer, average points</td>${hs.map(x=>`<td class="num"><b>${pc(P[x].king)}</b></td>`).join('')}</tr>
+      <tr><td>Control: King moved 50 points either way</td>${hs.map(x=>`<td class="num">${pc(P[x].shift50)}</td>`).join('')}</tr>
+      <tr><td>Control: day's VWAP</td>${hs.map(x=>`<td class="num">${pc(P[x].vwap)}</td>`).join('')}</tr>
+      <tr><td>Independent windows</td>${hs.map(x=>`<td class="num">${P[x].independent} (${P[x].n} readings)</td>`).join('')}</tr></tbody></table></div>`;
+    h+=`<div class="foot" style="margin-top:6px">${K.flickers} short flicker${K.flickers===1?'':'s'} (under about 6 minutes) are left out of the table but drawn on the chart. Thick chart line: amber = positive King, violet = negative King. Readings come from the nodes agent every 2 minutes.</div>`;
+  }
+  if(d.notes&&d.notes.length) h+=`<div style="margin-top:10px">${d.notes.map(n=>`<p style="margin:6px 0">${esc(n)}</p>`).join('')}</div>`;
+  return h;
+}
+function pullPanel(){
+  const P=DATA.pull; if(!P||!P.days) return '<div class="empty">No King data yet.</div>';
+  const row=(h)=>{const H=P.horizons[h]; if(!H||!H.rows.length) return ''; const k=H.rows.find(r=>r.level==='king'), c=H.rows.filter(r=>r.level!=='king'), best=c.length?c.reduce((a,b)=>b.gain>a.gain?b:a):null;
+    return `<tr><td>${h} minutes later</td><td class="num"><b>${k.closer}%</b></td><td class="num ${k.gain>=0?'up':'dn'}">${k.gain>0?'+':''}${k.gain}</td><td class="num">${k.touched}%</td><td>${best?esc(best.label):''}</td><td class="num">${best?best.closer+'%':''}</td><td class="num">${best?(best.gain>0?'+':'')+best.gain:''}</td><td class="num">${H.independent}</td></tr>`};
+  const tr=days.flatMap(d=>(d.king&&d.king.trades)||[]), g=a=>{const v=a.filter(t=>t.pnl_pct!=null);return v.length?`${v.length} trades, average ${(v.reduce((s,t)=>s+t.pnl_pct,0)/v.length)>0?'+':''}${(v.reduce((s,t)=>s+t.pnl_pct,0)/v.length).toFixed(1)}%, ${v.filter(t=>t.pnl_pct>0).length} winners`:'none'};
+  const dirLine=tr.length?`<div class="foot" style="margin-top:6px">Taken trades pointing toward the King: ${g(tr.filter(t=>t.with_king))}. Pointing away from it: ${g(tr.filter(t=>!t.with_king))}.</div>`:'';
+  return `<div class="tablewrap"><table><thead><tr><th>All journaled days</th><th>King: closer</th><th>avg pts</th><th>touched</th><th>Best control</th><th>closer</th><th>avg pts</th><th>Independent windows</th></tr></thead><tbody>${row('15')}${row('30')}${row('60')}</tbody></table></div><div class="foot" style="margin-top:6px">${esc(P.verdict)} Full tables with the other controls and splits: Node replay.</div>${dirLine}`;
+}
 let LVSHOWN = false, view = '', mon = '';
 const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const byDate = {}; days.forEach(d=>byDate[d.date]=d);
@@ -315,11 +385,12 @@ function dayview(){
   $('day').innerHTML = `<div class="dayhead"><div><div class="t">${wk(d.date)} ${d.date.slice(0,4)} &middot; ${esc(d.symbol)}</div><div class="pills"><span class="pill">Levels from the ${esc(d.close||'?')} close</span><span class="pill ${opWarn?'warn':''}">Opening candles: ${esc(op||'n/a')}</span><span class="pill">${d.trades.length} trade${d.trades.length===1?'':'s'} &middot; ${d.setups.length} setups</span></div></div><div style="text-align:right"><div class="t ${cls(dayRs(d))} num">${rs(dayRs(d))}</div><div class="sub num">${(dayRs(d)/CAP*100>0?'+':'')}${(dayRs(d)/CAP*100).toFixed(1)}% of capital &middot; ${pct(d.total)} on premiums</div></div></div>
   <div class="chartbox" style="margin-top:12px">${ch}</div>
   <div class="legend"><span>Line: index close, 1-minute</span><span>Shaded: a trade was open</span><span>&#9650; &#9660; filled: setup taken &middot; hollow: setup not taken</span>${LVSHOWN ? '<span style="color:var(--vio)">Dashed: end-of-day levels near the day range</span>' : '<span>No end-of-day level was near the day range</span>'}</div>
+  <div class="legend">${d.king?'<span><b style="color:var(--amb)">&#9473;</b> King, positive</span><span><b style="color:var(--vio)">&#9473;</b> King, negative</span>':''}</div>
   <h2 style="margin-top:18px">Trades</h2><div class="cards">${d.trades.length?d.trades.map(card).join(''):'<div class="empty">No trade was taken.</div>'}</div>
-  <div class="two" style="margin-top:18px"><div><h2>Setups, in time order</h2><div class="tablewrap">${setups(d)}</div></div><div><h2>Levels the page used</h2>${levels(d)}</div></div>`;
+  <div class="two" style="margin-top:18px"><div><h2>Setups, in time order</h2><div class="tablewrap">${setups(d)}</div></div><div><h2>Levels the page used</h2>${levels(d)}</div></div>${kingHtml(d)}`;
 }
 function alltable(){
-  $('score').innerHTML = scoreHtml(days);
+  $('score').innerHTML = scoreHtml(days); $('pull').innerHTML = pullPanel();
   $('all').innerHTML = `<thead><tr><th>Date</th><th>Trades</th><th>Target</th><th>Trail</th><th>Stop</th><th>Result</th><th>% of capital</th><th>Opening candles</th></tr></thead><tbody>${days.map(d=>`<tr class="row" tabindex="0" data-d="${d.date}"><td>${wk(d.date)} ${d.date.slice(0,4)}</td><td class="num">${d.trades.length}</td><td class="num">${d.trades.filter(t=>t.result==='TARGET').length}</td><td class="num">${d.trades.filter(t=>t.result==='TRAIL').length}</td><td class="num">${d.trades.filter(t=>t.result==='STOP').length}</td><td class="num ${cls(dayRs(d))}">${rs(dayRs(d))}</td><td class="num ${cls(dayRs(d))}">${pct(dayRs(d)/CAP*100)}</td><td>${esc(d.opening||'n/a')}</td></tr>`).join('')}</tbody>`;
   $('all').querySelectorAll('tr.row').forEach(r=>{const f=()=>go(r.dataset.d);r.onclick=f;r.onkeydown=e=>{if(e.key==='Enter')f();};});
 }
