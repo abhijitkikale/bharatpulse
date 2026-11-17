@@ -182,7 +182,7 @@ tr.taken td{background:var(--soft)}
 @media (max-width:640px){.cell{min-height:64px;padding:4px 5px}.cell .r{font-size:12px}.cell .n{display:none}}
 .band.small{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 </style></head><body><div class="wrap">
-<header><div><h1>Trading Journal</h1><div class="sub">Paper trades from the BharatPulse stream page. +40% target, &minus;10% stop that trails up (+20% &rarr; +5%, +30% &rarr; +15%, +35% &rarr; +30%); trades entered from 13:00: +20% target, &minus;7% stop, trailing +10% &rarr; +5% and +15% &rarr; +10%; no trade in the first 10 minutes (before 9:25), one trade at a time, one lot of 65 on a &#8377;25,000 capital. A record of what the rules did, not advice. <a href="/nodes-replay" style="color:inherit">Node replay and reaction ledger</a> (opens when the stream page is running).</div></div></header>
+<header><div><h1>Trading Journal</h1><div class="sub">Paper trades from the BharatPulse stream page. +40% target, &minus;10% stop that trails up (+20% &rarr; +5%, +30% &rarr; +15%, +35% &rarr; +30%); the same rules all day from 18 Nov (until 17 Nov, trades entered from 13:00 used a +20% target, &minus;7% stop and trailing +10% &rarr; +5%, +15% &rarr; +10%); in negative gamma a trade against the session trend is skipped; no trade in the first 10 minutes (before 9:25), one trade at a time, one lot of 65 on a &#8377;25,000 capital. A record of what the rules did, not advice. <a href="/nodes-replay" style="color:inherit">Node replay and reaction ledger</a> (opens when the stream page is running).</div></div></header>
 <div id="home" class="wrap" style="gap:18px">
 <section class="panel"><div class="mhead"><div class="nav"><button class="btn" id="prev" aria-label="Previous month">&lsaquo;</button><span class="t" id="mname"></span><button class="btn" id="next" aria-label="Next month">&rsaquo;</button></div><div id="msum" class="num"></div></div><div class="cal" id="cal"></div><div class="legend"><span>Each box is one trading day: result in rupees and number of trades. Click a day for its details.</span></div></section>
 <section><h2>Overall</h2><div class="band small" id="stats"></div></section>
@@ -207,7 +207,7 @@ const cls = x => x>0 ? 'up' : x<0 ? 'dn' : '';
 const wk = d => new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
 const mins = hm => { const [h,m]=hm.split(':').map(Number); return h*60+m-(9*60+15); };
 const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function status(s){ if(s.startsWith('TRADE')) return ['Taken','tgt']; if(s.startsWith('ignored')) return ['Ignored: a trade was open','mut']; if(s.startsWith('no new trade')) return ['After the 14:45 cutoff','mut']; if(s.startsWith('not taken')) return [s.includes('against the move')?'Against the move in negative gamma':s.replace('not taken: ','Not taken: '),'mut']; if(s.startsWith('no trade before')) return ['In the first 10 minutes (no trade)','mut']; return [s,'mut']; }
+function status(s){ if(s.startsWith('TRADE')) return ['Taken','tgt']; if(s.startsWith('ignored')) return ['Ignored: a trade was open','mut']; if(s.startsWith('no new trade')) return ['After the 14:45 cutoff','mut']; if(s.startsWith('not taken')) return [(s.includes('against the move')||s.includes('against the session trend'))?'Against the session trend in negative gamma'+(s.includes('trending up')?' (session up)':s.includes('trending down')?' (session down)':''):s.replace('not taken: ','Not taken: '),'mut']; if(s.startsWith('no trade before')) return ['In the first 10 minutes (no trade)','mut']; return [s,'mut']; }
 function chart(d){
   const W=1000,H=320,L=56,R=84,T=14,B=26, n=375, iw=W-L-R, ih=H-T-B;
   const cs = d.candles; if(!cs.length) return '<div class="empty">No index candles were saved for this day.</div>';
@@ -253,7 +253,7 @@ function card(t){
 function scoreHtml(days){
   const st=(a)=>{const v=a.filter(x=>x!=null&&isFinite(x));if(!v.length)return null;const w=v.filter(x=>x>0).length,sum=v.reduce((p,c)=>p+c,0);return {n:v.length,w,avg:sum/v.length,sum}};
   const cell=(x)=>x?`<td class="num">${x.n}</td><td class="num">${Math.round(x.w/x.n*100)}%</td><td class="num ${x.avg>=0?'up':'dn'}">${x.avg>=0?'+':''}${x.avg.toFixed(1)}%</td><td class="num ${x.sum>=0?'up':'dn'}">${x.sum>=0?'+':''}${x.sum.toFixed(1)}%</td>`:'<td class="num" colspan="4" style="color:var(--mut)">no results yet</td>';
-  const taken=[],byGrade={A:[],B:[],C:[]},kept={'Before 09:25 (first 10 minutes)':[],'Against the move in negative gamma':[],'Node rules (min grade, blocked, midpoint)':[],'After the daily limit (5 trades or -30%)':[],'Entry trigger: option never crossed the setup high':[]};
+  const taken=[],byGrade={A:[],B:[],C:[]},kept={'Before 09:25 (first 10 minutes)':[],'Against the session trend in negative gamma':[],'Node rules (min grade, blocked, midpoint)':[],'After the daily limit (5 trades or -30%)':[],'Entry trigger: option never crossed the setup high':[]};
   days.forEach(d=>{
     d.trades.forEach(t=>taken.push(t.pnl_pct));
     (d.setups||[]).forEach(q=>{
@@ -261,7 +261,7 @@ function scoreHtml(days){
       if(s.startsWith('TRADE')){const t=d.trades.find(x=>x.n===+s.slice(6));if(t&&q.grade&&byGrade[q.grade])byGrade[q.grade].push(t.pnl_pct)}
       else if(q.would_pct!=null){
         if(s.startsWith('no trade before'))kept['Before 09:25 (first 10 minutes)'].push(q.would_pct);
-        else if(s.includes('against the move'))kept['Against the move in negative gamma'].push(q.would_pct);
+        else if(s.includes('against the move')||s.includes('against the session trend'))kept['Against the session trend in negative gamma'].push(q.would_pct);
         else if(s.includes('never crossed'))kept['Entry trigger: option never crossed the setup high'].push(q.would_pct);
         else if(s.startsWith('daily'))kept['After the daily limit (5 trades or -30%)'].push(q.would_pct);
         else if(s.startsWith('not taken'))kept['Node rules (min grade, blocked, midpoint)'].push(q.would_pct);

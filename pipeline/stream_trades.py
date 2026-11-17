@@ -33,22 +33,44 @@ def _hm(t):
     return (t.hour, t.minute)
 
 
-# Rules by the time a trade is ENTERED (it keeps them until it closes). From 13:00 IST: target +20%, stop -7%, and the stop trails at +10% (to +5%) and +15% (to +10%).
-RULES = (((0, 0), {"target": TARGET, "stop": STOP, "trail": TRAIL, "name": "morning"}),
-         ((13, 0), {"target": 0.20, "stop": 0.07, "trail": ((0.15, 0.10), (0.10, 0.05)), "name": "afternoon"}))
+# Rules by the time a trade is ENTERED (it keeps them until it closes). One set all day: target +40%, stop -10%, trailing as above.
+# The tighter afternoon set (from 13:00 IST: target +20%, stop -7%, trailing +10% -> +5% and +15% -> +10%) was used until 17 Nov and was switched off at the
+# owner's request; AFTERNOON_RULES = True brings it back.
+MORNING = ((0, 0), {"target": TARGET, "stop": STOP, "trail": TRAIL, "name": "morning"})
+AFTERNOON = ((13, 0), {"target": 0.20, "stop": 0.07, "trail": ((0.15, 0.10), (0.10, 0.05)), "name": "afternoon"})
+AFTERNOON_RULES = False
 # Entry confirmation: a setup becomes a trade only when the OPTION's price trades above the high of the setup candle (a buy-stop at that high), within
 # ENTRY_WINDOW_MIN minutes. The entry price is that high (or the candle's open when it gaps above it); stop, target and trailing are measured from it.
 ENTRY_TRIGGER = True
 ENTRY_WINDOW_MIN = 5
-CONTRA_IN_NEGATIVE = True   # in NEGATIVE gamma a setup against the move (CALL below the gamma flip, PUT above it) is listed, not traded
+CONTRA_IN_NEGATIVE = True   # in NEGATIVE gamma a setup against the session trend (CALL in a down session, PUT in an up session) is listed, not traded
+TREND_BAND_PTS = 10.0       # the session counts as trending up (down) when the index is at least this many points above (below) its session VWAP AND above (below) the session open
 REGIME_BUFFER = 0.05        # when the gamma regime turns against an open trade that is in profit, its stop moves up to 5% below the current premium
 
 
+def session_trend(price, vwap, session_open):
+    """+1 when the session is trending up, -1 when it is trending down, 0 when it is not clear (or a value is missing): the index is at least TREND_BAND_PTS
+    away from the session VWAP on the same side as the session open."""
+    try:
+        price, vwap, session_open = float(price), float(vwap), float(session_open)
+    except (TypeError, ValueError):
+        return 0
+    if price != price or vwap != vwap or session_open != session_open:
+        return 0
+    if price >= vwap + TREND_BAND_PTS and price > session_open:
+        return 1
+    if price <= vwap - TREND_BAND_PTS and price < session_open:
+        return -1
+    return 0
+
+
 def _contra(s, rg):
-    """True when setup s goes against the move in negative gamma. rg: {"regime": "POSITIVE"/"NEGATIVE", "side": -1 below / +1 above the live flip, 0 unknown} or None."""
-    if not CONTRA_IN_NEGATIVE or not rg or rg.get("regime") != "NEGATIVE" or not rg.get("side"):
+    """True when setup s goes against the session trend in negative gamma (negative gamma means directional moves: they are expected to continue the way the session
+    is trending, so a CALL in a down session or a PUT in an up session is skipped). rg: {"regime": "POSITIVE"/"NEGATIVE", "trend": +1 up / -1 down / 0 unclear} or None.
+    No regime or no clear trend: nothing is blocked."""
+    if not CONTRA_IN_NEGATIVE or not rg or rg.get("regime") != "NEGATIVE" or not rg.get("trend"):
         return False
-    return (s["side"] == "CALL" and rg["side"] < 0) or (s["side"] == "PUT" and rg["side"] > 0)
+    return (s["side"] == "CALL" and rg["trend"] < 0) or (s["side"] == "PUT" and rg["trend"] > 0)
 
 
 EARLIEST = (9, 25)      # no trade in the first 10 minutes after the 09:15 open (the setup is still listed, as "no trade before 9:25")
@@ -73,11 +95,9 @@ def _earliest(day):
 
 def rules_for(t):
     """The target / stop / trailing rules for a trade entered at time t."""
-    chosen = RULES[0][1]
-    if _regular(t.date()):
-        for start, r in RULES:
-            if _hm(t) >= start:
-                chosen = r
+    chosen = MORNING[1]
+    if AFTERNOON_RULES and _regular(t.date()) and _hm(t) >= AFTERNOON[0]:
+        chosen = AFTERNOON[1]
     return chosen
 
 
@@ -176,7 +196,7 @@ def _grade_rule(g, rules):
 
 def run_trades(setups, option_frame, cutoff=None, regime_at=None, grade_of=None, rules=None, paused_at=None):
     """setups: chronological list from stream_setups.find_setups. option_frame(setup) -> DataFrame of that contract's 1-minute candles or None.
-    regime_at(time) -> {"regime", "side"} or None (the live gamma regime at that time; None = unknown, then no regime rule applies).
+    regime_at(time) -> {"regime", "trend"} or None (the live gamma regime at that time and the session trend, +1 up / -1 down / 0 unclear; None = unknown, then no regime rule applies).
     grade_of(setup) -> {"grade", "flags"} or None: the nodes agent's grade of that setup; recorded on every signal, and with `rules` (min_grade, skip_blocked,
     skip_midpoint) it can keep a setup from being traded. paused_at(time) -> True while you have paused new entries (Telegram /pause): the setup is listed, not traded.
     Returns {"trades": [...], "signals": [...], "total_pct": float}; signals lists every setup with what happened to it."""
@@ -210,7 +230,7 @@ def run_trades(setups, option_frame, cutoff=None, regime_at=None, grade_of=None,
         elif paused_at and paused_at(t):
             status = "not taken: paused (you sent /pause)"
         elif _contra(s, rg):
-            status = "not taken: against the move in negative gamma"
+            status = f"not taken: against the session trend in negative gamma (session trending {'up' if rg['trend'] > 0 else 'down'})"
         elif _grade_rule(gr, rules):
             status = _grade_rule(gr, rules)
         else:

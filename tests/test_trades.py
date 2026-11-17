@@ -108,15 +108,35 @@ def test_trailing_stop_shifts_are_recorded_for_the_page_and_the_journal():
     assert [x["lock"] for x in j["trades"][0]["shifts"]] == [5, 15] and [m["text"] for m in j["markers"] if m["kind"] == "shift"] == ["T1 SL +5%", "T1 SL +15%"]
 
 
-def _rg(regime, side=-1):
-    return lambda ts: {"regime": regime, "side": side}
+def _rg(regime, trend=-1):
+    return lambda ts: {"regime": regime, "side": trend, "trend": trend}
+
+
+def test_session_trend_needs_a_clear_move_away_from_vwap_on_the_side_of_the_open():
+    st = stream_trades.session_trend
+    assert st(25300, 25280, 25200) == 1 and st(25100, 25130, 25200) == -1
+    assert st(25285, 25280, 25200) == 0 and st(25295, 25280, 25300) == 0         # inside the 10-point band, or on the wrong side of the open: unclear
+    assert st(25300, None, 25200) == 0 and st(float("nan"), 25280, 25200) == 0
+
+
+def test_in_negative_gamma_only_trades_against_the_session_trend_are_skipped():
+    df = _opt([[100, 100, 100, 100], [100, 100, 99, 100]])
+    f = lambda s: df
+    up, down, unclear = _rg("NEGATIVE", 1), _rg("NEGATIVE", -1), _rg("NEGATIVE", 0)
+    assert stream_trades.run_trades([_setup(0, "CALL")], f, regime_at=up)["signals"][0]["status"] == "TRADE 1"              # a rising session: the CALL goes with it
+    r = stream_trades.run_trades([_setup(0, "PUT")], f, regime_at=up)
+    assert not r["trades"] and r["signals"][0]["status"] == "not taken: against the session trend in negative gamma (session trending up)"
+    assert stream_trades.run_trades([_setup(0, "CALL")], f, regime_at=down)["signals"][0]["status"].endswith("(session trending down)")
+    assert stream_trades.run_trades([_setup(0, "PUT")], f, regime_at=down)["signals"][0]["status"] == "TRADE 1"
+    assert stream_trades.run_trades([_setup(0, "CALL")], f, regime_at=unclear)["signals"][0]["status"] == "TRADE 1"          # no clear trend: nothing is blocked
+    assert stream_trades.run_trades([_setup(0, "PUT")], f, regime_at=lambda ts: {"regime": "NEGATIVE", "side": -1})["signals"][0]["status"] == "TRADE 1"       # the flip side alone no longer blocks anything
 
 
 def test_contra_setups_are_not_traded_in_negative_gamma():
     df = _opt([[100, 100, 100, 100], [100, 100, 99, 100]])
     f = lambda s: df
     r = stream_trades.run_trades([_setup(0, "CALL")], f, regime_at=_rg("NEGATIVE", -1))      # below the flip in negative gamma: a CALL goes against the move
-    assert not r["trades"] and r["signals"][0]["status"] == "not taken: against the move in negative gamma" and r["signals"][0]["regime"] == "NEGATIVE"
+    assert not r["trades"] and r["signals"][0]["status"].startswith("not taken: against the session trend in negative gamma") and r["signals"][0]["regime"] == "NEGATIVE"
     assert stream_trades.run_trades([_setup(0, "PUT")], f, regime_at=_rg("NEGATIVE", -1))["signals"][0]["status"] == "TRADE 1"
     assert stream_trades.run_trades([_setup(0, "PUT")], f, regime_at=_rg("NEGATIVE", 1))["signals"][0]["status"].startswith("not taken")      # above the flip: PUT is against
     assert stream_trades.run_trades([_setup(0, "CALL")], f, regime_at=_rg("POSITIVE", -1))["signals"][0]["status"] == "TRADE 1"           # positive gamma: nothing is blocked
@@ -147,7 +167,16 @@ def _pm(rows, minute=5):
     return stream_trades.run_trades([s], lambda x: df)["trades"][0]
 
 
-def test_afternoon_rules_from_13_00_target_20_stop_7_and_trail_10_15():
+def test_the_afternoon_rules_are_off_and_a_trade_at_13_00_keeps_the_all_day_rules(monkeypatch):
+    assert stream_trades.AFTERNOON_RULES is False
+    t = _pm([[100, 121, 99, 118]])
+    assert t["rules"] == "morning" and t["tp_pct"] == 40 and t["sl_pct"] == 10 and t["status"] == "OPEN"            # +20% no longer ends the trade
+    t = _pm([[100, 100, 92.5, 95]])
+    assert t["status"] == "OPEN" and t["sl_pct"] == 10                                                                 # -7% no longer stops it; the stop is -10%
+
+
+def test_afternoon_rules_from_13_00_target_20_stop_7_and_trail_10_15(monkeypatch):
+    monkeypatch.setattr(stream_trades, "AFTERNOON_RULES", True)                                                       # the switch that brings the tighter afternoon set back
     t = _pm([[100, 121, 99, 118]])
     assert t["status"] == "TARGET" and t["pnl_pct"] == 20.0 and t["tp_pct"] == 20 and t["sl_pct"] == 7 and t["rules"] == "afternoon"
     t = _pm([[100, 100, 92.5, 95]])

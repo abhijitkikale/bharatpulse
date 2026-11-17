@@ -291,6 +291,18 @@ class Feed:
         there was no reading yet (the rules then do nothing)."""
         hist = self.readings(day)
         closes = df["c"]
+        try:                                                # the session trend: index vs the session VWAP and the session open (see stream_trades.session_trend)
+            daily_vwap = stream_levels.vwaps(df)[0]
+            session = df[[str(x) == str(day) for x in df.index.date]]
+            sess_open = float(session["o"].iloc[0]) if len(session) else None
+        except Exception:
+            daily_vwap, sess_open = None, None
+
+        def trend_at(ts, p):
+            try:
+                return stream_trades.session_trend(p, daily_vwap.asof(ts), sess_open)
+            except Exception:
+                return 0
 
         def regime_at(ts):
             h = [x for x in hist if x["time"] <= ts]
@@ -298,9 +310,10 @@ class Feed:
                 return None
             x = h[-1]
             p = float(closes.asof(ts))
+            tr = trend_at(ts, p)
             if x["flip"] is None or x["pos_above"] is None:
-                return {"regime": "POSITIVE" if x["pos"] else "NEGATIVE", "side": 0}
-            return {"regime": "POSITIVE" if (p > x["flip"]) == x["pos_above"] else "NEGATIVE", "side": 1 if p > x["flip"] else -1}
+                return {"regime": "POSITIVE" if x["pos"] else "NEGATIVE", "side": 0, "trend": tr}
+            return {"regime": "POSITIVE" if (p > x["flip"]) == x["pos_above"] else "NEGATIVE", "side": 1 if p > x["flip"] else -1, "trend": tr}
         return regime_at
 
     @staticmethod

@@ -184,7 +184,7 @@ function draw(s){
     else{
       tb.style.display='flex';
       const cur=T.trades.length?T.trades[T.trades.length-1]:null,pc=v=>(v>0?'+':'')+v.toFixed(1)+'%',mx=T.max_trades||5;
-      const rules='Until 13:00: target +40%, stop −10%, trailing +20%→+5%, +30%→+15%, +35%→+30%. From 13:00: target +20%, stop −7%, trailing +10%→+5%, +15%→+10%. No trade before 9:25, none after '+T.cutoff+'. Max '+mx+' trades a day.';
+      const rules='Target +40%, stop −10%, trailing +20%→+5%, +30%→+15%, +35%→+30%, all day. In negative gamma a trade against the session trend (CALL in a falling session, PUT in a rising one) is skipped. No trade before 9:25, none after '+T.cutoff+'. Max '+mx+' trades a day.';
       const wt=(T.signals||[]).filter(x=>x.status.startsWith('waiting')).slice(-1)[0];
       const wtTxt=wt?`<span style="color:#ffb300;font-weight:800" title="The trade starts only if the option's price trades above the high of the setup candle, within 5 minutes">⏳ ${wt.when} ${wt.side} ${wt.strike} ${wt.status.replace('waiting: ','')}</span>`:'';
       const sk=[...new Set((T.signals||[]).filter(x=>x.would).map(x=>`${x.when} ${x.side} ${x.would.pnl_pct>0?'+':''}${x.would.pnl_pct.toFixed(1)}%`))].slice(-2).join(' · ');
