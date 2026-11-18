@@ -22,7 +22,6 @@ Times below are India time (IST). The PC this runs on has its clock at IST minus
 13. [Entry confirmation and the TradingView alert log](#entry-confirmation-and-the-tradingview-alert-log-added-16-nov) · [TradingView connection check](#tradingview-connection-check-at-sign-in-added-16-nov)
 14. [King pull scoreboard](#king-pull-scoreboard-added-16-nov) · [King analysis in the journal](#king-analysis-in-the-trading-journal-added-17-nov) · [Trade rules changed on 17 Nov](#trade-rules-changed-on-17-nov-effective-18-nov) · [Journal frozen days](#the-journal-is-written-during-the-session-finished-days-are-frozen-18-nov)
 15. [Gamma nodes layer](#gamma-nodes-layer-the-nodes-agent-built-14-16-nov) · [Pages, templates and messages](#pages-templates-and-messages-where-each-lives) · [Telegram commands](#telegram-commands-your-private-chat-only) · [Change log](#change-log)
-16. [Porting to the US dashboards](#porting-to-the-us-dashboards-spy-live-and-the-us-eod-page)
 
 ## Strategy rules (current, 18 Nov 2026)
 This is the one place that lists every rule the paper-trade engine and the pages use. Constants are in `pipeline/stream_trades.py` unless another file is named. Times are IST. Everything here is a simulation in percentages of the option premium (no brokerage, taxes or slippage); the order router (below) is a separate, optional layer.
@@ -264,30 +263,3 @@ Design documents: `docs/superpowers/specs/`.
 | 16 Nov | Fyers 5,000-requests-a-day cap hit at 14:09: request counter, 15 s polling, nodes agent reads the page's candles; TradingView alert-log reader replaces the lossy relay; entry trigger (buy-stop above the setup candle's high, 5 minutes); trades booked from TradingView signals; TradingView connection check at sign-in; King pull scoreboard |
 | 17 Nov | King analysis in the journal; rule changes decided |
 | 18 Nov | **One exit rule set all day (afternoon set off); negative gamma skips trades against the session trend**; finished journal days frozen (a restart had overwritten 17 Nov, restored); full King graph per journal day; the cloud build's history-file push can no longer stop publishing |
-
-## Porting to the US dashboards (SPY live and the US EOD page)
-The US projects are separate folders: **`C:\Abhijit\investing\US Dashboard`** (live SPY page, IBKR read-only, port 8776, its own README and specs) and **`C:\Abhijit\investing\US Pulse`** (the end-of-day page, the BharatPulse equivalent). Status below is from their READMEs and `pipeline/stream_trades.py` on 18 Nov; check the code before you rely on it.
-
-**Unit mapping.** Every point-based constant becomes a percentage of price. The percentages below are the India constants at Nifty about 25,300 (the US nodes code already uses percentages, e.g. `BACK_PCT`, `ROOM_OK_PCT`):
-| India (points) | US (% of price) | | India (points) | US (% of price) |
-|---|---|---|---|---|
-| session trend band 10 | 0.04% | | King-shift controls 50 / 100 / 200 | 0.20% / 0.40% / 0.80% |
-| touch 5 | 0.02% (`TOUCH_PCT`) | | reaction ledger approach 15 | 0.06% |
-| backing node 30 | 0.12% | | reaction 25 | 0.10% |
-| room 50 | 0.20% | | re-arm 40 | 0.16% |
-| doji zone 12 | 0.05% (the US README uses $0.36) | | round-number control: nearest 100 | nearest $5 |
-Times: IST to ET as in the US README (09:25 to 09:40, 14:45 to 15:15, 15:29 to 15:59, early-close days by `us_calendar`). Lot 65 becomes 1 SPY option contract = 100 shares. The Tuesday weekly expiry has no SPY counterpart (SPY has a 0DTE option every day): replace "days to the weekly expiry" in the King pull splits with day of week or monthly opex, and note the Front column is always 0DTE.
-
-**What the US live dashboard already has:** entry trigger (`ENTRY_TRIGGER`, `entry_mode.json`), would-have results, nodes agent (King, gatekeeper, floor, ceiling, grades, orbs, heatmap, recorder), ATAS indicator, regime rules (flip-side contra, 5% buffer), daily limits, journal files. Safety rule: read-only, no orders ever (`tests/test_safety.py`); the order router, Fyers budget, TradingView relay / alert log / connection check and Telegram control are deliberately NOT ported.
-
-**To port from India to the US live dashboard (in this order):**
-1. **Exit rules:** one set all day. The US `RULES` still switches to target +20% / stop -7% from 13:15 ET; add `AFTERNOON_RULES = False` as in `pipeline/stream_trades.py` here, keep the US exit modes (`exit_mode.json`: premium, spy_stop, premium_20_40) as they are, and update `rules_text` and the page's rules line. Update the US README table row "afternoon rules from 13:00".
-2. **Negative gamma follows the session trend:** `session_trend(price, vwap, open)` with a band of 0.04% of price, `_contra` reads `rg["trend"]`, and the server's `regime_at` returns `trend` (daily VWAP from `stream_levels.vwaps`, session open from the first candle). Status text `not taken: against the session trend in negative gamma (session trending up|down)`; keep the tests that use `_rg(regime, trend)`.
-3. **Freeze finished journal days:** `stream_journal.write(doc, folder, force=False)` must not overwrite a day whose date is before today; otherwise a restart after a rule change silently re-simulates old days (this happened here on 18 Nov). Existing US journals are already affected by the entry-mode date logic, so check which days it protects.
-4. **Reaction ledger, node replay page, King pull scoreboard:** copy `pipeline/nodes_ledger.py`, `pipeline/nodes_pull.py`, `pipeline/nodes_replay.py` with the unit mapping above; the readings format is the same (`data/nodes/YYYY-MM-DD.jsonl`), candles come from the journal.
-5. **Journal page with the King analysis:** the US has no journal page yet ("journal calendar page" was left out). Port `pipeline/journal_dashboard.py` (calendar, stats, rules scoreboard, day pages with the King graph, King pull panel, notes file) and `pipeline/king_journal.py`; dollars per contract (x100) replace rupees per lot, and the capital in `journal_settings.json` changes.
-6. **Alerts and Telegram** (only if Telegram is added to the US project): message templates in `pipeline/stream_alerts.py` (no order-ticket line, since nothing is ordered).
-
-**US EOD page (US Pulse):** it has the equity / ETF / sector tabs but no Options tab, GEX, levels text or nodes. To match the India dashboard: an Options tab (open interest by strike, max pain, put-call ratio, GEX walls and flip, profile) and the **Tomorrow's nodes** card (`pipeline/eod_nodes.py` here: nodes for the next session from the close chain, King / gatekeeper / floor / ceiling, expected move from the front ATM IV), fed by the live project's IBKR chain at 15:50 ET (the live project's `us_eod.py` already saves next-session levels in `data/stream_eod/`). Keep the cloud-build lesson: the workflow's history-file push must not be fatal and must retry after a rebase.
-
-**Checklist when you change a rule in either project:** change the constant and the status text, the page's rules line, the journal header and scoreboard labels, this README section and the change log, add a test for the new status and one for the old behaviour behind its switch, run the whole suite (`python -m pytest -q tests`, not plain `pytest`), and never let the change touch saved journal days.
