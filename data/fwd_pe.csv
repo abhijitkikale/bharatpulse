@@ -31,6 +31,7 @@ date,index,fpe
 2026-11-13,Auto,21.05
 2026-11-16,Auto,21.65
 2026-11-17,Auto,21.79
+2026-11-18,Auto,21.42
 2026-10-01,Bank,11.24
 2026-10-05,Bank,11.24
 2026-10-06,Bank,11.33
@@ -63,6 +64,7 @@ date,index,fpe
 2026-11-13,Bank,12.66
 2026-11-16,Bank,12.77
 2026-11-17,Bank,12.89
+2026-11-18,Bank,12.88
 2026-10-01,CPSE,10.48
 2026-10-05,CPSE,10.6
 2026-10-06,CPSE,10.53
@@ -95,6 +97,7 @@ date,index,fpe
 2026-11-13,CPSE,10.49
 2026-11-16,CPSE,10.66
 2026-11-17,CPSE,10.54
+2026-11-18,CPSE,10.52
 2026-10-01,Capital Market,28.04
 2026-10-05,Capital Market,28.67
 2026-10-06,Capital Market,29.34
@@ -127,6 +130,7 @@ date,index,fpe
 2026-11-13,Capital Market,32.45
 2026-11-16,Capital Market,32.13
 2026-11-17,Capital Market,32.36
+2026-11-18,Capital Market,31.77
 2026-10-01,Commodities,12.73
 2026-10-05,Commodities,12.8
 2026-10-06,Commodities,12.91
@@ -159,6 +163,7 @@ date,index,fpe
 2026-11-13,Commodities,13.21
 2026-11-16,Commodities,13.49
 2026-11-17,Commodities,13.54
+2026-11-18,Commodities,13.39
 2026-10-01,Consumer Durables,38.59
 2026-10-05,Consumer Durables,39.22
 2026-10-06,Consumer Durables,39.45
@@ -191,6 +196,7 @@ date,index,fpe
 2026-11-13,Consumer Durables,41.42
 2026-11-16,Consumer Durables,41.87
 2026-11-17,Consumer Durables,41.7
+2026-11-18,Consumer Durables,40.43
 2026-10-01,Defence,35.16
 2026-10-05,Defence,35.33
 2026-10-06,Defence,35.94
@@ -223,6 +229,7 @@ date,index,fpe
 2026-11-13,Defence,35.95
 2026-11-16,Defence,35.77
 2026-11-17,Defence,35.6
+2026-11-18,Defence,35.25
 2026-10-01,Energy,14.47
 2026-10-05,Energy,14.6
 2026-10-06,Energy,14.75
@@ -255,6 +262,7 @@ date,index,fpe
 2026-11-13,Energy,15.09
 2026-11-16,Energy,15.11
 2026-11-17,Energy,15.14
+2026-11-18,Energy,15.08
 2026-10-01,FMCG,26.52
 2026-10-05,FMCG,27.24
 2026-10-06,FMCG,27.45
@@ -287,6 +295,7 @@ date,index,fpe
 2026-11-13,FMCG,28.89
 2026-11-16,FMCG,29.18
 2026-11-17,FMCG,29.09
+2026-11-18,FMCG,29.14
 2026-10-01,Financial Services,12.69
 2026-10-05,Financial Services,12.7
 2026-10-06,Financial Services,12.82
@@ -319,6 +328,7 @@ date,index,fpe
 2026-11-13,Financial Services,14.3
 2026-11-16,Financial Services,14.49
 2026-11-17,Financial Services,14.58
+2026-11-18,Financial Services,14.52
 2026-10-01,IT,14.63
 2026-10-05,IT,14.59
 2026-10-06,IT,14.51
@@ -351,6 +361,7 @@ date,index,fpe
 2026-11-13,IT,16.42
 2026-11-16,IT,16.41
 2026-11-17,IT,16.24
+2026-11-18,IT,16.02
 2026-10-01,India Consumption,26.79
 2026-10-05,India Consumption,27.11
 2026-10-06,India Consumption,27.35
@@ -383,6 +394,7 @@ date,index,fpe
 2026-11-13,India Consumption,30.17
 2026-11-16,India Consumption,29.65
 2026-11-17,India Consumption,29.67
+2026-11-18,India Consumption,29.46
 2026-10-01,Infrastructure,17.55
 2026-10-05,Infrastructure,17.73
 2026-10-06,Infrastructure,17.95
@@ -415,6 +427,7 @@ date,index,fpe
 2026-11-13,Infrastructure,19.19
 2026-11-16,Infrastructure,20.16
 2026-11-17,Infrastructure,20.19
+2026-11-18,Infrastructure,20.12
 2026-10-01,MNC,24.6
 2026-10-05,MNC,24.64
 2026-10-06,MNC,25.02
@@ -447,6 +460,7 @@ date,index,fpe
 2026-11-13,MNC,25.16
 2026-11-16,MNC,25.05
 2026-11-17,MNC,25.19
+2026-11-18,MNC,24.62
 2026-10-01,Manufacturing,19.25
 2026-10-05,Manufacturing,19.32
 2026-10-06,Manufacturing,19.56
@@ -479,6 +493,7 @@ date,index,fpe
 2026-11-13,Manufacturing,20.21
 2026-11-16,Manufacturing,20.13
 2026-11-17,Manufacturing,20.25
+2026-11-18,Manufacturing,19.98
 2026-10-01,Media,19.49
 2026-10-05,Media,19.82
 2026-10-06,Media,19.83
@@ -511,6 +526,7 @@ date,index,fpe
 2026-11-13,Media,21.67
 2026-11-16,Media,22.83
 2026-11-17,Media,22.98
+2026-11-18,Media,23.21
 2026-10-01,Metal,11.37
 2026-10-05,Metal,11.37
 2026-10-06,Metal,11.46
@@ -543,6 +559,7 @@ date,index,fpe
 2026-11-13,Metal,11.08
 2026-11-16,Metal,11.03
 2026-11-17,Metal,11.1
+2026-11-18,Metal,10.79
 2026-10-01,Nifty 50,15.65
 2026-10-05,Nifty 50,15.72
 2026-10-06,Nifty 50,15.83
@@ -575,6 +592,7 @@ date,index,fpe
 2026-11-13,Nifty 50,17.36
 2026-11-16,Nifty 50,17.87
 2026-11-17,Nifty 50,17.92
+2026-11-18,Nifty 50,17.83
 2026-10-01,Nifty 500,16.67
 2026-10-05,Nifty 500,16.76
 2026-10-06,Nifty 500,16.88
@@ -607,6 +625,7 @@ date,index,fpe
 2026-11-13,Nifty 500,18.02
 2026-11-16,Nifty 500,18.29
 2026-11-17,Nifty 500,18.36
+2026-11-18,Nifty 500,18.22
 2026-10-01,Nifty Microcap 250,14.83
 2026-10-05,Nifty Microcap 250,14.87
 2026-10-06,Nifty Microcap 250,14.96
@@ -639,6 +658,7 @@ date,index,fpe
 2026-11-13,Nifty Microcap 250,14.85
 2026-11-16,Nifty Microcap 250,14.5
 2026-11-17,Nifty Microcap 250,14.55
+2026-11-18,Nifty Microcap 250,14.34
 2026-10-01,Nifty Midcap 150,19.46
 2026-10-05,Nifty Midcap 150,19.57
 2026-10-06,Nifty Midcap 150,19.73
@@ -671,6 +691,7 @@ date,index,fpe
 2026-11-13,Nifty Midcap 150,20.34
 2026-11-16,Nifty Midcap 150,20.59
 2026-11-17,Nifty Midcap 150,20.66
+2026-11-18,Nifty Midcap 150,20.42
 2026-10-01,Nifty Next 50,15.71
 2026-10-05,Nifty Next 50,15.8
 2026-10-06,Nifty Next 50,15.9
@@ -703,6 +724,7 @@ date,index,fpe
 2026-11-13,Nifty Next 50,16.74
 2026-11-16,Nifty Next 50,16.39
 2026-11-17,Nifty Next 50,16.54
+2026-11-18,Nifty Next 50,16.3
 2026-10-01,Nifty Smallcap 250,19.27
 2026-10-05,Nifty Smallcap 250,19.37
 2026-10-06,Nifty Smallcap 250,19.55
@@ -735,6 +757,7 @@ date,index,fpe
 2026-11-13,Nifty Smallcap 250,19.35
 2026-11-16,Nifty Smallcap 250,19.66
 2026-11-17,Nifty Smallcap 250,19.68
+2026-11-18,Nifty Smallcap 250,19.55
 2026-10-01,Oil & Gas,11.64
 2026-10-05,Oil & Gas,11.73
 2026-10-06,Oil & Gas,11.94
@@ -767,6 +790,7 @@ date,index,fpe
 2026-11-13,Oil & Gas,12.53
 2026-11-16,Oil & Gas,12.81
 2026-11-17,Oil & Gas,12.88
+2026-11-18,Oil & Gas,12.87
 2026-10-01,PSE,9.3
 2026-10-05,PSE,9.37
 2026-10-06,PSE,9.4
@@ -799,6 +823,7 @@ date,index,fpe
 2026-11-13,PSE,9.62
 2026-11-16,PSE,9.66
 2026-11-17,PSE,9.61
+2026-11-18,PSE,9.53
 2026-10-01,PSU Bank,7.49
 2026-10-05,PSU Bank,7.56
 2026-10-06,PSU Bank,7.56
@@ -831,6 +856,7 @@ date,index,fpe
 2026-11-13,PSU Bank,8.48
 2026-11-16,PSU Bank,8.54
 2026-11-17,PSU Bank,8.72
+2026-11-18,PSU Bank,8.8
 2026-10-01,Pharma,29.44
 2026-10-05,Pharma,29.23
 2026-10-06,Pharma,29.58
@@ -863,6 +889,7 @@ date,index,fpe
 2026-11-13,Pharma,31.44
 2026-11-16,Pharma,31.57
 2026-11-17,Pharma,31.55
+2026-11-18,Pharma,31.67
 2026-10-01,Private Bank,12.55
 2026-10-05,Private Bank,12.51
 2026-10-06,Private Bank,12.66
@@ -895,6 +922,7 @@ date,index,fpe
 2026-11-13,Private Bank,14.09
 2026-11-16,Private Bank,14.27
 2026-11-17,Private Bank,14.36
+2026-11-18,Private Bank,14.28
 2026-10-01,Realty,19.58
 2026-10-05,Realty,19.68
 2026-10-06,Realty,19.64
@@ -927,6 +955,7 @@ date,index,fpe
 2026-11-13,Realty,20.54
 2026-11-16,Realty,23.96
 2026-11-17,Realty,24.43
+2026-11-18,Realty,24.24
 2026-10-01,Services Sector,14.76
 2026-10-05,Services Sector,14.79
 2026-10-06,Services Sector,14.89
@@ -959,6 +988,7 @@ date,index,fpe
 2026-11-13,Services Sector,16.61
 2026-11-16,Services Sector,17.23
 2026-11-17,Services Sector,17.28
+2026-11-18,Services Sector,17.19
 2026-10-01,Tourism,27.54
 2026-10-05,Tourism,27.6
 2026-10-06,Tourism,28.1
@@ -991,3 +1021,4 @@ date,index,fpe
 2026-11-13,Tourism,32.38
 2026-11-16,Tourism,32.53
 2026-11-17,Tourism,32.88
+2026-11-18,Tourism,32.33
