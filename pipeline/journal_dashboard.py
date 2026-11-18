@@ -83,14 +83,22 @@ def load_settings():
     return s
 
 
-def build_html(folder=FOLDER, nodes_dir=NODES, notes=NOTES):
+def build_html(folder=FOLDER, nodes_dir=NODES, notes=NOTES, king_test_dir=None):
     cfg = load_settings()
     days = load_days(folder, cfg.get("from"))
     kd, nt = king_data(nodes_dir, folder, cfg.get("from")), load_notes(notes)
+    kt, ktsum = {}, None
+    try:                                                   # the King trade TEST (pipeline/king_test.py): its own files, never part of the paper-trade figures
+        import king_test
+        kt = king_test.load_all(king_test_dir or king_test.DIR)
+        ktsum = king_test.summary(kt)
+    except Exception:
+        kt = {}
     for d in days:
         d["king"] = kd["days"].get(d["date"])
         d["notes"] = nt.get(d["date"], [])
-    data = json.dumps({"days": days, "settings": cfg, "pull": kd["pull"]}, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
+        d["ktest"] = kt.get(d["date"])
+    data = json.dumps({"days": days, "settings": cfg, "pull": kd["pull"], "ktest": ktsum}, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
     return TEMPLATE.replace("__DATA__", data)
 
 
@@ -188,6 +196,7 @@ tr.taken td{background:var(--soft)}
 <section><h2>Overall</h2><div class="band small" id="stats"></div></section>
 <section class="panel"><h2>Rules scoreboard <span class="sub" style="font-weight:400">testing: what each rule kept out, and how the taken trades did by grade</span></h2><div class="tablewrap" id="score"></div></section>
 <section class="panel"><h2>King pull <span class="sub" style="font-weight:400">does price drift toward the King node? all journaled days together</span></h2><div id="pull"></div></section>
+<section class="panel"><h2>King trade <span class="chip open">test</span> <span class="sub" style="font-weight:400">from the 19 Nov session, separate from the paper trades</span></h2><div id="ktest"></div></section>
 <section class="panel"><h2>Result after each trade</h2><div class="chartbox" id="curve"></div></section>
 <section class="panel"><h2>All days</h2><div class="tablewrap"><table id="all"></table></div></section>
 </div>
@@ -307,6 +316,11 @@ function kingChart(d){
   s+=`<polyline fill="none" stroke="var(--fg)" stroke-width="1.7" points="${cs.map((c,i)=>x(i).toFixed(1)+','+y(c[3]).toFixed(1)).join(' ')}"/>`;
   (K.events||[]).forEach((e,i)=>{ const col=e[2]==='held'?'var(--up)':e[2]==='passed'?'var(--dn)':'var(--mut)';
     s+=`<circle cx="${x(mins(e[0]))}" cy="${cy(e[1])}" r="9" fill="${col}" stroke="var(--panel)" stroke-width="2"><title>${i+1}: ${e[0]} node ${e[1]} (${esc(e[3])}, ${e[4]==='+'?'positive':'negative'}): ${e[2]}</title></circle><text x="${x(mins(e[0]))}" y="${cy(e[1])+4}" text-anchor="middle" style="fill:#fff;font-weight:700;font-size:11px">${i+1}</text>`; });
+  const kt=d.ktest&&d.ktest.trades||[];
+  if(kt.length){ s+='<defs><marker id="arG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="var(--up)"/></marker><marker id="arR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="var(--dn)"/></marker></defs>';
+    kt.forEach(t=>{ const x1=x(mins(t.entry_time)), x2=x(mins(t.exit_time||'15:15')), y1=y(t.spot_in), y2=y(t.spot_out==null?t.spot_in:t.spot_out), c=t.side==='CALL'?'var(--up)':'var(--dn)', mk=t.side==='CALL'?'arG':'arR';
+      s+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="3" marker-end="url(#${mk})"><title>King trade ${t.n}: ${t.side} ${t.strike} ${t.entry_time} to ${t.exit_time||'open'}, ${t.pts==null?'':t.pts+' index points'}${t.pct==null?'':', option '+t.pct+'%'}</title></line>`;
+      if(t.pct!=null) s+=`<text x="${(x1+x2)/2}" y="${(y1+y2)/2-8}" text-anchor="middle" style="fill:${c};font-weight:700">${t.pct>0?'+':''}${t.pct}%</text>`; }); }
   const lg=`<g transform="translate(${L},14)"><line x1="0" x2="24" y1="0" y2="0" stroke="var(--amb)" stroke-width="6"/><text x="30" y="4">King +</text><line x1="84" x2="108" y1="0" y2="0" stroke="var(--vio)" stroke-width="6"/><text x="114" y="4">King &minus;</text><line x1="176" x2="200" y1="0" y2="0" stroke="var(--mut)" stroke-width="1.7" stroke-dasharray="6 4"/><text x="206" y="4">ceiling</text><line x1="262" x2="286" y1="0" y2="0" stroke="var(--acc)" stroke-width="1.7" stroke-dasharray="6 4"/><text x="292" y="4">floor</text><rect x="338" y="-7" width="20" height="14" fill="var(--vio)" opacity=".18"/><text x="364" y="4">negative gamma</text><circle cx="470" cy="0" r="7" fill="var(--up)"/><text x="482" y="4">held</text><circle cx="526" cy="0" r="7" fill="var(--dn)"/><text x="538" y="4">passed</text><circle cx="600" cy="0" r="7" fill="var(--mut)"/><text x="612" y="4">chop</text><line x1="660" x2="684" y1="0" y2="0" stroke="var(--fg)" stroke-width="1.7"/><text x="690" y="4">Nifty</text></g>`;
   let ev='';
   if((K.events||[]).length) ev=`<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>#</th><th>Time</th><th>Node</th><th>Role</th><th>Sign</th><th>What price did in the next 30 minutes</th></tr></thead><tbody>${K.events.map((e,i)=>`<tr><td class="num">${i+1}</td><td class="num">${e[0]}</td><td class="num">${e[1]}</td><td>${esc(e[3])}</td><td>${e[4]==='+'?'positive':'negative'}</td><td>${e[2]==='held'?'<span class="chip tgt">held: turned back 25 points</span>':e[2]==='passed'?'<span class="chip stp">passed: went 25 points through</span>':'<span class="chip mut">chop: neither</span>'}</td></tr>`).join('')}</tbody></table></div>`;
@@ -332,6 +346,18 @@ function kingHtml(d){
   }
   if(d.notes&&d.notes.length) h+=`<div style="margin-top:10px">${d.notes.map(n=>`<p style="margin:6px 0">${esc(n)}</p>`).join('')}</div>`;
   return h;
+}
+function ktestHtml(d){
+  const K=d.ktest; if(!K||!K.trades||!K.trades.length) return '';
+  const tr=K.trades, priced=tr.filter(t=>t.pct!=null), tot=priced.reduce((a,t)=>a+t.rs,0), pts=tr.reduce((a,t)=>a+(t.pts||0),0);
+  let h=`<h2 style="margin-top:18px">King trade <span class="chip open">test</span> <span class="sub" style="font-weight:400">toward the King from 10:15; separate from the paper trades above, not in any total on this page</span></h2>`;
+  h+=`<div class="tablewrap"><table><thead><tr><th>#</th><th>Side</th><th>Strike</th><th>King</th><th>In</th><th>Out</th><th>Why it ended</th><th>Index points</th><th>Option in &rarr; out</th><th>Option</th><th>One lot</th></tr></thead><tbody>${tr.map(t=>`<tr><td class="num">${t.n}</td><td><span class="chip ${t.side==='CALL'?'call':'put'}">${t.side}</span></td><td class="num">${t.strike}</td><td class="num">${t.king}</td><td class="num">${t.entry_time} &middot; ${t.spot_in.toFixed(0)}</td><td class="num">${t.exit_time?t.exit_time+' &middot; '+t.spot_out.toFixed(0):'open'}</td><td>${esc(t.why)}</td><td class="num ${t.pts>0?'up':t.pts<0?'dn':''}">${t.pts==null?'&ndash;':(t.pts>0?'+':'')+t.pts}</td><td class="num">${t.opt_in==null?'&ndash;':t.opt_in+' &rarr; '+t.opt_out}</td><td class="num ${t.pct>0?'up':t.pct<0?'dn':''}">${t.pct==null?'&ndash;':pct(t.pct)}</td><td class="num ${t.rs>0?'up':t.rs<0?'dn':''}">${t.rs==null?'&ndash;':rs(t.rs)}</td></tr>`).join('')}</tbody></table></div>`;
+  h+=`<div class="foot" style="margin-top:6px">${tr.length} trade${tr.length===1?'':'s'}, ${priced.filter(t=>t.pct>0).length} winners, ${pts>0?'+':''}${pts.toFixed(0)} index points${priced.length?`, ${rs(tot)} on one lot of 65 (option candles of the same contract the paper trades use; no brokerage or slippage)`:''}. Rules: first trade from 10:15 toward the King (CALL if it is above price, PUT if below); held until price comes within 15 points of the King; closed if the King's direction turns against it for 5 minutes; the next trade starts 10 minutes after such a turn (5 minutes after reaching the King); no trade when price is within 25 points of the King; all closed at 15:15. Arrows on the King graph show each trade.</div>`;
+  return h;
+}
+function ktestPanel(){
+  const S=DATA.ktest; if(!S) return '<div class="empty">No King trades yet. The test starts with the 19 Nov session and fills in during the day.</div>';
+  return `<div class="band small"><div class="tile"><div class="k">Trades</div><div class="v num">${S.n}</div><div class="n">${S.wins} winners over ${S.days} day${S.days===1?'':'s'}</div></div><div class="tile"><div class="k">Average per trade</div><div class="v num ${cls(S.avg_pct)}">${pct(S.avg_pct)}</div><div class="n">on the option price</div></div><div class="tile"><div class="k">One lot of 65</div><div class="v num ${cls(S.rs)}">${rs(S.rs)}</div><div class="n">${S.pts>0?'+':''}${S.pts} index points</div></div></div><div class="foot" style="margin-top:6px">Test only: it is not in the net result, the calendar, the curve or the rules scoreboard of this page. Details and arrows are on each day's page.</div>`;
 }
 function pullPanel(){
   const P=DATA.pull; if(!P||!P.days) return '<div class="empty">No King data yet.</div>';
@@ -415,10 +441,10 @@ function dayview(){
   <div class="legend"><span>Line: index close, 1-minute</span><span>Shaded: a trade was open</span><span>&#9650; &#9660; filled: setup taken &middot; hollow: setup not taken</span>${LVSHOWN ? '<span style="color:var(--vio)">Dashed: end-of-day levels near the day range</span>' : '<span>No end-of-day level was near the day range</span>'}</div>
   <div class="legend">${d.king?'<span><b style="color:var(--amb)">&#9473;</b> King, positive</span><span><b style="color:var(--vio)">&#9473;</b> King, negative</span>':''}</div>
   <h2 style="margin-top:18px">Trades</h2><div class="cards">${d.trades.length?d.trades.map(card).join(''):'<div class="empty">No trade was taken.</div>'}</div>
-  <div class="two" style="margin-top:18px"><div><h2>Setups, in time order</h2><div class="tablewrap">${setups(d)}</div></div><div><h2>Levels the page used</h2>${levels(d)}</div></div>${kingHtml(d)}`;
+  <div class="two" style="margin-top:18px"><div><h2>Setups, in time order</h2><div class="tablewrap">${setups(d)}</div></div><div><h2>Levels the page used</h2>${levels(d)}</div></div>${ktestHtml(d)}${kingHtml(d)}`;
 }
 function alltable(){
-  $('score').innerHTML = scoreHtml(days); $('pull').innerHTML = pullPanel();
+  $('score').innerHTML = scoreHtml(days); $('pull').innerHTML = pullPanel(); $('ktest').innerHTML = ktestPanel();
   $('all').innerHTML = `<thead><tr><th>Date</th><th>Trades</th><th>Target</th><th>Trail</th><th>Stop</th><th>Result</th><th>% of capital</th><th>Opening candles</th></tr></thead><tbody>${days.map(d=>`<tr class="row" tabindex="0" data-d="${d.date}"><td>${wk(d.date)} ${d.date.slice(0,4)}</td><td class="num">${d.trades.length}</td><td class="num">${d.trades.filter(t=>t.result==='TARGET').length}</td><td class="num">${d.trades.filter(t=>t.result==='TRAIL').length}</td><td class="num">${d.trades.filter(t=>t.result==='STOP').length}</td><td class="num ${cls(dayRs(d))}">${rs(dayRs(d))}</td><td class="num ${cls(dayRs(d))}">${pct(dayRs(d)/CAP*100)}</td><td>${esc(d.opening||'n/a')}</td></tr>`).join('')}</tbody>`;
   $('all').querySelectorAll('tr.row').forEach(r=>{const f=()=>go(r.dataset.d);r.onclick=f;r.onkeydown=e=>{if(e.key==='Enter')f();};});
 }

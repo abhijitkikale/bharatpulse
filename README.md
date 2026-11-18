@@ -63,7 +63,10 @@ A setup kept out by a rule (before 09:25, against the session trend, node rules,
 ### 7. Node rules (OFF)
 `data/nodes_rules.json` (edit; no restart): `{"min_grade": null | "A" | "B" | "C", "skip_blocked": false, "skip_midpoint": false}`. Grades are saved with every setup and shown on the page; they only change a trade if you switch a rule on. Decide with the journal scoreboard and the reaction ledger after some weeks of data.
 
-### 8. Limits, switches and files
+### 8. Test strategies (journal only, never traded)
+**King trade (test, from the 19 Nov 2026 session).** A separate paper strategy that only the journal shows; it never touches the paper trades above, the strip, Telegram or the orders. From 10:15 take a trade **toward the King** (CALL if the King is above price, PUT if below; at-the-money option of the nearest expiry, one lot of 65). Hold it until price comes within 15 points of the King (exit at that candle's close). If the King's direction turns against the trade (the King is on the other side of price) and stays so for **5 minutes**, close the trade; wait until **10 minutes after the turn began**, then trade toward the King's new direction. A turn that reverses within 5 minutes is ignored. After a trade that reached the King, wait 5 minutes and start the next one. Everything is closed at **15:15** and nothing starts from 15:10. My calls where the rule was silent: no trade while price is within 25 points of the King, and the 5-minute wait after reaching the King. Code: `pipeline/king_test.py` (the simulation is deterministic from the nodes agent's saved readings and the index candles; the live server calls it about once a minute and prices the trades with the same contract lookup the paper trades use). Results: `data/king_test/YYYY-MM-DD.json` (a finished day is frozen). In the journal: a "King trade (test)" table on each day's page, arrows on that day's King graph, and a panel on the home page; none of it is in the net result, calendar, curve or rules scoreboard. The owner's 16 to 18 Nov drawing of the arrows by hand gave +10, -1 and +4 thousand rupees on one lot at the time (priced on the 24 Nov contract), which is why it is being tested; one fitted sample, so treat it as a hypothesis.
+
+### 9. Limits, switches and files
 | What | Where | Default |
 |---|---|---|
 | Entry trigger on / window | `ENTRY_TRIGGER`, `ENTRY_WINDOW_MIN` | on / 5 minutes |
@@ -157,6 +160,7 @@ All under `data/`, which is **not** part of the public repository.
 | `nse_calendar.json`, `nse_special_sessions.json` | NSE holidays (cached) and your own special-session times |
 | `obs.json`, `telegram.json`, `stream_relay.json`, `fyers_token.json` | settings and secrets for OBS, Telegram, the TradingView relay and Fyers |
 | `stream_state.json`, `live.json` | the latest stream page state and live snapshot |
+| `king_test/` | the King trade test: one file per day from 19 Nov (trades, option prices, candles) |
 | `nodes/` | the nodes agent: `latest.json`, `YYYY-MM-DD.jsonl` (readings every 2 minutes), `grades_YYYY-MM-DD.json`, `ledger.csv` |
 | `journal_settings.json`, `journal_notes.json`, `nodes_rules.json` | journal capital and lot, your own notes per day, node rules (all off) |
 | `orders_config.json`, `orders/`, `fyers_order_token.json` | order router settings, its daily logs and its own token (never sent to GitHub) |

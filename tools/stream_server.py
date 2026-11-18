@@ -31,6 +31,7 @@ import stream_journal  # noqa: E402
 import stream_levels  # noqa: E402
 import stream_setups  # noqa: E402
 import stream_trades  # noqa: E402
+import king_test  # noqa: E402
 
 PAGES = "https://abhijitkikale.github.io/bharatpulse/"
 PAGE_DIR = ROOT / "tools" / "stream_page"
@@ -238,6 +239,7 @@ class Feed:
                 trades = None
             self.journal(sday, replay, today, res, used, state_regime=None)
             self.alerts(t, sday, res)
+        self.king_test_step(df)                         # the journal's King trade TEST (own file, never touches the paper trades)
         state = stream_levels.build_state(df, self.eod, self.live, t, self.msg, setups=setups, trades=trades)
         state["open_src"] = used                        # how many opening candles came from TradingView
         state["replay_eod"] = replay["close"] if setups is not None and replay is not self.eod else None   # the trades use the levels of this older close
@@ -245,6 +247,20 @@ class Feed:
         with self.lock:
             self.state = state
         OUT.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
+
+    def king_test_step(self, df):
+        """King trade test (pipeline/king_test.py): at most once a minute, from the 19 Nov session on. It only reads the nodes agent's readings and the index candles, prices the
+        options through the same contract lookup the paper trades use, and writes data/king_test/<day>.json. Any failure is swallowed: it can never affect the page or the trades."""
+        try:
+            if time.time() - getattr(self, "_kt_at", 0.0) < 60:
+                return
+            self._kt_at = time.time()
+            day = df.index.max().date()
+            today = df[[x == day for x in df.index.date]]
+            rows = (self.chains or {}).get(SYM, {}).get("rows") or []
+            king_test.update(day, today, lambda d, key: self.contract(d, key, rows))
+        except Exception:
+            pass
 
     def grade_fn(self, day):
         """grade_of(setup) for the trade rules and the journal: the grade the nodes agent gave that setup when it appeared (data/nodes/grades_<day>.json)."""
