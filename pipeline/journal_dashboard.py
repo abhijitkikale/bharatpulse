@@ -285,11 +285,39 @@ function levels(d){
   return `<div class="kv num">${e.map(([k,v])=>`<span>${esc(k)}</span><span>${v}</span>`).join('')}</div>`;
 }
 
+function kingChart(d){
+  const K=d.king, cs=d.candles; if(!K||!K.map||!K.map.length||!cs.length) return '';
+  const W=900,H=380,L=58,R=16,T=34,B=28,n=375,iw=W-L-R,ih=H-T-B;
+  let lo=Math.min(...cs.map(c=>c[2])), hi=Math.max(...cs.map(c=>c[1])); const pad=Math.max((hi-lo)*.08,15); lo-=pad; hi+=pad;
+  const x=m=>L+Math.min(Math.max(m,0),n)/n*iw, y=p=>T+(hi-p)/(hi-lo)*ih, cy=p=>y(Math.min(Math.max(p,lo+3),hi-3));
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Price with the King, floor and ceiling nodes through the day and the node reactions">`;
+  const step=(hi-lo)>400?100:50;
+  for(let p=Math.ceil(lo/step)*step;p<hi;p+=step) s+=`<line x1="${L}" x2="${W-R}" y1="${y(p)}" y2="${y(p)}" stroke="var(--line)"/><text x="${L-8}" y="${y(p)+4}" text-anchor="end">${p}</text>`;
+  [0,60,120,180,240,300,360].forEach(m=>{const h=9*60+15+m; s+=`<line x1="${x(m)}" x2="${x(m)}" y1="${T}" y2="${H-B}" stroke="var(--line)"/><text x="${x(m)}" y="${H-8}" text-anchor="middle">${String(Math.floor(h/60)).padStart(2,'0')}:${String(h%60).padStart(2,'0')}</text>`;});
+  const rows=K.map.map(r=>({a:mins(r[0]),b:mins(r[1]),k:r[2],sg:r[3],fl:r[4],ce:r[5],ng:r[6]}));
+  for(let i=0;i<rows.length;){ if(!rows[i].ng){i++;continue} let j=i; while(j+1<rows.length&&rows[j+1].ng) j++; s+=`<rect x="${x(rows[i].a)}" y="${T}" width="${Math.max(x(rows[j].b)-x(rows[i].a),2)}" height="${ih}" fill="var(--vio)" opacity=".10"/>`; i=j+1; }
+  const stepPath=(key,cls)=>{ let d2='',seg=[]; const flush=()=>{ if(!seg.length) return; d2+=`M${x(seg[0].a)},${cy(seg[0][key])}`; seg.forEach((r,i)=>{ if(i) d2+=`V${cy(r[key])}`; d2+=`H${x(r.b)}`; }); seg=[]; };
+    rows.forEach(r=>{ if(r[key]==null) flush(); else seg.push(r); }); flush(); return `<path d="${d2}" fill="none" stroke="${cls==='ce'?'var(--mut)':'var(--acc)'}" stroke-width="1.7" stroke-dasharray="6 4"/>`; };
+  s+=stepPath('ce','ce')+stepPath('fl','fl');
+  const runs=[]; rows.forEach(r=>{ const c=runs[runs.length-1]; if(c&&c.k===r.k&&c.sg===r.sg) c.b=r.b; else runs.push({k:r.k,sg:r.sg,a:r.a,b:r.b}); });
+  runs.forEach((r,i)=>{ const off=r.k<lo||r.k>hi, col=r.sg==='+'?'var(--amb)':'var(--vio)';
+    s+=`<line x1="${x(r.a)}" x2="${x(r.b)}" y1="${cy(r.k)}" y2="${cy(r.k)}" stroke="${col}" stroke-width="6" opacity="${off?.4:.9}"><title>King ${r.k} ${r.sg==='+'?'(positive)':'(negative)'}</title></line>`;
+    if(i+1<runs.length) s+=`<line x1="${x(r.b)}" x2="${x(r.b)}" y1="${cy(r.k)}" y2="${cy(runs[i+1].k)}" stroke="var(--mut)" stroke-dasharray="2 3"/>`;
+    if(r.b-r.a>=12) s+=`<text x="${x(r.a)+4}" y="${cy(r.k)+(r.k>hi?16:-8)}" style="fill:var(--fg);font-weight:600">King ${r.k}${r.k>hi?' ▲':r.k<lo?' ▼':''}</text>`; });
+  s+=`<polyline fill="none" stroke="var(--fg)" stroke-width="1.7" points="${cs.map((c,i)=>x(i).toFixed(1)+','+y(c[3]).toFixed(1)).join(' ')}"/>`;
+  (K.events||[]).forEach((e,i)=>{ const col=e[2]==='held'?'var(--up)':e[2]==='passed'?'var(--dn)':'var(--mut)';
+    s+=`<circle cx="${x(mins(e[0]))}" cy="${cy(e[1])}" r="9" fill="${col}" stroke="var(--panel)" stroke-width="2"><title>${i+1}: ${e[0]} node ${e[1]} (${esc(e[3])}, ${e[4]==='+'?'positive':'negative'}): ${e[2]}</title></circle><text x="${x(mins(e[0]))}" y="${cy(e[1])+4}" text-anchor="middle" style="fill:#fff;font-weight:700;font-size:11px">${i+1}</text>`; });
+  const lg=`<g transform="translate(${L},14)"><line x1="0" x2="24" y1="0" y2="0" stroke="var(--amb)" stroke-width="6"/><text x="30" y="4">King +</text><line x1="84" x2="108" y1="0" y2="0" stroke="var(--vio)" stroke-width="6"/><text x="114" y="4">King &minus;</text><line x1="176" x2="200" y1="0" y2="0" stroke="var(--mut)" stroke-width="1.7" stroke-dasharray="6 4"/><text x="206" y="4">ceiling</text><line x1="262" x2="286" y1="0" y2="0" stroke="var(--acc)" stroke-width="1.7" stroke-dasharray="6 4"/><text x="292" y="4">floor</text><rect x="338" y="-7" width="20" height="14" fill="var(--vio)" opacity=".18"/><text x="364" y="4">negative gamma</text><circle cx="470" cy="0" r="7" fill="var(--up)"/><text x="482" y="4">held</text><circle cx="526" cy="0" r="7" fill="var(--dn)"/><text x="538" y="4">passed</text><circle cx="600" cy="0" r="7" fill="var(--mut)"/><text x="612" y="4">chop</text><line x1="660" x2="684" y1="0" y2="0" stroke="var(--fg)" stroke-width="1.7"/><text x="690" y="4">Nifty</text></g>`;
+  let ev='';
+  if((K.events||[]).length) ev=`<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>#</th><th>Time</th><th>Node</th><th>Role</th><th>Sign</th><th>What price did in the next 30 minutes</th></tr></thead><tbody>${K.events.map((e,i)=>`<tr><td class="num">${i+1}</td><td class="num">${e[0]}</td><td class="num">${e[1]}</td><td>${esc(e[3])}</td><td>${e[4]==='+'?'positive':'negative'}</td><td>${e[2]==='held'?'<span class="chip tgt">held: turned back 25 points</span>':e[2]==='passed'?'<span class="chip stp">passed: went 25 points through</span>':'<span class="chip mut">chop: neither</span>'}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="chartbox" style="margin:6px 0 4px">${s+lg}</svg></div><div class="foot">How the nodes moved and how price reacted. The thick line is the King (it jumps between strikes as the map is rebuilt every 2 minutes; off the chart it sits at the edge with an arrow). Dashed lines: the nearest ceiling and floor. Shading: the minutes when the whole map was negative gamma. Numbered circles: approaches to a significant node.</div>${ev}`;
+}
 function kingHtml(d){
   const K=d.king; if(!K&&!(d.notes&&d.notes.length)) return '';
   let h='<h2 style="margin-top:18px">King analysis <span class="sub" style="font-weight:400">the largest gamma node: where it was, what price did at it, and whether price drifted toward it</span></h2>';
   if(K){
     h+=`<ul style="margin:0 0 10px;padding-left:20px">${K.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ul>`;
+    h+=kingChart(d);
     const cell=c=>!c?'':c.reached?`${c.time} &middot; ${c.o.toFixed(0)}/${c.h.toFixed(0)}/${c.l.toFixed(0)}/${c.c.toFixed(0)} &middot; from ${c.from}, closed ${c.closed}`:c.time?`closest ${c.closest} pts at ${c.time} (${c.o.toFixed(0)}/${c.h.toFixed(0)}/${c.l.toFixed(0)}/${c.c.toFixed(0)})`:'no candle';
     const res=c=>!c||!c.reached?'<span class="chip mut">not reached</span>':c.outcome==='held'?'<span class="chip tgt">held, turned back</span>':c.outcome==='passed'?'<span class="chip stp">went through</span>':'<span class="chip mut">chop</span>';
     h+=`<div class="tablewrap"><table><thead><tr><th>King</th><th>From</th><th>To</th><th>Min</th><th>Price at start &rarr; end</th><th title="Positive: price ended closer to the King than it started">Toward King</th><th title="The candle that first came within 15 points of the King (open/high/low/close), or the closest one">King's candle</th><th>Result</th></tr></thead><tbody>${K.runs.map(r=>`<tr><td class="num"><b>${r.king}</b> <span class="chip ${r.sign==='+'?'open':'mut'}">${r.sign==='+'?'+':'&minus;'}</span></td><td class="num">${r.from}</td><td class="num">${r.to}</td><td class="num">${r.minutes}</td><td class="num">${r.spot_start.toFixed(0)} &rarr; ${r.spot_end.toFixed(0)}</td><td class="num ${r.toward>0?'up':r.toward<0?'dn':''}">${r.toward>0?'+':''}${r.toward}</td><td class="num" style="white-space:normal">${cell(r.candle)}</td><td>${res(r.candle)}</td></tr>`).join('')}</tbody></table></div>`;

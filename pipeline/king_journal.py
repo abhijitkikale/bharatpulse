@@ -32,6 +32,22 @@ def _runs(readings):
     return runs
 
 
+def map_rows(readings):
+    """One row per reading for the King chart: [from, to, King, sign, floor, ceiling, negative-gamma 0/1]; each row lasts until the next reading (the last one 2 minutes)."""
+    rows = []
+    for r in readings:
+        cl = nodes.classify({"k": r["k"], "net": r["n"]}, r["spot"])
+        st = cl["structure"]
+        if st.get("king") is None:
+            continue
+        kn = [n for n in cl["nodes"] if "king" in n["roles"]]
+        rows.append([r["t"], None, st["king"], kn[0]["sign"] if kn else "+", st.get("floor"), st.get("ceiling"), 1 if r["total_cr"] < 0 else 0])
+    for i, x in enumerate(rows):
+        x[1] = rows[i + 1][0] if i + 1 < len(rows) else x[0] + pd.Timedelta(minutes=2)
+        x[0], x[1] = _hm(x[0]), _hm(x[1])
+    return rows
+
+
 def _hm(ts):
     return ts.strftime("%H:%M")
 
@@ -125,7 +141,8 @@ def day_analysis(day, readings, candles, trades=None):
     close = {"price": round(float(last["c"]), 2), "time": _hm(close_t), "king": k_close, "first_king": first_king,
              "first_king_gap_high": round(abs(float(candles["h"].max()) - first_king), 1), "first_king_gap_low": round(abs(float(candles["l"].min()) - first_king), 1), "away": round(float(last["c"]) - k_close, 1),
              "high": round(float(candles["h"].max()), 2), "low": round(float(candles["l"].min()), 2), "open": round(float(candles["o"].iloc[0]), 2)}
-    res = {"day": day, "trades": tv, "trades_total": len(trades or []), "runs": out_runs, "flickers": sum(1 for r in runs if r["n"] < MIN_RUN), "king_steps": steps, "pull": pull, "close": close}
+    ev = [[e["time"], e["k"], e["outcome"], e["role"], e["sign"]] for e in sorted(L.events_for_day(day, readings, candles), key=lambda e: e["time"])]
+    res = {"day": day, "map": map_rows(readings), "events": ev, "trades": tv, "trades_total": len(trades or []), "runs": out_runs, "flickers": sum(1 for r in runs if r["n"] < MIN_RUN), "king_steps": steps, "pull": pull, "close": close}
     res["lines"] = _lines(res, day)
     return res
 

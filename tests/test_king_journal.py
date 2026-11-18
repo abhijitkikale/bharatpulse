@@ -31,6 +31,7 @@ def test_the_kings_candle_is_the_one_that_reaches_it_and_the_day_is_summarised()
     assert a["runs"][0]["candle"]["from"] == "below" and abs(a["runs"][0]["candle"]["h"] - 25200) < 40
     assert [t["with_king"] for t in a["trades"]] == [True, False]       # a call with the King above price points toward it; a put points away
     assert any(l.startswith("Trades by direction") for l in a["lines"]) and any("Drift toward the King" in l for l in a["lines"])
+    assert a["map"][0][2] == 25200 and len(a["map"][0]) == 7 and isinstance(a["events"], list)             # the rows the journal draws its King chart from
     assert a["close"]["king"] == 25200 and a["pull"]["30"]["king"]["closer"] == 100.0 and a["king_steps"][0][2] == 25200
     far = K.day_analysis(DAY, _readings(), _candles([25000 - 0.1 * i for i in range(200)]), [])
     assert far["runs"][0]["candle"]["reached"] is False and far["runs"][0]["candle"]["closest"] > 15 and "did not come within 15 points" in " ".join(far["lines"])
@@ -62,7 +63,7 @@ def test_the_journal_page_carries_the_king_analysis_and_your_notes(tmp_path):
     notes = tmp_path / "notes.json"
     notes.write_text(json.dumps({DAY: "my note about the King"}), encoding="utf-8")
     html = journal_dashboard.build_html(jd, nd, notes)
-    assert "King analysis" in html and "my note about the King" in html and "king_steps" in html and html.count("</script>") == 1
+    assert "function kingChart" in html and "King analysis" in html and "my note about the King" in html and "king_steps" in html and html.count("</script>") == 1
     data = json.loads(html.split("const DATA = ")[1].split(";\nconst CAP")[0])
     assert data["days"][0]["king"]["runs"][0]["king"] == 25200 and data["days"][0]["notes"] == ["my note about the King"] and data["pull"]["days"] == 1
     plain = journal_dashboard.build_html(jd, tmp_path / "none", tmp_path / "none.json")                 # no nodes data and no notes: the journal still builds

@@ -45,12 +45,16 @@ def build_day(day, res, replay, index_df, opt_frames, meta, extra=None):
             "index_candles_hm_ohlcv": candle_rows(index_df), **(extra or {})}
 
 
-def write(day_doc, folder):
-    """Write the day's file and rebuild trades.csv from all day files. Returns the day file's path."""
+def write(day_doc, folder, force=False):
+    """Write the day's file and rebuild trades.csv from all day files. Returns the day file's path.
+    A day that is already over (its date is before today on this PC) and already on disk is FROZEN: it is the record of what was traded, and starting the
+    helper the next morning (or after a rule change) must not re-simulate it. `force=True` replaces it anyway (for a deliberate repair)."""
     folder = pathlib.Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     doc = {**day_doc, "saved_at": dt.datetime.now().isoformat(timespec="seconds")}
     f = folder / (day_doc["date"] + ".json")
+    if f.exists() and not force and dt.date.fromisoformat(str(day_doc["date"])) < dt.date.today():
+        return f
     if f.exists():                                     # keep the version being replaced (a replay with wrong data must not destroy the live record)
         try:
             (folder / "prev").mkdir(exist_ok=True)

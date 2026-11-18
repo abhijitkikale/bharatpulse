@@ -38,3 +38,23 @@ def test_journal_file_and_csv_hold_each_trade_with_its_option_candles(tmp_path):
     assert len(rows) == 1 and rows[0]["date"] == "2026-11-06" and rows[0]["result"] == "TARGET" and rows[0]["setups_ignored_while_open"] == "1"
     stream_journal.write({**doc, "date": "2026-11-09"}, tmp_path)                                         # a second day adds rows, nothing is overwritten
     assert len(list(csv.DictReader(open(tmp_path / "trades.csv", encoding="utf-8")))) == 2
+
+
+def test_a_finished_day_on_disk_is_frozen_unless_forced(tmp_path):
+    df = _opt([[100, 100, 100, 100, 5], [100, 110, 99, 105, 5], [105, 141, 104, 139, 5], [139, 139, 130, 131, 5]])
+    res = stream_trades.run_trades([_setup("09:26")], lambda s: df)
+    idx = pd.date_range("2026-11-06 09:15", periods=3, freq="min", tz="Asia/Kolkata")
+    index_df = pd.DataFrame({"o": [1.0, 2, 3], "h": [2.0, 3, 4], "l": [0.5, 1, 2], "c": [1.5, 2.5, 3.5], "v": [10, 20, 30]}, index=idx)
+    doc = stream_journal.build_day(pd.Timestamp("2026-11-06").date(), res, {"close": "2026-11-05", "levels": {}}, index_df, {}, {}, {})
+    f = stream_journal.write(doc, tmp_path)
+    first = json.loads(f.read_text(encoding="utf-8"))
+    changed = {**doc, "total_pct": 99.0, "trades": []}                         # the same past day re-simulated with other rules (what a morning restart does)
+    stream_journal.write(changed, tmp_path)
+    assert json.loads(f.read_text(encoding="utf-8")) == first                 # unchanged: the record of what was traded stays
+    stream_journal.write(changed, tmp_path, force=True)
+    assert json.loads(f.read_text(encoding="utf-8"))["total_pct"] == 99.0      # a deliberate repair still works
+    import datetime as dt
+    today = dt.date.today().isoformat()
+    stream_journal.write({**doc, "date": today}, tmp_path)
+    stream_journal.write({**doc, "date": today, "total_pct": 5.0}, tmp_path)   # today's file is still updated all session
+    assert json.loads((tmp_path / f"{today}.json").read_text(encoding="utf-8"))["total_pct"] == 5.0
