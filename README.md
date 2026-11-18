@@ -7,16 +7,77 @@ Open `dashboard.html` (works offline; double-click). Click any bar/row to drill 
 Times below are India time (IST). The PC this runs on has its clock at IST minus 2:30.
 
 ## Contents
-1. [Tabs](#tabs)
-2. [A normal weekday morning](#a-normal-weekday-morning)
-3. [The helper: `Refresh BharatPulse.bat`](#the-helper-refresh-bharatpulsebat)
-4. [Live updates and Telegram](#live-updates-and-telegram)
-5. [The live stream page](#the-live-stream-page)
-6. [OBS and YouTube](#obs-and-youtube)
-7. [Daily snap video](#daily-snap-video-56-seconds-vertical-for-mobile)
-8. [TradingView indicators](#tradingview-indicators)
-9. [What is saved on this PC](#what-is-saved-on-this-pc)
-10. [Other commands, data, notes](#other-commands-data-notes)
+1. [Strategy rules (current)](#strategy-rules-current-18-nov-2026)
+2. [Tabs](#tabs)
+3. [A normal weekday morning](#a-normal-weekday-morning)
+4. [The helper: `Refresh BharatPulse.bat`](#the-helper-refresh-bharatpulsebat)
+5. [Live updates and Telegram](#live-updates-and-telegram)
+6. [The live stream page](#the-live-stream-page)
+7. [OBS and YouTube](#obs-and-youtube)
+8. [Daily snap video](#daily-snap-video-56-seconds-vertical-for-mobile)
+9. [TradingView indicators](#tradingview-indicators)
+10. [What is saved on this PC](#what-is-saved-on-this-pc)
+11. [Other commands, data, notes](#other-commands-data-notes)
+12. [Live GEX text pasted into TradingView](#live-gex-text-pasted-into-tradingview-automatically) · [Trading journal page](#trading-journal-page) · [Telegram for friends](#telegram-for-friends-and-control-from-your-phone) · [Order router](#order-router-automatic-orders-off-by-default)
+13. [Entry confirmation and the TradingView alert log](#entry-confirmation-and-the-tradingview-alert-log-added-16-nov) · [TradingView connection check](#tradingview-connection-check-at-sign-in-added-16-nov)
+14. [King pull scoreboard](#king-pull-scoreboard-added-16-nov) · [King analysis in the journal](#king-analysis-in-the-trading-journal-added-17-nov) · [Trade rules changed on 17 Nov](#trade-rules-changed-on-17-nov-effective-18-nov) · [Journal frozen days](#the-journal-is-written-during-the-session-finished-days-are-frozen-18-nov)
+15. [Gamma nodes layer](#gamma-nodes-layer-the-nodes-agent-built-14-16-nov) · [Pages, templates and messages](#pages-templates-and-messages-where-each-lives) · [Telegram commands](#telegram-commands-your-private-chat-only) · [Change log](#change-log)
+16. [Porting to the US dashboards](#porting-to-the-us-dashboards-spy-live-and-the-us-eod-page)
+
+## Strategy rules (current, 18 Nov 2026)
+This is the one place that lists every rule the paper-trade engine and the pages use. Constants are in `pipeline/stream_trades.py` unless another file is named. Times are IST. Everything here is a simulation in percentages of the option premium (no brokerage, taxes or slippage); the order router (below) is a separate, optional layer.
+
+### 1. Levels and setups
+- **Levels that give setups:** end-of-day GEX call wall and put wall, POC, VAH, VAL, weekly POC / VAH / VAL, and the daily and weekly VWAP. Max pain, OI walls, the gamma flip and the "Now" volume levels are drawn but give no setups (`NOW_VA_SETUPS` in `pipeline/stream_setups.py` is off because TradingView cannot reproduce them on past candles).
+- **Setup rules** (`pipeline/stream_setups.py`, same as the Pine indicator): a candle touches a level, a doji forms at it, price leaves and retests, the next candle decides CALL (closes above) or PUT (closes below), tagged bounce / cross. A: a candle that closes through the level also counts as step 2. B: a doji counts within 12 points of the level. C (VWAP break): the previous 8 candles on one side of the VWAP, a candle closes through it, the next candle closes beyond it. D (VWAP bounce) is OFF since 10 Nov (`BOUNCE_ON`). A candle reports a level only once.
+- **Where the setups come from:** `data/stream_relay.json` has `"signals_from": "tradingview"` (since 16 Nov): trades are booked from the setups TradingView's BP Live alert reported (read from TradingView's alert log). If the 09:05 TradingView check fails, the page books from its own setups that day (`data/signal_source_day.json`, one day only). Putting `"fyers"` in the file does the same permanently.
+
+### 2. When a setup becomes a trade
+Checked in this order; the first rule that applies becomes the setup's status and later rules are not looked at.
+| # | Rule | Status text | Setting |
+|---|---|---|---|
+| 1 | Before 09:25 (first 10 minutes after the open) | `no trade before 9:25` | `EARLIEST` |
+| 2 | A trade is already open (one trade at a time) | `ignored: trade N is open` | |
+| 3 | 5 trades already taken today | `daily limit: 5 trades done` | `MAX_TRADES` |
+| 4 | Closed trades of the day add up to -30% of premium | `daily loss limit reached (-30%)` | `MAX_LOSS_PCT` |
+| 5 | After 14:45 | `no new trade after 14:45` | `CUTOFF` |
+| 6 | You sent `/pause` on Telegram | `not taken: paused (you sent /pause)` | `data/trading_pause.json` |
+| 7 | Negative gamma AND against the session trend (section 5) | `not taken: against the session trend in negative gamma (session trending up/down)` | `CONTRA_IN_NEGATIVE` |
+| 8 | A node rule (all OFF by default, section 7) | `not taken: grade C is below the minimum grade B` / `a node sits just ahead of it (blocked)` / `in the middle of the range between two nodes` | `data/nodes_rules.json` |
+| 9 | Entry trigger (section 3) | `waiting: buy only if the option trades above X` / `not taken: the option never crossed X (the setup candle's high) within 5 minutes` / `TRADE n` | `ENTRY_TRIGGER`, `ENTRY_WINDOW_MIN` |
+Special sessions (Muhurat) keep neither the 10-minute wait nor any time rule. A setup with no option price is `no option price`.
+
+### 3. Entry (entry trigger, since 16 Nov)
+The trade is CALL = buy the at-the-money call, PUT = the at-the-money put, nearest weekly expiry (Fyers option candles). A setup does not become a trade at its candle's close. It becomes one only when the **option's** price trades above the **high of the option's setup candle** (a buy-stop) within **5 minutes**. Entry price = that high, or the next candle's open if it gaps above it. Stop, target and trailing are measured from the entry price. While waiting, the strip says "waiting", Telegram sends "SETUP WAITING"; if it never crosses, the setup is listed with the result the old entry (setup candle's close) would have given. `ENTRY_TRIGGER = False` goes back to the old entry.
+
+### 4. Exit rules (one set all day since 18 Nov)
+- **Target +40%, stop -10%** of the entry premium, **trailing stop**: once the premium has reached +20% the stop moves to +5%, at +30% to +15%, at +35% to +30% (never down). A candle is judged with the stop that was in force at its start; a candle that touches both the stop and the target (or a trail level) counts as the stop. A gap down through the stop fills at the open. A stop hit above the entry is a `TRAIL` (profit locked). A trade still open at 15:29 closes at that price (`DAY END`).
+- **Regime tightening:** when the gamma regime turns against an open trade that is in profit (a PUT and the regime becomes POSITIVE, or a CALL and it becomes NEGATIVE), the stop moves up to 5% below the current premium (`REGIME_BUFFER`), never lower. The journal and Telegram show it as "stop moved ... because the gamma regime turned ...".
+- **The afternoon set is off.** Until 17 Nov a trade entered from 13:00 used target +20%, stop -7% and trailing +10% to +5% / +15% to +10%. It was switched off at the owner's request (the whole set, not only the target); `AFTERNOON_RULES = True` brings it back. Journal days up to 17 Nov keep the rules they were taken under.
+
+### 5. Negative gamma follows the session trend (since 18 Nov)
+Negative gamma means directional moves, so the page first reads the session: UP when the index is at least `TREND_BAND_PTS` (10 points) above its **session VWAP** and above the **session open**, DOWN when at least 10 points below both, otherwise unclear (`session_trend` in `pipeline/stream_trades.py`; the live server fills it into `regime_at` in `tools/stream_server.py`). In negative gamma a CALL is skipped in a down session and a PUT in an up session; in positive gamma, or with no clear trend, nothing is skipped. (Before 18 Nov the test was whether price was above or below the gamma flip.) The regime itself is the live reading: POSITIVE where positive gamma applies on the side of the flip the price is on, NEGATIVE otherwise. The nodes agent's setup grade ("with the move / against the move") still uses the flip side and is information only.
+
+### 6. "Would have been" (testing, never changes a day)
+A setup kept out by a rule (before 09:25, against the session trend, node rules, never crossed, a daily limit) is run through the same entry, stop, target and trailing rules and its result is saved with it (`would_pct`). It shows as a tiny line on the live strip, in the hover card and in the journal ("If taken (testing)" column and the **Rules scoreboard**: taken trades by grade A / B / C, and for each rule what the setups it kept out would have returned). A rule is helping when what it keeps out does worse than what is taken.
+
+### 7. Node rules (OFF)
+`data/nodes_rules.json` (edit; no restart): `{"min_grade": null | "A" | "B" | "C", "skip_blocked": false, "skip_midpoint": false}`. Grades are saved with every setup and shown on the page; they only change a trade if you switch a rule on. Decide with the journal scoreboard and the reaction ledger after some weeks of data.
+
+### 8. Limits, switches and files
+| What | Where | Default |
+|---|---|---|
+| Entry trigger on / window | `ENTRY_TRIGGER`, `ENTRY_WINDOW_MIN` | on / 5 minutes |
+| Afternoon rule set | `AFTERNOON_RULES` | **off** |
+| Negative-gamma skip / trend band | `CONTRA_IN_NEGATIVE`, `TREND_BAND_PTS` | on / 10 points |
+| Regime stop buffer | `REGIME_BUFFER` | 5% |
+| Trades a day / loss limit | `MAX_TRADES`, `MAX_LOSS_PCT` | 5 / 30% |
+| First trade / last new trade / last minute | `EARLIEST`, `CUTOFF`, `LAST_MINUTE` | 09:25 / 14:45 / 15:29 |
+| Pause new entries | Telegram `/pause`, `/resume` (`data/trading_pause.json`) | resumed |
+| Node rules | `data/nodes_rules.json` | all off |
+| Where setups come from | `data/stream_relay.json` `signals_from`, `data/signal_source_day.json` | tradingview |
+| Orders | `data/orders_config.json` `mode` | `off` by default (`dry_run` is set on this PC; `live` only by hand) |
+Orders (optional router, section "Order router"): one lot (65), one position, entry not filled in 45 s is cancelled and not retried, partial fills protected, broker stop-limit order sized from the fill price, loss limit 5,000 rupees a day, at most 5 EXECUTED entries a day, nothing for a signal older than 3 minutes, square-off 15:15. It never runs unless `mode` is `live`.
 
 ## Tabs
 Sectors · Breadth & Trend · Market Activity · Flows & Valuation · Risk Monitor · Options · Volume Profile · 3D Surface · Momentum Stocks
@@ -52,12 +113,12 @@ Runs `tools/refresh_app.py` and opens a page at http://127.0.0.1:5050/ (this PC 
 ## The live stream page
 `tools/stream_server.py` (started with the live updates, or `python tools/stream_server.py`; `--port 8767` for a test copy) serves a full-screen chart at **http://127.0.0.1:8766/** on this PC. Nothing is pasted by hand.
 - **Layout:** header (Nifty 1-minute, price, data status, Light / Dark button), a **trade strip** (see below), a **setups line**, and a left panel with the **EOD / NOW gamma regime** and **every level in one table** (sorted by price, with distance from the price). The chart fills the rest, its price axis fitted to the day's high and low; level lines are drawn in the same colours as the table. Disclaimer banners run along the top and bottom: "not SEBI registered, not financial advice, education only". Press F11 for full screen.
-- **Data:** Nifty candles from Fyers every 10 s in session; end-of-day levels read from the published dashboard page; live GEX every 5 minutes; "Now" volume levels (0.25-point rows, close to TradingView's own profile), daily and weekly VWAP.
+- **Data:** Nifty candles from Fyers every 15 s in session; end-of-day levels read from the published dashboard page; live GEX every 5 minutes; "Now" volume levels (0.25-point rows, close to TradingView's own profile), daily and weekly VWAP.
 - **Countdown timer:** in the centre of the chart whenever no session is running ("NSE opens in 02:34:10", "Market closed. Next session in 2D 07:31:53"). It follows the **NSE holiday calendar**: `pipeline/nse_calendar.py` reads NSE's official holiday list (cached in `data/nse_calendar.json`, refreshed about twice a day), skips holidays ("NSE holiday (Dussehra). Next session in ...") and counts special sessions such as Muhurat trading as sessions. NSE publishes the Muhurat timing late; until then the timer says "timing not announced yet" (Diwali Laxmi Pujan, Sun 8 Nov 2026) and it picks the times up by itself once NSE lists them. If you know them earlier, put them in `data/nse_special_sessions.json`, e.g. `{"2026-11-08": {"open": "18:15", "close": "19:15", "name": "Muhurat trading"}}`. The stream's fast polling, the broadcast start / stop and the 09:20 check use the same calendar.
-- **Daily limits**: after 5 trades in a day, or once the day's closed trades add up to -30%, no further setup becomes a trade (they are listed as "daily limit" / "daily loss limit reached"). Change `MAX_TRADES` and `MAX_LOSS_PCT` in `pipeline/stream_trades.py`.
+- **Daily limits** (also in Strategy rules): after 5 trades in a day, or once the day's closed trades add up to -30%, no further setup becomes a trade (they are listed as "daily limit" / "daily loss limit reached"). Change `MAX_TRADES` and `MAX_LOSS_PCT` in `pipeline/stream_trades.py`.
 - **Telegram trade messages**: during the live session the stream page sends one Telegram message for each new paper trade (side, strike, level, entry, target, stop), one when it closes (target / stop / day end with the percentage) and a short line for setups not taken. Events older than 3 minutes (a restart mid-session) are not repeated; the keys sent today are kept in `data/telegram_sent.json`. Every Telegram send attempt, including live level messages, is logged in `data/telegram_log.txt` (git-ignored).
 - **Setups (CALL / PUT)**, the same rules as the Pine indicator, replayed on the day's candles. Original rule: a candle touches a level, a doji forms at it, price leaves and retests, the next candle decides CALL (close above) or PUT (close below), tagged bounce / cross. **A**: a candle that closes through the level also counts as step 2. **B**: a doji counts within 12 points of the level. **C, VWAP break**: the previous 8 candles on one side of the VWAP, a candle closes through it, the next candle closes beyond it. **D, VWAP bounce (switched OFF since 10 Nov 2026: `BOUNCE_ON` in `pipeline/stream_setups.py`, setting D in the indicator, default off)**: the previous 5 candles on one side, a candle touches the VWAP and closes back on that side, the next candle closes beyond it; at most one per 10 candles per VWAP. A candle reports a level only once. Levels that give setups: end-of-day GEX call / put wall, POC, VAH, VAL, weekly POC / VAH / VAL; daily and weekly VWAP. Now VAH / Now VAL give NO setups on the page (switch `NOW_VA_SETUPS` in `pipeline/stream_setups.py`) because the TradingView indicator cannot give them on past candles; the page and the chart now use the same levels.
-- **Paper trade tracker** (percentages only, no orders): the first setup becomes a trade (CALL = at-the-money call, PUT = at-the-money put, nearest weekly expiry, entry at the option's 1-minute close from Fyers), held until **+40%** or **-10%** of the entry premium (a candle touching both counts as the stop; a trade still open at 15:29 closes at day end). Setups that confirm while a trade is open are only listed ("ignored: trade N is open"); the next setup after the exit becomes the next trade; no new trade after 14:45 (setups still show). The trade strip shows every trade of the day (earlier ones as chips) and the open or latest one in detail, with the day total. No brokerage, taxes or slippage.
+- **Paper trade tracker** (percentages only, no orders): every rule (entry trigger, target +40% / stop -10% / trailing, regime and session-trend rules, daily limits, 09:25 start, 14:45 cutoff, would-have results) is listed in **Strategy rules (current)** at the top. The trade strip shows every trade of the day (earlier ones as chips) and the open or latest one in detail, with the day total; setups that confirm while a trade is open are only listed ("ignored: trade N is open"). No brokerage, taxes or slippage.
 - **After the close** the page keeps showing the day's trades: the levels that were valid during the session are saved in `data/stream_eod/` (one file per close date) and replayed, and the option prices come from the session's own day (or from the journal if Fyers no longer has them).
 - **Opening candles from TradingView:** Fyers' 09:15 candle differs from TradingView's (open, high and above all volume) and that candle dominates the VWAP. Your TradingView sends its own 09:15 to 09:30 candles through a webhook alert and the free ntfy.sh relay (`python tools/stream_relay_setup.py`, steps in `tradingview/LIVE-SETUP.md`); the page uses them for the opening and Fyers afterwards, and keeps them per day in `data/stream_open/`. The header shows "opening candles: TradingView (15)".
 - **Addresses:** `http://127.0.0.1:8766/` is the full view for your own screen. `http://127.0.0.1:8766/?clean=1` hides the setups, trades, profit and loss and markers (the OBS / YouTube source now uses `?theme=dark` WITHOUT clean, so the trades, in percentages, are shown on the stream; add `&clean=1` in `data/obs.json` to hide them again). `&theme=dark` or `&theme=light` picks the background (default light).
@@ -97,6 +158,10 @@ All under `data/`, which is **not** part of the public repository.
 | `nse_calendar.json`, `nse_special_sessions.json` | NSE holidays (cached) and your own special-session times |
 | `obs.json`, `telegram.json`, `stream_relay.json`, `fyers_token.json` | settings and secrets for OBS, Telegram, the TradingView relay and Fyers |
 | `stream_state.json`, `live.json` | the latest stream page state and live snapshot |
+| `nodes/` | the nodes agent: `latest.json`, `YYYY-MM-DD.jsonl` (readings every 2 minutes), `grades_YYYY-MM-DD.json`, `ledger.csv` |
+| `journal_settings.json`, `journal_notes.json`, `nodes_rules.json` | journal capital and lot, your own notes per day, node rules (all off) |
+| `orders_config.json`, `orders/`, `fyers_order_token.json` | order router settings, its daily logs and its own token (never sent to GitHub) |
+| `tv_status.json`, `tv_inbox.jsonl`, `tv_paste_log.txt`, `signal_source_day.json`, `trading_pause.json` | TradingView check, alert-log mailbox, paste log, one-day fallback of the signal source, `/pause` state |
 | `snap/YYYY-MM-DD/`, `snap_history/` | the daily snap video, cover, caption, timing sheet and summary; the small daily record the next video compares with |
 
 ## Other commands, data, notes
@@ -150,7 +215,7 @@ Right after your Fyers sign-in the hidden TradingView browser checks, from Tradi
 The node replay page (`Open Node Replay.bat`, or http://127.0.0.1:8766/nodes-replay) now opens with a scoreboard that asks one question: does price drift toward the King more than toward any other level? For every saved nodes reading it checks whether price was closer to the King 15, 30 and 60 minutes later, by how many points, and whether it touched it. The same is asked of controls: the King moved 50 and 100 points either way, the day's VWAP, the range midpoint and the nearest round hundred. It also splits by how far the King is, days to the weekly expiry (Tuesday), regime, King sign and time of day. The verdict line stays at "too early to say" until there are about 30 independent windows (a day gives roughly 12; neighbouring readings overlap and do not count as separate evidence), and it only says a pull shows when the King beats every control by a clear margin. Code: `pipeline/nodes_pull.py`; it fills itself from the nodes agent's saved days, nothing to switch on.
 
 ## King analysis in the trading journal (added 17 Nov)
-Each day's page in the journal (`Open Journal.bat` or http://127.0.0.1:8766/journal) now has a King analysis under the setups: the King strike through the day drawn on the chart (amber thick line = positive King, violet = negative), a table of each King that lasted about 6 minutes or more (strike, from and to, price at start and end, points toward the King, the King's candle with its open/high/low/close, and what came next), the day's drift toward the King against controls, whether each taken trade pointed toward or away from the King, and where the day closed relative to it. The home page has a "King pull" panel with all days together. Your own notes go in `data/journal_notes.json` as `{"2026-11-17": ["a paragraph", ...]}` and show under that day's King analysis. The analysis is rebuilt from the nodes agent's saved readings (`pipeline/king_journal.py`); a day without saved readings simply shows no King section.
+Each day's page in the journal (`Open Trading Journal.bat` or http://127.0.0.1:8766/journal) now has a King analysis under the setups: the King strike through the day drawn on the chart (amber thick line = positive King, violet = negative), a table of each King that lasted about 6 minutes or more (strike, from and to, price at start and end, points toward the King, the King's candle with its open/high/low/close, and what came next), the day's drift toward the King against controls, whether each taken trade pointed toward or away from the King, and where the day closed relative to it. The home page has a "King pull" panel with all days together. Your own notes go in `data/journal_notes.json` as `{"2026-11-17": ["a paragraph", ...]}` and show under that day's King analysis. The analysis is rebuilt from the nodes agent's saved readings (`pipeline/king_journal.py`); a day without saved readings simply shows no King section.
 
 ## Trade rules changed on 17 Nov (effective 18 Nov)
 - **One set of rules all day:** target +40%, stop -10%, trailing +20% to +5%, +30% to +15%, +35% to +30%. The tighter afternoon set (from 13:00: target +20%, stop -7%) is switched off; `AFTERNOON_RULES = True` in `pipeline/stream_trades.py` brings it back. Trades in the journal up to 17 Nov keep the rules they were taken under.
@@ -158,3 +223,71 @@ Each day's page in the journal (`Open Journal.bat` or http://127.0.0.1:8766/jour
 
 ## The journal is written during the session; finished days are frozen (18 Nov)
 The stream server (started by the helper) writes `data/journal/YYYY-MM-DD.json` and rebuilds `data/journal_dashboard.html` during the live session, at most once a minute, so the last write is the last change of the day (about 15:30 IST); there is no separate end-of-day job, and the helper window has to stay open until 15:45. A day that is already over and on disk is now **frozen**: starting the helper on a later morning, or changing a rule, no longer re-simulates it (on 18 Nov that had overwritten the 17 Nov record; it was restored). To replace a past day on purpose, `stream_journal.write(doc, folder, force=True)`. Each day's page now carries the full King graph (King line, floor and ceiling, negative-gamma shading, numbered node reactions) under the setups.
+
+## Gamma nodes layer (the "nodes agent", built 14-16 Nov)
+Ideas from Skylit's Heatseeker and Atlas, built for Nifty. Design and phases: `docs/superpowers/specs/2026-11-14-nodes-agent-design.md`. A node is a strike where the gamma exposure of the option chain is large; "context, not a trigger" means a node tells you where price may react and how likely, while the setup rules above decide when.
+- **How it is computed** (`pipeline/nodes.py`, pure functions; `pipeline/gex.py` does Black-76 with implied volatility from prices and the forward from put-call parity): for the nearest 4 expiries, value of a strike = call GEX (+) plus put GEX (-), in rupees crore per 1% move. In the nearest expiry ("Front" column): **strength** = |value| as a share of the largest; **significant** = at least 25% (`SIG_PCT`); **King** = the largest |value|; **gatekeeper** = the largest significant node between price and the King; **floor / ceiling** = the nearest significant node below / above price; **pika / barney** = the biggest positive / negative nodes; **air pocket** = 3 or more strikes under 10% of the King; **midpoint** = middle of the floor-ceiling range; **decoy** flag; **touches** (candle range within 5 points of the strike) split nodes into fresh and delivered; **velocity** over 5 and 15 minutes (building / melting); **regime** from the sign of the Front column's total gamma. Expected move: 1 sigma = previous close x front at-the-money IV x sqrt(1/365), drawn with 2 sigma.
+- **Setup grade A / B / C with reasons** (information only): backing node on the protected side within 30 points (+2 from 60% strength, +1 from 25%), room to the next node (+1 from 50 points, -1 under 25, "blocked" flag), freshness of the backing node (+1 untouched, -1 touched 3 or more times), confluence with 2 or more other levels within 10 points (+1), regime (negative gamma with the move +1, against it -2, flag `contra`), middle of the range (-1, flag `midpoint`), no significant node within 40 points (-1, flag `nonode`). A >= 3, B 1 to 2, C <= 0. The first grade of a setup is kept (`data/nodes/grades_<day>.json`) and marked late if the snapshot is more than 3 minutes newer than the setup.
+- **The agent** (`tools/nodes_agent.py`, started by the helper in its own process, lock file so never twice): a snapshot every 120 seconds in market hours from the Fyers chain (4 requests each), reading candles and levels from `data/stream_state.json` (it makes no candle request of its own, to save the 5,000 requests a day Fyers allows for everything). It writes `data/nodes/latest.json`, the day's readings `data/nodes/YYYY-MM-DD.jsonl` (the recorder everything below is built from) and the grades. The page works without it.
+- **Live page:** orbs on the chart for the strongest nodes (size = share of the King, yellow positive, purple negative, King starred, a marker at the chart edge when it is off the visible range, trade markers offset so they do not cover the chart), a heatmap panel (strikes x next expiries, floating so it does not cover the chart), grade badges on the setup chips, a one-line trade strip (waiting status, would-have result), a hover card, approach pop-ups (price within 15 points of a key node, and a second when it touches it; re-armed 40 points away), expected-move lines. `/?nodes=0` hides the layer.
+- **Dashboard (end of day):** the Options tab has a "Tomorrow's nodes" card built after the close from the same chain (`pipeline/eod_nodes.py`).
+- **Reaction ledger** (`pipeline/nodes_ledger.py`): every approach of price to a significant node (a candle range within 15 points, after price was away; re-armed 40 points away; the opening minutes before 09:20 skipped) is judged over the next 30 minutes: **held** (price went 25 points back the way it came), **passed** (25 points through) or **chop**, with the node's features (strength, role, sign, fresh or touched, regime, building or melting, time of day). `summarize()` gives hit rates per feature and the dealer-sign check (do positive nodes hold more than negative ones?). `data/nodes/ledger.csv`.
+- **Node replay page** (`pipeline/nodes_replay.py`, `Open Node Replay.bat`, or http://127.0.0.1:8766/nodes-replay): pick a saved day, drag the slider or press play to see the nodes at each reading, the day's price with every reaction marked, the **King pull scoreboard** and the ledger tables.
+- **King pull scoreboard** (`pipeline/nodes_pull.py`): does price drift toward the King more than toward any other level? Per reading and per horizon (15, 30, 60 minutes): was price closer to the King later, by how many points, did it touch it; the same for controls (the King moved 50 and 100 points either way, VWAP, range midpoint, nearest round hundred); splits by King distance, days to the Tuesday expiry, regime, King sign and time of day. The verdict says "too early" until about 30 independent windows (a day gives about 12). First two days (16 and 17 Nov): 77% then 43% closer at 30 minutes, 58% together against 48% for the best control, not yet a verdict.
+- **King in the trading journal** (`pipeline/king_journal.py`): see "King analysis in the trading journal" below.
+- **Private explainer** (not in the repo): a plain-language page of what was built from Skylit, with a real day's chart, that can be shared with friends from the Artifacts Share menu.
+
+## Pages, templates and messages (where each lives)
+| What | Template / code | Where you see it | Fed by |
+|---|---|---|---|
+| End-of-day dashboard (tabs, Options tab with GEX, levels text for TradingView, Tomorrow's nodes card) | `pipeline/template.html`, `pipeline/build.py`, `pipeline/run.py` | `dashboard.html`, GitHub Pages (cloud build `.github/workflows/refresh.yml`) | NSE files, Yahoo, Fyers |
+| Live stream page (chart, levels table, strip, setups, nodes layer, TradingView chip) | `tools/stream_page/index.html` | http://127.0.0.1:8766/ (`?clean=1`, `?theme=dark`, `?nodes=0`) | `tools/stream_server.py` |
+| Trading journal (calendar, stats, rules scoreboard, King pull panel, day pages with the King graph) | `pipeline/journal_dashboard.py` (TEMPLATE) + `pipeline/king_journal.py` | `Open Trading Journal.bat`, `data/journal_dashboard.html`, http://127.0.0.1:8766/journal | `data/journal/*.json`, `data/nodes/*.jsonl`, `data/journal_notes.json` |
+| Node replay, reaction ledger, King pull scoreboard | `pipeline/nodes_replay.py` (PAGE) | `Open Node Replay.bat`, http://127.0.0.1:8766/nodes-replay | `data/nodes/*.jsonl`, journal candles |
+| Helper page (sign-in, live status, TradingView card, OBS card) | `tools/refresh_app.py` | http://127.0.0.1:5050/ (`Refresh BharatPulse.bat`) | |
+| Telegram messages (trade taken with order-ticket line, STOP MOVED, EXIT, SETUP WAITING, levels, checks) | `pipeline/stream_alerts.py`, `tools/tg_style.py`, `tools/telegram_notify.py` | your chat; the friends' channel gets the public kinds only | |
+| Snap video, OBS / YouTube | `tools/make_snap.py`, `tools/obs_control.py` | | |
+| TradingView indicators | `tradingview/*.pine` | | text pasted automatically (`tools/tv_live_paste.py`) |
+Design documents: `docs/superpowers/specs/`.
+
+## Telegram commands (your private chat only)
+`/status` (stream, nodes agent, Fyers request count, TradingView feed, order mode), `/pause` and `/resume` (new entries only), `/orders_off` and `/orders_dry` (there is deliberately no command for live), `/stream_on`, `/stream_off`, `/sleep` and `/shutdown` (each needs `/confirm` within 60 seconds, `/cancel` stops it), `/help`. Old commands are never run later.
+
+## Change log
+| Date (2026) | Change |
+|---|---|
+| 10 Nov | VWAP bounce (setup D) switched off; Now VAH / VAL give no setups |
+| 13 Nov | No trade before 09:25; trailing stop (+20% to +5%, +30% to +15%, +35% to +30%) |
+| 13-14 Nov | Regime rules: skip trades against the move in negative gamma, tighten the stop when the regime turns against a profitable trade; afternoon set from 13:00 (target +20%, stop -7%) |
+| 14 Nov | Nodes agent phases 1-3: orbs, heatmap, grades, approach pop-ups, expected move, node rules file (off), would-have results, reaction ledger, node replay page, dealer-sign check |
+| 14-15 Nov | Going live: order ticket in Telegram, STOP MOVED / EXIT messages, `/pause`, "Tomorrow's nodes" card, order router in dry run (one lot, 5 executed entries a day) |
+| 16 Nov | Fyers 5,000-requests-a-day cap hit at 14:09: request counter, 15 s polling, nodes agent reads the page's candles; TradingView alert-log reader replaces the lossy relay; entry trigger (buy-stop above the setup candle's high, 5 minutes); trades booked from TradingView signals; TradingView connection check at sign-in; King pull scoreboard |
+| 17 Nov | King analysis in the journal; rule changes decided |
+| 18 Nov | **One exit rule set all day (afternoon set off); negative gamma skips trades against the session trend**; finished journal days frozen (a restart had overwritten 17 Nov, restored); full King graph per journal day; the cloud build's history-file push can no longer stop publishing |
+
+## Porting to the US dashboards (SPY live and the US EOD page)
+The US projects are separate folders: **`C:\Abhijit\investing\US Dashboard`** (live SPY page, IBKR read-only, port 8776, its own README and specs) and **`C:\Abhijit\investing\US Pulse`** (the end-of-day page, the BharatPulse equivalent). Status below is from their READMEs and `pipeline/stream_trades.py` on 18 Nov; check the code before you rely on it.
+
+**Unit mapping.** Every point-based constant becomes a percentage of price. The percentages below are the India constants at Nifty about 25,300 (the US nodes code already uses percentages, e.g. `BACK_PCT`, `ROOM_OK_PCT`):
+| India (points) | US (% of price) | | India (points) | US (% of price) |
+|---|---|---|---|---|
+| session trend band 10 | 0.04% | | King-shift controls 50 / 100 / 200 | 0.20% / 0.40% / 0.80% |
+| touch 5 | 0.02% (`TOUCH_PCT`) | | reaction ledger approach 15 | 0.06% |
+| backing node 30 | 0.12% | | reaction 25 | 0.10% |
+| room 50 | 0.20% | | re-arm 40 | 0.16% |
+| doji zone 12 | 0.05% (the US README uses $0.36) | | round-number control: nearest 100 | nearest $5 |
+Times: IST to ET as in the US README (09:25 to 09:40, 14:45 to 15:15, 15:29 to 15:59, early-close days by `us_calendar`). Lot 65 becomes 1 SPY option contract = 100 shares. The Tuesday weekly expiry has no SPY counterpart (SPY has a 0DTE option every day): replace "days to the weekly expiry" in the King pull splits with day of week or monthly opex, and note the Front column is always 0DTE.
+
+**What the US live dashboard already has:** entry trigger (`ENTRY_TRIGGER`, `entry_mode.json`), would-have results, nodes agent (King, gatekeeper, floor, ceiling, grades, orbs, heatmap, recorder), ATAS indicator, regime rules (flip-side contra, 5% buffer), daily limits, journal files. Safety rule: read-only, no orders ever (`tests/test_safety.py`); the order router, Fyers budget, TradingView relay / alert log / connection check and Telegram control are deliberately NOT ported.
+
+**To port from India to the US live dashboard (in this order):**
+1. **Exit rules:** one set all day. The US `RULES` still switches to target +20% / stop -7% from 13:15 ET; add `AFTERNOON_RULES = False` as in `pipeline/stream_trades.py` here, keep the US exit modes (`exit_mode.json`: premium, spy_stop, premium_20_40) as they are, and update `rules_text` and the page's rules line. Update the US README table row "afternoon rules from 13:00".
+2. **Negative gamma follows the session trend:** `session_trend(price, vwap, open)` with a band of 0.04% of price, `_contra` reads `rg["trend"]`, and the server's `regime_at` returns `trend` (daily VWAP from `stream_levels.vwaps`, session open from the first candle). Status text `not taken: against the session trend in negative gamma (session trending up|down)`; keep the tests that use `_rg(regime, trend)`.
+3. **Freeze finished journal days:** `stream_journal.write(doc, folder, force=False)` must not overwrite a day whose date is before today; otherwise a restart after a rule change silently re-simulates old days (this happened here on 18 Nov). Existing US journals are already affected by the entry-mode date logic, so check which days it protects.
+4. **Reaction ledger, node replay page, King pull scoreboard:** copy `pipeline/nodes_ledger.py`, `pipeline/nodes_pull.py`, `pipeline/nodes_replay.py` with the unit mapping above; the readings format is the same (`data/nodes/YYYY-MM-DD.jsonl`), candles come from the journal.
+5. **Journal page with the King analysis:** the US has no journal page yet ("journal calendar page" was left out). Port `pipeline/journal_dashboard.py` (calendar, stats, rules scoreboard, day pages with the King graph, King pull panel, notes file) and `pipeline/king_journal.py`; dollars per contract (x100) replace rupees per lot, and the capital in `journal_settings.json` changes.
+6. **Alerts and Telegram** (only if Telegram is added to the US project): message templates in `pipeline/stream_alerts.py` (no order-ticket line, since nothing is ordered).
+
+**US EOD page (US Pulse):** it has the equity / ETF / sector tabs but no Options tab, GEX, levels text or nodes. To match the India dashboard: an Options tab (open interest by strike, max pain, put-call ratio, GEX walls and flip, profile) and the **Tomorrow's nodes** card (`pipeline/eod_nodes.py` here: nodes for the next session from the close chain, King / gatekeeper / floor / ceiling, expected move from the front ATM IV), fed by the live project's IBKR chain at 15:50 ET (the live project's `us_eod.py` already saves next-session levels in `data/stream_eod/`). Keep the cloud-build lesson: the workflow's history-file push must not be fatal and must retry after a rebase.
+
+**Checklist when you change a rule in either project:** change the constant and the status text, the page's rules line, the journal header and scoreboard labels, this README section and the change log, add a test for the new status and one for the old behaviour behind its switch, run the whole suite (`python -m pytest -q tests`, not plain `pytest`), and never let the change touch saved journal days.
