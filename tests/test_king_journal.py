@@ -79,3 +79,11 @@ def test_regime_bands_follow_the_live_flip_and_the_side_price_is_on(tmp_path):
     bands = journal_dashboard.regime_bands(DAY, candles, reg)
     assert bands == [["09:30", "09:31", "P"], ["09:32", "10:00", "N"], ["10:01", "10:01", "P"]]       # the 10:00 reading flips which side is positive, so the same price is now negative
     assert journal_dashboard.regime_bands(DAY, candles, tmp_path / "none") == []
+
+
+def test_the_journal_has_a_results_by_level_table_with_rupees(tmp_path):
+    jd = tmp_path / "journal"
+    jd.mkdir()
+    (jd / f"{DAY}.json").write_text(json.dumps({"date": DAY, "symbol": "NIFTY", "total_pct": 0, "trades": [], "setups": [], "levels_used": {"levels": {}}, "saved_at": f"{DAY}T15:30:00", "index_candles_hm_ohlcv": []}), encoding="utf-8")
+    html = journal_dashboard.build_html(jd, tmp_path / "none", tmp_path / "none.json")
+    assert 'id="bylevel"' in html and "function levelHtml" in html and "Winners total" in html and "Losers total" in html and "$('bylevel').innerHTML = levelHtml(days)" in html

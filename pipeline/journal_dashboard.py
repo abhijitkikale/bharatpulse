@@ -222,6 +222,7 @@ tr.taken td{background:var(--soft)}
 <section class="panel"><div class="mhead"><div class="nav"><button class="btn" id="prev" aria-label="Previous month">&lsaquo;</button><span class="t" id="mname"></span><button class="btn" id="next" aria-label="Next month">&rsaquo;</button></div><div id="msum" class="num"></div></div><div class="cal" id="cal"></div><div class="legend"><span>Each box is one trading day: result in rupees and number of trades. Click a day for its details.</span></div></section>
 <section><h2>Overall</h2><div class="band small" id="stats"></div></section>
 <section class="panel"><h2>Rules scoreboard <span class="sub" style="font-weight:400">testing: what each rule kept out, and how the taken trades did by grade</span></h2><div class="tablewrap" id="score"></div></section>
+<section class="panel"><h2>Results by level <span class="sub" style="font-weight:400">which setup level and signal type earned and lost, in rupees (one lot) and %</span></h2><div class="tablewrap" id="bylevel"></div></section>
 <section class="panel"><h2>King pull <span class="sub" style="font-weight:400">does price drift toward the King node? all journaled days together</span></h2><div id="pull"></div></section>
 <section class="panel"><h2>King trade <span class="chip open">test</span> <span class="sub" style="font-weight:400">from the 19 Nov session, separate from the paper trades</span></h2><div id="ktest"></div></section>
 <section class="panel"><h2>Result after each trade</h2><div class="chartbox" id="curve"></div></section>
@@ -314,6 +315,18 @@ function scoreHtml(days){
    <tr><td colspan="5" style="color:var(--mut);padding-top:10px">Kept out by a rule: result if they had been taken (testing)</td></tr>
    ${Object.entries(kept).map(([l,a])=>row(l,a)).join('')}</tbody></table>
    <div class="foot" style="margin-top:6px">A rule is helping when the setups it keeps out do worse than the trades taken. Win = result above zero; each setup is tested alone with the same stop, target and trailing rules, so the totals are not a day's profit. Small samples move a lot; give it weeks.</div>`;
+}
+function levelHtml(days){
+  const all=[];
+  days.forEach(d=>d.trades.forEach(t=>{const m=(t.setup||'').match(/\(([^)]*)\)/);all.push({lvl:(t.setup||'?').replace(/\s[\d.]+/g,'').replace(/\s*\([^)]*\)/g,'').trim()||'?',how:m?m[1]:'level',pct:t.pnl_pct,rs:tradeRs(t)}); }));
+  const grp=(key)=>{const g={};all.forEach(x=>{(g[x[key]]=g[x[key]]||[]).push(x)});return g};
+  const sum=a=>a.reduce((p,c)=>p+(c||0),0);
+  const stat=(a)=>{const w=a.filter(x=>x.pct>0),l=a.filter(x=>x.pct<=0);return {n:a.length,w:w.length,wrs:sum(w.map(x=>x.rs)),lrs:sum(l.map(x=>x.rs)),net:sum(a.map(x=>x.rs)),pct:sum(a.map(x=>x.pct))}};
+  const row=(label,a,bold)=>{const s=stat(a);return `<tr${bold?' style="font-weight:700"':''}><td>${esc(label)}</td><td class="num">${s.n}</td><td class="num">${Math.round(s.w/s.n*100)}%</td><td class="num up">${rs(s.wrs)}</td><td class="num dn">${rs(s.lrs)}</td><td class="num ${s.net>=0?'up':'dn'}">${rs(s.net)}</td><td class="num ${s.pct>=0?'up':'dn'}">${s.pct>=0?'+':''}${s.pct.toFixed(1)}%</td></tr>`};
+  const table=(title,g)=>`<tr><td colspan="7" style="color:var(--mut);padding-top:10px">${title}</td></tr>`+Object.entries(g).sort((a,b)=>stat(b[1]).net-stat(a[1]).net).map(([k,a])=>row(k,a)).join('');
+  if(!all.length) return '<div class="empty">No trades yet.</div>';
+  return `<table><thead><tr><th>Group</th><th>Trades</th><th>Win</th><th>Winners total</th><th>Losers total</th><th>Net</th><th>Sum of %</th></tr></thead><tbody>${row('All trades',all,true)}${table('By level',grp('lvl'))}${table('By signal type',grp('how'))}</tbody></table>
+   <div class="foot" style="margin-top:6px">Rupees = (exit &minus; entry) &times; lot of ${LOT} per trade, no brokerage or slippage; a winner is a trade that closed above its entry. Counts the days shown on this page. Small samples move a lot.</div>`;
 }
 function setups(d){
   if(!d.setups.length) return '<div class="empty">No setups recorded.</div>';
@@ -474,7 +487,7 @@ function dayview(){
   <div class="two" style="margin-top:18px"><div><h2>Setups, in time order</h2><div class="tablewrap">${setups(d)}</div></div><div><h2>Levels the page used</h2>${levels(d)}</div></div>${ktestHtml(d)}${kingHtml(d)}`;
 }
 function alltable(){
-  $('score').innerHTML = scoreHtml(days); $('pull').innerHTML = pullPanel(); $('ktest').innerHTML = ktestPanel();
+  $('score').innerHTML = scoreHtml(days); $('bylevel').innerHTML = levelHtml(days); $('pull').innerHTML = pullPanel(); $('ktest').innerHTML = ktestPanel();
   $('all').innerHTML = `<thead><tr><th>Date</th><th>Trades</th><th>Target</th><th>Trail</th><th>Stop</th><th>Result</th><th>% of capital</th><th>Opening candles</th></tr></thead><tbody>${days.map(d=>`<tr class="row" tabindex="0" data-d="${d.date}"><td>${wk(d.date)} ${d.date.slice(0,4)}</td><td class="num">${d.trades.length}</td><td class="num">${d.trades.filter(t=>t.result==='TARGET').length}</td><td class="num">${d.trades.filter(t=>t.result==='TRAIL').length}</td><td class="num">${d.trades.filter(t=>t.result==='STOP').length}</td><td class="num ${cls(dayRs(d))}">${rs(dayRs(d))}</td><td class="num ${cls(dayRs(d))}">${pct(dayRs(d)/CAP*100)}</td><td>${esc(d.opening||'n/a')}</td></tr>`).join('')}</tbody>`;
   $('all').querySelectorAll('tr.row').forEach(r=>{const f=()=>go(r.dataset.d);r.onclick=f;r.onkeydown=e=>{if(e.key==='Enter')f();};});
 }
