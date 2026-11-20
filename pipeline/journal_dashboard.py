@@ -16,13 +16,39 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FOLDER = ROOT / "data" / "journal"
 NODES = ROOT / "data" / "nodes"
+REGIME_DIR = ROOT / "data" / "stream_regime"          # the live gamma-flip readings the trade rules used, one file per day
 NOTES = ROOT / "data" / "journal_notes.json"          # {"2026-11-17": ["a paragraph", ...]}: your own notes, shown under that day's King analysis
 OUT = ROOT / "data" / "journal_dashboard.html"
 SETTINGS = ROOT / "data" / "journal_settings.json"     # {"capital": 25000, "lot": 65}: rupee results = (exit - entry) x lot; Nifty lot is 65 (NSE circular FAOP70616, from Jan 2026)
 DEFAULTS = {"capital": 25000, "lot": 65, "from": "2026-11-11"}      # "from": the first day the page shows; earlier journal files stay on disk, they are only left out
 
 
-def load_days(folder=FOLDER, start=None):
+def regime_bands(day, candles, reg_dir=None):
+    """[[from HH:MM, to HH:MM, 'N'|'P'], ...]: the gamma regime the dashboard showed through the day (the live flip reading in force and which side of it the index close was on),
+    merged into bands. Empty when that day has no readings."""
+    try:
+        rd = json.loads((pathlib.Path(reg_dir or REGIME_DIR) / f"{day}.json").read_text(encoding="utf-8"))
+        rd = sorted(([r["time"][11:16], r] for r in rd), key=lambda x: x[0])
+    except (OSError, ValueError, KeyError):
+        return []
+    out, i, cur = [], -1, None
+    for c in candles:
+        while i + 1 < len(rd) and rd[i + 1][0] <= c[0]:
+            i += 1
+        if i < 0:
+            continue
+        r = rd[i][1]
+        pos = bool(r.get("pos")) if r.get("flip") is None or r.get("pos_above") is None else ((c[3] > r["flip"]) == r["pos_above"])
+        ch = "P" if pos else "N"
+        if cur and cur[2] == ch:
+            cur[1] = c[0]
+        else:
+            cur = [c[0], c[0], ch]
+            out.append(cur)
+    return out
+
+
+def load_days(folder=FOLDER, start=None, reg_dir=None):
     days = []
     for f in sorted(pathlib.Path(folder).glob("????-??-??.json")):
         if start and f.stem < start:
@@ -41,6 +67,7 @@ def load_days(folder=FOLDER, start=None):
             "levels": (d.get("levels_used") or {}).get("levels", {}), "close": (d.get("levels_used") or {}).get("close"),
             "opening": d.get("opening_candles"), "saved": d.get("saved_at"),
         })
+        days[-1]["regime"] = regime_bands(d["date"], days[-1]["candles"], reg_dir)
     return days
 
 
@@ -83,9 +110,9 @@ def load_settings():
     return s
 
 
-def build_html(folder=FOLDER, nodes_dir=NODES, notes=NOTES, king_test_dir=None):
+def build_html(folder=FOLDER, nodes_dir=NODES, notes=NOTES, king_test_dir=None, regime_dir=None):
     cfg = load_settings()
-    days = load_days(folder, cfg.get("from"))
+    days = load_days(folder, cfg.get("from"), regime_dir)
     kd, nt = king_data(nodes_dir, folder, cfg.get("from")), load_notes(notes)
     kt, ktsum = {}, None
     try:                                                   # the King trade TEST (pipeline/king_test.py): its own files, never part of the paper-trade figures
@@ -230,6 +257,8 @@ function chart(d){
   const step = (hi-lo)>400?100:50;
   for(let p=Math.ceil(lo/step)*step;p<hi;p+=step) s+=`<line x1="${L}" x2="${W-R}" y1="${y(p)}" y2="${y(p)}" stroke="var(--line)"/><text x="${L-8}" y="${y(p)+4}" text-anchor="end">${p}</text>`;
   [0,60,120,180,240,300,360].forEach(m=>{const h=9*60+15+m; s+=`<text x="${x(m)}" y="${H-8}" text-anchor="middle">${String(Math.floor(h/60)).padStart(2,'0')}:${String(h%60).padStart(2,'0')}</text>`;});
+  (d.regime||[]).forEach(([a,b,r])=>{ const xa=x(Math.max(mins(a),0)), xb=x(Math.min(mins(b)+1,n)); if(xb<=xa) return; const c=r==='N'?'var(--dn)':'var(--up)';
+    s+=`<rect x="${xa}" y="${T}" width="${xb-xa}" height="${ih}" fill="${c}" opacity=".07"/><rect x="${xa}" y="${T}" width="${xb-xa}" height="5" fill="${c}" opacity=".85"><title>${r==='N'?'Negative':'Positive'} gamma ${a} to ${b}</title></rect>`; });
   d.trades.forEach(t=>{ if(!t.entry_time||!t.exit_time) return; const a=x(mins(t.entry_time)), b=Math.max(x(mins(t.exit_time)),a+3);
     s+=`<rect x="${a}" y="${T}" width="${b-a}" height="${ih}" fill="${(t.result==='TARGET'||t.result==='TRAIL')?'var(--up)':'var(--dn)'}" opacity=".13"><title>Trade ${t.n}: ${t.entry_time} to ${t.exit_time}, ${pct(t.pnl_pct)}</title></rect>`; });
   lv.forEach(([k,v])=>{ s+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--vio)" stroke-dasharray="5 4" opacity=".7"/><text x="${W-R+6}" y="${y(v)+4}" style="fill:var(--vio)">${k} ${Math.round(v)}</text>`; });
@@ -252,11 +281,12 @@ function spark(t){
   s+=`<circle cx="${x(0)}" cy="${y(o[0][1])}" r="3.5" fill="var(--acc)"/>`;
   return s+'</svg>';
 }
-function card(t){
+function regAt(d,hm){ const b=(d.regime||[]).find(([a,e])=>a<=hm&&hm<=e); return b?b[2]:null; }
+function card(t,d){
   const win=t.result==='TARGET'||t.result==='TRAIL', dur=(t.entry_time&&t.exit_time)?(mins(t.exit_time)-mins(t.entry_time)):null;
   return `<div class="card"><div class="top"><span class="name">Trade ${t.n} &middot; <span class="chip ${t.side==='CALL'?'call':'put'}">${t.side}</span> ${t.strike} ${t.side==='CALL'?'CE':'PE'}</span><span class="chip ${win?'tgt':t.result==='STOP'?'stp':'open'}">${t.result==='TARGET'?'Target':t.result==='TRAIL'?'Trailing stop':t.result==='STOP'?'Stop':esc(t.result||'Open')} ${rs(tradeRs(t))} (${pct(t.pnl_pct)})</span></div>
   <div class="sub" style="margin:0">${esc(t.setup)}</div>${spark(t)}
-  <div class="kv num"><span>In</span><span>${t.entry_time} at ${t.entry}</span><span>Out</span><span>${t.exit_time||'&ndash;'}${t.exit!=null?' at '+t.exit:''}${dur!=null?' ('+dur+' min)':''}</span><span>Cost of one lot</span><span>₹${Math.round(t.entry*LOT).toLocaleString('en-IN')}${t.entry*LOT>CAP?' (more than the capital)':''}</span><span>Expiry</span><span>${t.expiry||''}</span><span>Setups skipped meanwhile</span><span>${t.ignored}</span></div>${(t.shifts&&t.shifts.length)?`<div class="sub" style="margin:6px 0 0">${t.shifts.map(esc).join('<br>')}</div>`:''}</div>`;
+  <div class="kv num"><span>In</span><span>${t.entry_time} at ${t.entry}</span><span>Out</span><span>${t.exit_time||'&ndash;'}${t.exit!=null?' at '+t.exit:''}${dur!=null?' ('+dur+' min)':''}</span><span>Gamma regime at entry</span><span>${(()=>{const r=d&&regAt(d,t.entry_time);return r==='N'?'<b class="dn">negative</b>':r==='P'?'<b class="up">positive</b>':'&ndash;'})()}</span><span>Cost of one lot</span><span>₹${Math.round(t.entry*LOT).toLocaleString('en-IN')}${t.entry*LOT>CAP?' (more than the capital)':''}</span><span>Expiry</span><span>${t.expiry||''}</span><span>Setups skipped meanwhile</span><span>${t.ignored}</span></div>${(t.shifts&&t.shifts.length)?`<div class="sub" style="margin:6px 0 0">${t.shifts.map(esc).join('<br>')}</div>`:''}</div>`;
 }
 // Rules scoreboard: every setup a rule kept out is run through the same stop / target / trailing rules (would_pct), so each rule can be judged in numbers
 function scoreHtml(days){
@@ -438,9 +468,9 @@ function dayview(){
   const ch = chart(d);
   $('day').innerHTML = `<div class="dayhead"><div><div class="t">${wk(d.date)} ${d.date.slice(0,4)} &middot; ${esc(d.symbol)}</div><div class="pills"><span class="pill">Levels from the ${esc(d.close||'?')} close</span><span class="pill ${opWarn?'warn':''}">Opening candles: ${esc(op||'n/a')}</span><span class="pill">${d.trades.length} trade${d.trades.length===1?'':'s'} &middot; ${d.setups.length} setups</span></div></div><div style="text-align:right"><div class="t ${cls(dayRs(d))} num">${rs(dayRs(d))}</div><div class="sub num">${(dayRs(d)/CAP*100>0?'+':'')}${(dayRs(d)/CAP*100).toFixed(1)}% of capital &middot; ${pct(d.total)} on premiums</div></div></div>
   <div class="chartbox" style="margin-top:12px">${ch}</div>
-  <div class="legend"><span>Line: index close, 1-minute</span><span>Shaded: a trade was open</span><span>&#9650; &#9660; filled: setup taken &middot; hollow: setup not taken</span>${LVSHOWN ? '<span style="color:var(--vio)">Dashed: end-of-day levels near the day range</span>' : '<span>No end-of-day level was near the day range</span>'}</div>
+  <div class="legend"><span>Line: index close, 1-minute</span>${(d.regime&&d.regime.length)?`<span><b class="dn">&#9644;</b> background red: negative gamma</span><span><b class="up">&#9644;</b> green: positive gamma</span><span>Trades entered: ${d.trades.filter(t=>regAt(d,t.entry_time)==='N').length} in negative gamma, ${d.trades.filter(t=>regAt(d,t.entry_time)==='P').length} in positive gamma</span>`:''}<span>Shaded: a trade was open</span><span>&#9650; &#9660; filled: setup taken &middot; hollow: setup not taken</span>${LVSHOWN ? '<span style="color:var(--vio)">Dashed: end-of-day levels near the day range</span>' : '<span>No end-of-day level was near the day range</span>'}</div>
   <div class="legend">${d.king?'<span><b style="color:var(--amb)">&#9473;</b> King, positive</span><span><b style="color:var(--vio)">&#9473;</b> King, negative</span>':''}</div>
-  <h2 style="margin-top:18px">Trades</h2><div class="cards">${d.trades.length?d.trades.map(card).join(''):'<div class="empty">No trade was taken.</div>'}</div>
+  <h2 style="margin-top:18px">Trades</h2><div class="cards">${d.trades.length?d.trades.map(t=>card(t,d)).join(''):'<div class="empty">No trade was taken.</div>'}</div>
   <div class="two" style="margin-top:18px"><div><h2>Setups, in time order</h2><div class="tablewrap">${setups(d)}</div></div><div><h2>Levels the page used</h2>${levels(d)}</div></div>${ktestHtml(d)}${kingHtml(d)}`;
 }
 function alltable(){

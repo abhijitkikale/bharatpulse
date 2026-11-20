@@ -68,3 +68,14 @@ def test_the_journal_page_carries_the_king_analysis_and_your_notes(tmp_path):
     assert data["days"][0]["king"]["runs"][0]["king"] == 25200 and data["days"][0]["notes"] == ["my note about the King"] and data["pull"]["days"] == 1
     plain = journal_dashboard.build_html(jd, tmp_path / "none", tmp_path / "none.json")                 # no nodes data and no notes: the journal still builds
     assert "const DATA" in plain and json.loads(plain.split("const DATA = ")[1].split(";\nconst CAP")[0])["days"][0]["king"] is None
+
+
+def test_regime_bands_follow_the_live_flip_and_the_side_price_is_on(tmp_path):
+    reg = tmp_path / "reg"
+    reg.mkdir()
+    (reg / f"{DAY}.json").write_text(json.dumps([{"time": f"{DAY}T09:10:00+05:30", "flip": 25100.0, "pos_above": True, "pos": True},
+                                                 {"time": f"{DAY}T10:00:00+05:30", "flip": 25100.0, "pos_above": False, "pos": False}]), encoding="utf-8")
+    candles = [["09:30", 25210, 25190, 25200], ["09:31", 25210, 25190, 25205], ["09:32", 25110, 25090, 25095], ["10:00", 25210, 25190, 25200], ["10:01", 25110, 25090, 25095]]
+    bands = journal_dashboard.regime_bands(DAY, candles, reg)
+    assert bands == [["09:30", "09:31", "P"], ["09:32", "10:00", "N"], ["10:01", "10:01", "P"]]       # the 10:00 reading flips which side is positive, so the same price is now negative
+    assert journal_dashboard.regime_bands(DAY, candles, tmp_path / "none") == []
