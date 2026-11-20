@@ -263,6 +263,11 @@ class Feed:
             self.journal(sday, replay, today, res, used, state_regime=None)
             self.alerts(t, sday, res)
         self.king_test_step(df)                         # the journal's King trade TEST (own file, never touches the paper trades)
+        try:                                            # once a trading day after 15:40 IST: the simple journal goes to the public site (tools/publish_journal.py; background thread, never raises)
+            import publish_journal
+            publish_journal.maybe_publish(t)
+        except Exception:
+            pass
         state = stream_levels.build_state(df, self.eod, self.live, t, self.msg, setups=setups, trades=trades)
         state["open_src"] = used                        # how many opening candles came from TradingView
         state["replay_eod"] = replay["close"] if setups is not None and replay is not self.eod else None   # the trades use the levels of this older close

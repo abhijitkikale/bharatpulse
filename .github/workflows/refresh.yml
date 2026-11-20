@@ -61,6 +61,8 @@ jobs:
         run: |
           mkdir _site
           cp dashboard.html _site/index.html
+          # the simple trading journal (written to the repository by tools/publish_journal.py on the owner's PC after each session)
+          if [ -f journal.html ]; then cp journal.html _site/journal.html; fi
       - name: Commit history files
         continue-on-error: true          # a clash with a push made while this build ran must never stop the dashboard from being published
         run: |
