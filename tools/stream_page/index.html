@@ -339,17 +339,19 @@ function drawNodes(){
       g.strokeStyle='rgba(122,162,255,.3)';g.beginPath();g.moveTo(0,y);g.lineTo(Wp,y);g.stroke();g.fillStyle='rgba(150,180,255,.7)';g.fillText(`${lb} ${v.toFixed(0)} (day)`,6,y-7)});
     g.restore()}
   if(BUBBLES_ON){const Wp=w-chart.priceScale('right').width(),ts=chart.timeScale();                  // bubbles in time: a dot per bar at the level each node had then, so a node that moves leaves its old dots behind
-    const bub=(x,y,pct,king,sign)=>{const f=Math.min(1,pct/100),r=(1+6.8*Math.pow(f,1.2))*Math.max(sc,.95),a=Math.min(.8,.05+.65*Math.pow(f,1.4)+(king?.08:0)),col=sign>0?'255,213,79':'179,136,255';       // steeper with the score: 20% a small faint dot, the King a big solid one (the size keeps a floor so it shows on a phone)
-      g.fillStyle=`rgba(${col},${a})`;g.strokeStyle=`rgba(${col},${Math.min(.75,a+.25)})`;g.lineWidth=.8;g.beginPath();g.arc(x,y,r,0,6.283);g.fill();g.stroke()};
+    const LET=new URLSearchParams(location.search).get('letters')!=='0';                                            // /?letters=0 hides the K / G / C / F letters
+    const bub=(x,y,pct,king,sign,lt,showLt)=>{const f=Math.min(1,pct/100),r0=(1+6.8*Math.pow(f,1.2))*Math.max(sc,.95),r=(lt&&LET)?Math.max(r0,6.8*Math.max(sc,.95)):r0,a=Math.min(.8,.05+.65*Math.pow(f,1.4)+(king?.08:0)),col=sign>0?'255,213,79':'179,136,255';       // steeper with the score: 20% a small faint dot, the King a big solid one (the size keeps a floor so it shows on a phone)
+      g.fillStyle=`rgba(${col},${a})`;g.strokeStyle=`rgba(${col},${Math.min(.75,a+.25)})`;g.lineWidth=.8;g.beginPath();g.arc(x,y,r,0,6.283);g.fill();g.stroke();
+      if(lt&&LET&&showLt){g.save();g.font=`800 ${Math.round(r*1.15)}px sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillStyle='rgba(255,255,255,.95)';g.fillText(lt,x,y+.5);g.restore()}};
     const cands=(LASTS&&LASTS.candles)||[];g.save();g.beginPath();g.rect(0,0,Wp,h);g.clip();
     if(HIST.length&&cands.length>2){
       const xa=ts.timeToCoordinate(cands[cands.length-1].time),xb=ts.timeToCoordinate(cands[cands.length-2].time),bs=(xa!=null&&xb!=null&&xa!==xb)?Math.abs(xa-xb):6,every=Math.max(1,Math.round(Math.max(16,19*sc)/bs));
       const rd=t=>{let lo=0,hi=HIST.length-1,ans=-1;while(lo<=hi){const m=(lo+hi)>>1;if(HIST[m][0]<=t){ans=m;lo=m+1}else hi=m-1}return ans};
       for(let i=cands.length-1;i>=0;i--){if(i%every)continue;const x=ts.timeToCoordinate(cands[i].time);if(x==null)continue;if(x<-10)break;
-        const k=rd(cands[i].time);if(k<0)continue;HIST[k][1].forEach(([lv,pct,sg,kg])=>{const y=cs.priceToCoordinate(lv);if(y!=null&&y>-8&&y<h+8)bub(x,y,pct,kg,sg)})}
+        const k=rd(cands[i].time);if(k<0)continue;HIST[k][1].forEach(([lv,pct,sg,kg,lt])=>{const y=cs.priceToCoordinate(lv);if(y!=null&&y>-8&&y<h+8)bub(x,y,pct,kg,sg,lt,Math.round(i/every)%3===0)})}
     }else{const step=Math.max(16,19*sc);                                                               // no history yet: the current levels across the chart
       (NODES.nodes||[]).filter(n=>n.pct>=40||(n.roles||[]).some(r=>['king','gatekeeper','floor','ceiling'].includes(r))).forEach(n=>{const y=cs.priceToCoordinate(n.k);if(y==null||y<-8||y>h+8)return;
-        for(let x=step/2;x<Wp;x+=step)bub(x,y,n.pct,(n.roles||[]).includes('king'),n.sign==='+'?1:-1)})}
+        const lt=[['king','K'],['gatekeeper','G'],['ceiling','C'],['floor','F']].find(([r])=>(n.roles||[]).includes(r));for(let x=step/2;x<Wp;x+=step)bub(x,y,n.pct,(n.roles||[]).includes('king'),n.sign==='+'?1:-1,lt?lt[1]:'',Math.round(x/step)%3===0)})}
     g.restore()}
   NODES.nodes.slice(0,7).forEach(n=>{
     const y=cs.priceToCoordinate(n.k);if(y==null||y<0||y>h)return;

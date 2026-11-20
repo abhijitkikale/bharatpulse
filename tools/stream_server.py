@@ -105,7 +105,7 @@ _NH = {"sig": None, "body": b"[]"}
 
 
 def nodes_history_json():
-    """[[time, [[strike, % of King, sign +1/-1, King 0/1], ...]], ...] from today's saved nodes readings (only the nodes the chart shows); cached until the file grows."""
+    """[[time, [[strike, % of King, sign +1/-1, King 0/1, role letter K/G/C/F or ""], ...]], ...] from today's saved nodes readings (only the nodes the chart shows); cached until the file grows."""
     day = now_ist().date().isoformat()
     f = ROOT / "data" / "nodes" / f"{day}.jsonl"
     try:
@@ -115,7 +115,7 @@ def nodes_history_json():
             out = []
             for r in nodes_ledger.load_readings(f):
                 cl = nodes.classify({"k": r["k"], "net": r["n"]}, r["spot"])
-                rows = [[n["k"], round(n["pct"]), 1 if n["sign"] == "+" else -1, 1 if "king" in n["roles"] else 0] for n in cl["nodes"]
+                rows = [[n["k"], round(n["pct"]), 1 if n["sign"] == "+" else -1, 1 if "king" in n["roles"] else 0, next((c for r_, c in (("king", "K"), ("gatekeeper", "G"), ("ceiling", "C"), ("floor", "F")) if r_ in n["roles"]), "")] for n in cl["nodes"]
                         if n["pct"] >= 40 or any(x in n["roles"] for x in ("king", "gatekeeper", "floor", "ceiling"))]
                 out.append([int(r["t"].timestamp()) + stream_levels.SHIFT, rows])
             _NH.update(sig=sig, body=json.dumps(out, separators=(",", ":")).encode())
