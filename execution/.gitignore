@@ -1,0 +1,7 @@
+# execution records, logs, runtime state and the downloaded instrument master are local to this PC
+data/
+logs/
+state/
+config.json
+__pycache__/
+.pytest_cache/

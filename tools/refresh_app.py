@@ -240,6 +240,7 @@ def start_live():
         start_tv_paste()
         start_nodes_agent()
         start_order_router()
+        exec_start()                             # the FYERS execution engine, PAPER mode only (LIVE is switched on by you on its own page)
         try:                                     # the live stream page (http://127.0.0.1:8766/) runs alongside the live updates
             stream_server.start_in_thread()
             open_stream_page()
@@ -324,6 +325,38 @@ def tv_card():
     return {"ok": st.get("ok"), "text": ("all OK" if st.get("ok") else "PROBLEM: see below") + f" (checked {st.get('checked_at', '')[11:16]} IST)", "lines": st["lines"]}
 
 
+def exec_card():
+    """The FYERS execution engine's card (logic in execution/helper_card.py). Never lets a problem there touch the rest of the page."""
+    try:
+        sys.path.insert(0, str(ROOT))
+        from execution import helper_card
+        return helper_card.card()
+    except Exception as e:
+        return {"app_ok": False, "token": {"text": "execution module unavailable: " + str(e)[:60], "valid": False}, "engine": {"running": False}, "login": {"busy": False, "msg": ""}}
+
+
+def exec_start():
+    """Start the execution engine in PAPER mode (it never starts in LIVE). Called with the live updates and by the page's button."""
+    try:
+        sys.path.insert(0, str(ROOT))
+        from execution import helper_card
+        helper_card.start_engine()
+    except Exception:
+        pass
+
+
+def exec_post(path):
+    try:
+        sys.path.insert(0, str(ROOT))
+        from execution import helper_card
+        if path == "/exec/login":
+            helper_card.order_login()
+        elif path == "/exec/start":
+            helper_card.start_engine()
+    except Exception:
+        pass
+
+
 def status():
     with LOCK:
         stage, err, url = S["stage"], S["error"], S["run_url"]
@@ -340,7 +373,7 @@ def status():
     return {"stage": stage, "error": err, "run_url": url, "steps": steps, "live": LIVE, "mode": S["mode"],
             "liveloop": {"running": ls["running"], "text": liveline, "can_start": (not ls["running"]) and live_loop.market_day_window() and token_info().get("valid", False)},
             "env_ok": bool(env("FYERS_APP_ID") and env("FYERS_APP_SECRET")), "gh_ok": gh_ok(), "token": token_info(),
-            "tv": tv_card(), "stream": {"up": stream_up()}, "obs": obs_info(), "obsmsg": S.get("obsmsg", ""), "snapmsg": S.get("snapmsg", "")}
+            "tv": tv_card(), "exec": exec_card(), "stream": {"up": stream_up()}, "obs": obs_info(), "obsmsg": S.get("obsmsg", ""), "snapmsg": S.get("snapmsg", "")}
 
 
 def logo():
@@ -374,6 +407,11 @@ ul{list-style:none;margin:0;padding:0}li{display:flex;align-items:center;gap:12p
 <div class="row"><span class="k">Today's data token</span><span id="s-tok"></span></div>
 <div class="row"><span class="k">Live updates</span><span id="s-live"></span></div></div>
 <div class="card"><div class="row"><span class="k">TradingView connection (setups and opening candles)</span><span id="s-tv"></span></div><div id="tvlines" class="small" style="margin-top:6px;line-height:1.6"></div></div>
+<div class="card"><div class="row"><span class="k">Order execution (FYERS)</span><span id="s-ex"></span></div>
+<div class="row"><span class="k">Order-app token (sign in each morning after 06:30 IST)</span><span id="s-otok"></span></div>
+<div class="row"><span class="k">Order-app details on this PC</span><span id="s-oapp"></span></div>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn ghost" id="b-esign">Sign in to the order app</button><button class="btn ghost" id="b-estart">Start execution engine (PAPER)</button><button class="btn ghost" id="b-eopen">Open the execution page</button></div>
+<div id="exnote" class="small" style="margin-top:8px"></div><div class="small" style="margin-top:4px">LIVE is switched on only on the execution page, by typing a phrase. It never starts in LIVE.</div></div>
 <div class="card"><div class="row"><span class="k">Live dashboard (stream page)</span><span id="s-str"></span></div>
 <div class="row"><span class="k">OBS</span><span id="s-obs"></span></div>
 <div class="row"><span class="k">YouTube broadcast</span><span id="s-brd"></span></div>
@@ -401,6 +439,10 @@ async function tick(){let d;try{d=await (await fetch('/status',{cache:'no-store'
  const o=d.obs;$('#s-obs').textContent=!o.configured?'not set up (run tools/obs_setup.py)':(o.running?'running':'not running');$('#s-obs').className=o.running?'ok':'warn';
  $('#s-brd').textContent=o.live===true?'LIVE':(o.live===false?'off':'unknown');$('#s-brd').className=o.live?'ok':'warn';
  ['#b-obs','#b-live','#b-stop'].forEach(i=>{$(i).disabled=!o.configured});$('#obsnote').textContent=d.obsmsg||'';$('#snapnote').textContent=d.snapmsg||'';
+  const x=d.exec||{},eg=x.engine||{},tk=x.token||{};window._exp=x.port||8780;
+ $('#s-ex').textContent=!eg.running?'not running':(eg.live?'LIVE: real orders are being sent':'running in '+eg.mode+' mode (no real orders)');$('#s-ex').className=eg.live?'bad':(eg.running?'ok':'warn');
+ $('#s-otok').textContent=tk.text||'';$('#s-otok').className=tk.valid?'ok':'warn';pill($('#s-oapp'),x.app_ok,'ready','missing (set FYERS_ORDER_APP_ID and FYERS_ORDER_APP_SECRET)');
+ $('#exnote').textContent=(x.login&&x.login.msg)||(eg.running?(eg.recon||''):'');$('#b-esign').disabled=!x.app_ok||!!(x.login&&x.login.busy);$('#b-estart').disabled=!!eg.running;
  $('#progress').style.display=d.stage==='idle'?'none':'block';
  $('#steps').innerHTML='';d.steps.forEach(s=>{const li=document.createElement('li');li.className=s.state;const dot=document.createElement('span');dot.className='dot';dot.textContent=s.state==='done'?'\\u2713':s.state==='error'?'!':'';li.appendChild(dot);li.appendChild(document.createTextNode(s.label));$('#steps').appendChild(li)});
  const e=$('#err');e.style.display=d.error?'block':'none';e.textContent=d.error||'';
@@ -413,6 +455,9 @@ $('#b-obs').onclick=()=>act('/obs/start');
 $('#b-live').onclick=()=>{if(confirm('Start the YouTube broadcast now? OBS must be signed in to YouTube. (Private streams are only seen by the people you invited.)'))act('/obs/golive')};
 $('#b-stop').onclick=()=>act('/obs/stop');
 $('#b-snap').onclick=()=>act('/snap/make');
+$('#b-esign').onclick=()=>act('/exec/login');
+$('#b-estart').onclick=()=>act('/exec/start');
+$('#b-eopen').onclick=()=>window.open('http://127.0.0.1:'+(window._exp||8780)+'/','_blank');
 $('#startlive').onclick=async()=>{try{await fetch('/startlive',{method:'POST'})}catch(e){}tick()};
 $('#quit').onclick=async()=>{try{await fetch('/quit',{method:'POST'})}catch(e){};document.body.innerHTML='<p style="padding:30px">You can close this tab.</p>'};
 tick();setInterval(tick,2000);
@@ -481,6 +526,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self.headers.get("X-BP") != "1":                 # only this page may press these (a web page on another site cannot add the header)
                 return self._send(403, "forbidden", "text/plain")
             threading.Thread(target=run_action, args=(self.path,), daemon=True).start()
+            return self._send(200, "ok", "text/plain")
+        if self.path in ("/exec/login", "/exec/start"):
+            if self.headers.get("X-BP") != "1":
+                return self._send(403, "forbidden", "text/plain")
+            threading.Thread(target=exec_post, args=(self.path,), daemon=True).start()
             return self._send(200, "ok", "text/plain")
         if self.path == "/startlive":
             if live_loop.market_day_window() and token_info().get("valid"):
