@@ -101,6 +101,29 @@ def market_hours(t=None):
     return nse_calendar.in_session(t, lead=5, tail=10)
 
 
+_NH = {"sig": None, "body": b"[]"}
+
+
+def nodes_history_json():
+    """[[time, [[strike, % of King, sign +1/-1, King 0/1], ...]], ...] from today's saved nodes readings (only the nodes the chart shows); cached until the file grows."""
+    day = now_ist().date().isoformat()
+    f = ROOT / "data" / "nodes" / f"{day}.jsonl"
+    try:
+        sig = (day, f.stat().st_size)
+        if _NH["sig"] != sig:
+            import nodes_ledger
+            out = []
+            for r in nodes_ledger.load_readings(f):
+                cl = nodes.classify({"k": r["k"], "net": r["n"]}, r["spot"])
+                rows = [[n["k"], round(n["pct"]), 1 if n["sign"] == "+" else -1, 1 if "king" in n["roles"] else 0] for n in cl["nodes"]
+                        if n["pct"] >= 40 or any(x in n["roles"] for x in ("king", "gatekeeper", "floor", "ceiling"))]
+                out.append([int(r["t"].timestamp()) + stream_levels.SHIFT, rows])
+            _NH.update(sig=sig, body=json.dumps(out, separators=(",", ":")).encode())
+        return _NH["body"]
+    except Exception:
+        return b"[]"
+
+
 def journal_frame(day, key):
     """The option candles saved in that day's journal for a contract (strike, 'CE' / 'PE'): from each trade's entry to its exit. None if there are none."""
     try:
@@ -592,6 +615,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             st = tv_health.read(now=now_ist())
             st["source"] = "TradingView" if signals_from_tradingview() else "the page itself"
             return self._send(200, json.dumps(st, separators=(",", ":")).encode(), "application/json")
+        if path == "/nodes-history.json":               # the day's saved node readings (every 2 minutes): the chart's bubble rows keep their history from it
+            return self._send(200, nodes_history_json(), "application/json")
         if path == "/nodes.json":                       # written by tools/nodes_agent.py; {} when the agent is not running
             try:
                 body = (ROOT / "data" / "nodes" / "latest.json").read_bytes()
