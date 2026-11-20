@@ -229,7 +229,9 @@ let HIST=[],HISTAT=0;
 const BUBBLES_ON=new URLSearchParams(location.search).get('bubbles')!=='0';                 // /?bubbles=0 hides the bubble rows
 let NODES=null,GR={};
 const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const nodeFresh=()=>NODES&&NODES.asof&&(Date.now()-Date.parse(NODES.asof))<300000;
+const nodeFresh=()=>{if(!(NODES&&NODES.asof))return false;const age=Date.now()-Date.parse(NODES.asof);if(age<300000)return true;
+  const n=new Date(Date.now()+19800000),hm=n.getUTCHours()*60+n.getUTCMinutes(),open=n.getUTCDay()>=1&&n.getUTCDay()<=5&&hm>=555&&hm<930;     // IST now
+  return !open&&age<5*864e5};          // while the market is open a reading older than 5 minutes is hidden (the agent may be down); when it is closed the session's last readings stay on the chart
 const gb=(when,side)=>{const g=GR[when+'|'+side];return g?` <b class="gd g${g.grade}" title="${g.reasons.join('; ').replace(/"/g,'&quot;')}${g.late?' (graded late)':''}">${g.grade}</b>`:''};
 const nodeRole=n=>{const r=n.roles||[],m=[['king','KING'],['gatekeeper','GATEKEEPER'],['ceiling','CEILING'],['floor','FLOOR']].filter(([k])=>r.includes(k)).map(x=>x[1]);return m.length?m.join(' · '):r.includes('pika')?'+':r.includes('barney')?'−':''};   // full names, and every role a node holds (the King that is also the ceiling reads KING · CEILING)
 const nodeArrow=n=>n.v5==null?'':n.v5>=3?' ▲':n.v5<=-3?' ▼':'';
