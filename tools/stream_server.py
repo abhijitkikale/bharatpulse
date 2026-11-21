@@ -108,6 +108,10 @@ def nodes_history_json():
     """[[time, [[strike, % of King, sign +1/-1, King 0/1, role letter K/G/C/F or ""], ...]], ...] from today's saved nodes readings (only the nodes the chart shows); cached until the file grows."""
     day = now_ist().date().isoformat()
     f = ROOT / "data" / "nodes" / f"{day}.jsonl"
+    if not f.exists():                                  # weekend / before the first reading of a session: the page still shows the last session, so use that session's readings
+        older = sorted(p for p in (ROOT / "data" / "nodes").glob("????-??-??.jsonl") if p.stem <= day)
+        if older:
+            f, day = older[-1], older[-1].stem
     try:
         sig = (day, f.stat().st_size)
         if _NH["sig"] != sig:
