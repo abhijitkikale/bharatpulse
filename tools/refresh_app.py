@@ -604,6 +604,37 @@ def status_text():
     return chr(10).join(lines)
 
 
+def engine_watch_step(t, started_today, is_running, start, notify):
+    """One look of the watchdog. Returns what it did: None, 'started' (first start of the day) or 'restarted' (it had stopped again; Telegram is told)."""
+    if not (live_loop.market_day_window(t) and obs_control._trading_day(t)) or is_running():
+        return None
+    start()
+    day = str(t.date())
+    if started_today.get("day") != day:
+        started_today.update(day=day, n=0)
+    started_today["n"] += 1
+    if started_today["n"] > 1:
+        notify(f"BharatPulse: the execution engine had stopped and was started again in PAPER ({t:%H:%M} IST). If LIVE was on, it is OFF now: check the FYERS app for any open position and use /exec_live to activate again.")
+        return "restarted"
+    return "started"
+
+
+def engine_watchdog(stop=None):
+    """PAPER is ON by default every trading day: from 05:00 IST until the market closes, whenever this helper runs and the execution engine is not answering, start it. It always
+    starts in PAPER; LIVE exists only after you activate it (execution page, or /exec_live and /confirm on Telegram). Does not need the Fyers sign-in. A restart later in the day also
+    switches LIVE off, so Telegram says so."""
+    stop = stop or threading.Event()
+    started_today = {}
+    while not stop.is_set():
+        try:
+            from execution import helper_card
+            import telegram_notify
+            engine_watch_step(live_loop.now_ist(), started_today, lambda: helper_card.engine_card()["running"], helper_card.start_engine, telegram_notify.send)
+        except Exception:
+            pass
+        stop.wait(30)
+
+
 def start_control():
     """Telegram commands for you only (/status, /stream_on, /stream_off, /sleep, /shutdown): see tools/tg_control.py. Started once per helper."""
     try:
@@ -620,6 +651,7 @@ def main():
         sys.exit(f"Port {PORT} is already in use. Close the other BharatPulse helper window and try again.")
     print(f"BharatPulse refresh page: {REDIRECT}   (close this window to stop it)")
     start_control()
+    threading.Thread(target=engine_watchdog, daemon=True, name="engine-watchdog").start()
     if sys.platform == "win32":
         try:                                    # keep this PC awake while the helper runs (the screen may still turn off)
             import ctypes
