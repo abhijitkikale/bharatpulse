@@ -4,6 +4,8 @@
   /orders_off   switch the order router OFF (an open broker stop-loss order stays)     /orders_dry   dry run only: nothing is sent. There is no command for "live".
   /pause        stop NEW entry signals (an open trade carries on)       /resume   allow them again
   /stream_on    start the YouTube broadcast now          /stream_off   stop it (it stays off for the rest of the day)
+  /exec_status  the FYERS execution engine: mode, trade, P&L     /exec_start  start the engine (PAPER)     /exec_off  switch LIVE off (an open position keeps its stop)
+  /exec_live    ACTIVATE LIVE real orders (then /confirm)     /exec_exit  EMERGENCY: cancel unfilled entries, exit the open position, LIVE off, KILL file (then /confirm)
   /sleep        put this PC to sleep                     /shutdown     shut this PC down (after 30 seconds)
   /confirm      needed once after /sleep or /shutdown (within 60 seconds)     /cancel   cancel it, also an announced shutdown
   /help         this list
@@ -29,7 +31,8 @@ import order_manager  # noqa: E402
 import trading_pause  # noqa: E402
 
 COMMANDS = [("status", "What is running"), ("orders_off", "Switch the order router OFF"), ("orders_dry", "Order router: dry run only"), ("pause", "Pause new entry signals"), ("resume", "Allow new entry signals again"), ("stream_on", "Start the YouTube broadcast"), ("stream_off", "Stop the YouTube broadcast"),
-            ("sleep", "Put the PC to sleep"), ("shutdown", "Shut the PC down"), ("confirm", "Confirm sleep or shutdown"), ("cancel", "Cancel"), ("help", "List the commands")]
+            ("exec_status", "Execution engine: mode, trade, P&L"), ("exec_start", "Start the execution engine (PAPER)"), ("exec_off", "Switch LIVE execution off"), ("exec_live", "ACTIVATE LIVE execution (then /confirm)"), ("exec_exit", "EMERGENCY exit all (then /confirm)"),
+            ("sleep", "Put the PC to sleep"), ("shutdown", "Shut the PC down"), ("confirm", "Confirm sleep, shutdown, live or exit"), ("cancel", "Cancel"), ("help", "List the commands")]
 CONFIRM_SECONDS = 60
 MAX_AGE = 120
 
@@ -80,6 +83,18 @@ class Control:
             return self._bg(self._stream_on)
         if cmd == "stream_off":
             return self._bg(self._stream_off)
+        if cmd == "exec_status":
+            return self._bg(self._exec_status)
+        if cmd == "exec_start":
+            return self._bg(self._exec_start)
+        if cmd == "exec_off":
+            return self._bg(lambda: self._exec_post("/api/disarm", {}, "LIVE execution is OFF: no new order will be sent. An open position keeps its broker stop-loss and is still managed."))
+        if cmd == "exec_live":
+            self.pending = ("exec_live", now + CONFIRM_SECONDS)
+            return self.say(f"ACTIVATE LIVE sends REAL orders to FYERS (1 lot per dashboard trade; a restart returns to PAPER). Send /confirm within {CONFIRM_SECONDS} seconds to activate, /cancel to stop.")
+        if cmd == "exec_exit":
+            self.pending = ("exec_exit", now + CONFIRM_SECONDS)
+            return self.say(f"EMERGENCY EXIT cancels unfilled entries, exits the open position, switches LIVE off and writes the KILL file. Send /confirm within {CONFIRM_SECONDS} seconds, /cancel to stop.")
         if cmd in ("sleep", "shutdown"):
             self.pending = (cmd, now + CONFIRM_SECONDS)
             return self.say(f"Send /confirm within {CONFIRM_SECONDS} seconds to {'put the PC to sleep' if cmd == 'sleep' else 'shut the PC down'}. /cancel to stop.")
@@ -87,6 +102,10 @@ class Control:
             if not self.pending:
                 return self.say("Nothing to confirm.")
             action, self.pending = self.pending[0], None
+            if action == "exec_live":
+                return self._bg(lambda: self._exec_post("/api/arm", {"phrase": "ACTIVATE LIVE"}, None))
+            if action == "exec_exit":
+                return self._bg(lambda: self._exec_post("/api/emergency", {"phrase": "EXIT NOW"}, None))
             return self._power(action)
         if cmd == "cancel":
             self.pending = None
@@ -119,6 +138,48 @@ class Control:
             return obs_control.stop_stream(cfg) + ". It stays off today; /stream_on starts it again."
         except Exception as e:
             return "Could not stop: " + str(e)[:150]
+
+    EXEC = "http://127.0.0.1:8780"
+
+    def _exec_call(self, path, body=None):
+        """The engine's own status page API (this PC only). Returns the JSON, or None when the engine is not running."""
+        try:
+            r = requests.request("POST" if body is not None else "GET", self.EXEC + path, json=body, headers={"X-Requested-With": "execution-ui"}, timeout=20)
+            return r.json()
+        except Exception:
+            return None
+
+    def _exec_post(self, path, body, ok_text):
+        j = self._exec_call(path, body)
+        if j is None:
+            return "The execution engine is not running (or not answering). /exec_start starts it in PAPER."
+        msg = j.get("msg") or ""
+        return (ok_text if (ok_text and j.get("ok")) else msg) or str(j)[:200]
+
+    def _exec_start(self):
+        try:
+            requests.post("http://127.0.0.1:5050/exec/start", headers={"X-BP": "1"}, timeout=20)
+        except Exception:
+            return "The helper is not answering, so I cannot start the engine. Open Refresh BharatPulse.bat on the PC."
+        for _ in range(10):
+            time.sleep(2)
+            if self._exec_call("/api/status") is not None:
+                return "The execution engine is running in PAPER. /exec_live activates real orders."
+        return "I asked for the engine to start but it is not answering yet; try /exec_status in a minute."
+
+    def _exec_status(self):
+        s = self._exec_call("/api/status")
+        if s is None:
+            return "The execution engine is NOT running. /exec_start starts it in PAPER."
+        c, inr = s.get("current"), (lambda x: "n/a" if x is None else f"{'+' if x >= 0 else '-'}Rs {abs(round(x)):,}")
+        lines = [f"Mode: {s.get('mode')}" + (f" ({s.get('note')})" if s.get("note") and s.get("mode") != "LIVE" else ""),
+                 f"Sign-in: {'OK' if s.get('auth', {}).get('ok') else 'NEEDED (order sign-in)'} | FYERS: {'OK' if s.get('connection', {}).get('ok') else 'PROBLEM'} | dashboard feed: {'fresh' if s.get('dashboard', {}).get('fresh') else 'STALE'}",
+                 f"Halted: {s.get('halted') or 'no'} | entries today: {s.get('entries_today')} | realised {inr(s.get('realized'))} | open {inr(s.get('unrealized'))}"]
+        if c:
+            lines.append(f"Trade: {c.get('symbol')} {c.get('phase')} qty {c.get('qty') or '-'} entry {c.get('avg_entry')} stop {c.get('sl_stop')}")
+        else:
+            lines.append("No open trade.")
+        return chr(10).join(lines)
 
     def _power(self, action):
         if action == "sleep":
