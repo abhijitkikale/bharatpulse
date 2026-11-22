@@ -235,6 +235,38 @@ NO_KEY = ("OBS accepted the command but the stream did NOT start. Most likely OB
           "and paste it in OBS > Settings > Stream (YouTube - RTMPS, 'Use stream key'). Click OK on OBS's error window.")
 
 
+OBS_LOGS = pathlib.Path(__import__("os").environ.get("APPDATA", "")) / "obs-studio" / "logs"
+ACCOUNT_FIX = ("OBS is signed in to your YouTube ACCOUNT, and YouTube answered 403 Forbidden when OBS tried to create the broadcast (it asks for a title, a thumbnail and more, "
+               "and waits for you). Fix once: OBS > Settings > Stream > Disconnect Account, then Service YouTube - RTMPS, 'Use stream key' and paste the key from YouTube Studio "
+               "(Go live > Stream). After that the automatic start is a plain start with nothing to click.")
+
+
+def log_mark():
+    """(file, size) of OBS's newest log now, to look at only what OBS writes after this point."""
+    try:
+        f = max(OBS_LOGS.glob("*.txt"), key=lambda x: x.stat().st_mtime)
+        return f, f.stat().st_size
+    except (ValueError, OSError):
+        return None, 0
+
+
+def youtube_errors_since(mark):
+    """The 'YouTube API error' lines OBS logged after `mark` (from log_mark): a list of 'HTTP status ... URL ...' strings, empty when none or the log is unreadable."""
+    f, off = mark
+    try:
+        if f is None:
+            return []
+        data = f.read_bytes()[off:].decode("utf-8", "replace")
+    except OSError:
+        return []
+    out, lines = [], data.splitlines()
+    for i, ln in enumerate(lines):
+        if "YouTube API error" in ln:
+            blob = " ".join(x.strip() for x in lines[i + 1:i + 3])
+            out.append(blob[:200])
+    return out
+
+
 def started_ok(obs, wait=12):
     """After StartStream: True once OBS reports the output active (it can fail a moment later, e.g. without a stream key)."""
     for _ in range(wait):
@@ -315,18 +347,20 @@ def run_loop(get_state, stop, notify=None, log=lambda *a: None):
     if notify is None:
         import telegram_notify
         notify = telegram_notify.send
-    done_day, bad_since, launched = None, None, False
+    done_day, bad_since = None, None
+    tries, next_try = 0, None                                          # a failed start is tried again (3 attempts a day, at least 5 minutes apart)
     while not stop.is_set():
         t = now_ist()
         day = str(t.date())
         if hold_day() == day:
             done_day = day                                             # stopped by hand today: no automatic start
+        if getattr(run_loop, "_day", None) != day:
+            run_loop._day, tries, next_try = day, 0, None              # a new day: a fresh set of attempts
         try:
             cfg = load_config() or cfg
             if cfg["mode"] != "off" and t.weekday() < 5 and (5, 0) <= (t.hour, t.minute) < _hm(cfg["stop_at"]):
-                if not launched:
+                if done_day != day and not obs_running():                   # OBS was closed (or never opened) and today's broadcast has not started: open it again
                     launch_obs(cfg)
-                    launched = True
                     stop.wait(25)
                 obs = Obs(cfg["host"], cfg["port"], cfg["password"]).connect()
                 try:
@@ -340,6 +374,8 @@ def run_loop(get_state, stop, notify=None, log=lambda *a: None):
                         bad_since = None
                     bad = (t - bad_since).total_seconds() / 60 if bad_since is not None else 0
                     action = decide(cfg, t, streaming, ready, healthy, done_day == day, bad, trading_day=_trading_day(t))
+                    if action == "start" and next_try is not None and t < next_try:
+                        action = None
                     if action == "start":
                         obs.call("SetCurrentProgramScene", {"sceneName": cfg["scene"]})      # the broadcast shows the stream page
                         try:                                                                     # reload it, in case it was loaded before the page was up
@@ -347,12 +383,22 @@ def run_loop(get_state, stop, notify=None, log=lambda *a: None):
                         except ObsError:
                             pass
                         stop.wait(3)
+                        mark = log_mark()
                         obs.call("StartStream")
-                        done_day = day                                          # one attempt a day: a failed start would otherwise pop up OBS's error window every 20 seconds
-                        if started_ok(obs):
-                            notify(f"BharatPulse: YouTube broadcast STARTED ({t:%H:%M} IST, mode {cfg['mode']}). Each broadcast has a NEW link: open YouTube Studio > Stream, click Share, copy the link and send it to your friends.")
+                        ok = started_ok(obs, wait=45)                           # the YouTube account mode creates the broadcast first: allow it time
+                        tries += 1
+                        if ok:
+                            done_day = day
+                            notify(f"BharatPulse: YouTube broadcast STARTED ({t:%H:%M} IST, mode {cfg['mode']}, attempt {tries}). Each broadcast has a NEW link: open YouTube Studio > Stream, click Share, copy the link and send it to your friends.")
                         else:
-                            notify("BharatPulse: the YouTube broadcast did NOT start. " + NO_KEY)
+                            errs = youtube_errors_since(mark)
+                            why = ACCOUNT_FIX if any("403" in e or "Forbidden" in e or "thumbnail" in e.lower() for e in errs) else NO_KEY
+                            if tries >= 3:
+                                done_day = day                                  # enough: no more windows popping up today
+                                notify(f"BharatPulse: the YouTube broadcast did NOT start after {tries} attempts. " + why)
+                            else:
+                                next_try = t + pd.Timedelta(minutes=5)
+                                notify(f"BharatPulse: the YouTube broadcast did not start (attempt {tries} of 3, next try at {next_try:%H:%M} IST). " + why)
                     elif action in ("stop", "stale-stop"):
                         obs.call("StopStream")
                         done_day = day
