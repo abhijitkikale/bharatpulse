@@ -101,15 +101,31 @@ class Runner:
             if prof is None:
                 self.mode.disarm("the FYERS profile call failed (token, network or the registered IP)")
                 return False, "LIVE not activated: the FYERS profile call failed (token, network or registered IP). Run `python -m execution check`."
-            if self.live is None:
-                self.live = Engine("LIVE", broker, self.store, self.cfg, self.notify, instruments=self.instruments, paused=_paused_fn())
+            automate = self.cfg.get("executor") == "automate"
+            if automate:
+                from . import automate as automod
+                ac = automod.load_config()
+                if not ac["slots"]:
+                    self.mode.disarm("no Automate workflow is configured")
+                    return False, "LIVE not activated: executor is 'automate' but execution/automate.json has no valid slots (see execution/AUTOMATE.md)."
+            if self.live is None or (self.live.mode == "AUTOMATE") != automate:
+                if self.live is not None and self.store.active(self.live.mode):
+                    self.mode.disarm("the executor was changed while a trade is open")
+                    return False, "LIVE not activated: a trade is still open under the other executor. Close it first (or restart the engine)."
+                if automate:
+                    self.live = automod.AutomateEngine(broker, self.store, self.cfg, self.notify, instruments=self.instruments, paused=_paused_fn(), slots_cfg=ac)
+                else:
+                    self.live = Engine("LIVE", broker, self.store, self.cfg, self.notify, instruments=self.instruments, paused=_paused_fn())
             else:
                 self.live.b = broker
-            if self.cfg.get("ws_enabled") and self.feed is None:
+                if automate:
+                    self.live.ac = ac
+            if self.cfg.get("ws_enabled") and self.feed is None and not automate:
                 self.feed = self.feed_factory(app_id, token, self.live.on_order_event, self.live.ws_state, log=self.notify)
                 self.feed.start()
             self.live.reconcile(now)
-            self.notify(f"[LIVE] LIVE mode ACTIVATED by you at {now:%H:%M:%S}. Dashboard trades are now sent to FYERS: {self.cfg['lots']} lot(s) per trade.", "warn")
+            how = (f"through FYERS Automate ({len(ac['slots'])} workflow(s); lots are set in the workflows)" if automate else f"to FYERS: {self.cfg['lots']} lot(s) per trade")
+            self.notify(f"[LIVE] LIVE mode ACTIVATED by you at {now:%H:%M:%S}. Dashboard trades are now sent {how}.", "warn")
             return True, msg
 
     def disarm(self, why="switched off by you"):
@@ -154,14 +170,14 @@ class Runner:
         tok = modemod.load_token(now)
         broker = self.live.b if self.live else None
         last_ok = getattr(broker, "last_ok", 0.0) if broker else 0.0
-        eng = self.live if (self.live is not None and (self.mode.live or self.store.active("LIVE"))) else self.paper
+        eng = self.live if (self.live is not None and (self.mode.live or self.store.active(self.live.mode))) else self.paper
         snap = eng.snapshot(day)
         cur = snap["current"]
         it = None
         if cur:
             it = eng.last_intents.get(cur["signal_id"]) or eng._intent_from_rec(cur)
         return {
-            "now": now.isoformat(timespec="seconds"), "mode": self.mode.mode, "note": self.mode.note, "live_checks": [{"ok": ok, "text": t} for ok, t in self.mode.checks(now)],
+            "now": now.isoformat(timespec="seconds"), "executor": self.cfg.get("executor", "api"), "mode": self.mode.mode, "note": self.mode.note, "live_checks": [{"ok": ok, "text": t} for ok, t in self.mode.checks(now)],
             "auth": {"ok": tok is not None, "text": "trading-app token valid for today" if tok else "no valid trading-app token (run tools/fyers_order_login.py after 06:30 IST)"},
             "connection": {"ok": bool(last_ok and time.time() - last_ok < 60), "text": ("FYERS reachable" if last_ok and time.time() - last_ok < 60 else "no recent answer from FYERS" if self.live else "LIVE not armed: no FYERS session")},
             "ws": snap["ws"], "dashboard": {"fresh": self.dash_fresh, "problems": self.problems[-5:]},

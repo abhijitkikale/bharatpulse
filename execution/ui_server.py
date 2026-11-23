@@ -25,7 +25,7 @@ const $=s=>document.querySelector(s);const f=(x,d=2)=>x==null?'–':(+x).toFixed
 const tick=b=>`<span class="${b?'ok':'bad'}">${b?'✓':'✗'}</span>`;
 async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'X-Requested-With':'execution-ui','Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return r.json()}
 async function load(){let s;try{s=await api('/api/status')}catch(e){$('#msg').textContent='cannot reach the engine';return}
- const live=s.mode==='LIVE';$('#banner').className='banner '+(live?'live':'paper');$('#banner').textContent=live?'● LIVE — real orders are being sent to FYERS':'PAPER — no real orders ('+s.note+')';
+ const live=s.mode==='LIVE';$('#banner').className='banner '+(live?'live':'paper');$('#banner').textContent=live?(s.executor==='automate'?'● LIVE — real orders are being placed through FYERS Automate':'● LIVE — real orders are being sent to FYERS'):'PAPER — no real orders ('+s.note+')';
  const c=s.current,d=c&&c.dashboard;
  $('#g').innerHTML=`
  <div class="card"><h2>Connection</h2><div class="kv"><span>Authentication</span><span>${tick(s.auth.ok)} ${s.auth.text}</span><span>FYERS</span><span>${tick(s.connection.ok)} ${s.connection.text}</span>

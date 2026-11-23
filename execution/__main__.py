@@ -4,7 +4,12 @@
                                  master). It places NO order.
   python -m execution unkill     remove the KILL file after an emergency stop
   python -m execution status     print today's execution records
-  python -m execution unhalt     clear today's LIVE halt after you fixed its cause
+  python -m execution unhalt     clear today's LIVE halt after you fixed its cause (direct-API and Automate)
+  python -m execution executor [api|automate]   show / switch how live orders are sent (api = straight to the FYERS API, automate = FYERS Automate webhooks); restart the
+                                 engine after switching. Switching back to api is the revert.
+  python -m execution automate-check   validate execution/automate.json (slots, addresses, one entry and one exit address each); prints no address
+  python -m execution automate-test [--calls N] [--gap S] [--which entry|exit]   fire the TEST workflow's webhook(s) from automate.json ("test" block). The test workflow must
+                                 only send a notification, never an order; live slot addresses are refused by this command.
 """
 import argparse
 import datetime as dt
@@ -109,7 +114,57 @@ def cmd_unhalt(args):
     s = Store()
     why = s.halted(day, "LIVE")
     s.clear_halt(day, "LIVE")
+    why2 = s.halted(day, "AUTOMATE")
+    s.clear_halt(day, "AUTOMATE")
+    why = why or why2
     print(f"LIVE halt cleared for {day} (it was: {why})" if why else "there was no LIVE halt today")
+
+
+def cmd_executor(args):
+    import json
+    cfg = config.load()
+    if not args.which:
+        return print(f"executor: {cfg['executor']}  ({'FYERS Automate webhooks' if cfg['executor'] == 'automate' else 'direct FYERS API, needs the registered static IP'})")
+    try:
+        raw = json.loads(config.CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raw = {}
+    raw["executor"] = args.which
+    config.CONFIG_FILE.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+    print(f"executor set to {args.which}. Restart the execution engine for it to take effect (a restart is PAPER; activate LIVE again).")
+
+
+def cmd_automate_check(args):
+    from . import automate
+    ac = automate.load_config()
+    raw = {}
+    try:
+        import json
+        raw = json.loads(automate.AUTOMATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    print(f"executor: {config.load()['executor']}")
+    for s in ac["slots"]:
+        print(f"slot {s['name']:<8} {s['side']:<5} entry address OK, exit address OK")
+    bad = len(raw.get("slots") or []) - len(ac["slots"])
+    if bad:
+        print(f"WARNING: {bad} slot(s) in automate.json are not valid (name, side CALL/PUT, two different https://....fyers.in/ addresses) and are ignored")
+    print(f"test workflow: {'entry' if 'entry_url' in ac['test'] else '-'} {'exit' if 'exit_url' in ac['test'] else '-'}")
+    print(f"{len(ac['slots'])} usable slot(s): CALL {sum(s['side'] == 'CALL' for s in ac['slots'])}, PUT {sum(s['side'] == 'PUT' for s in ac['slots'])} = that many trades a day at most")
+
+
+def cmd_automate_test(args):
+    from . import automate
+    ac = automate.load_config()
+    url = ac["test"].get(f"{args.which}_url")
+    if not url:
+        return print(f"no valid test {args.which} address in execution/automate.json (a \"test\" block with entry_url / exit_url on fyers.in; live slot addresses are refused)")
+    for i in range(args.calls):
+        t0 = time.time()
+        res = automate.fire(url, {"source": "bharatpulse", "event": "test", "n": i + 1})
+        print(f"call {i + 1}: {'OK' if res.ok else 'FAILED'}  http={res.code}  {time.time() - t0:.2f}s  {res.msg[:100]}", flush=True)
+        if i + 1 < args.calls:
+            time.sleep(args.gap)
 
 
 def cmd_status(args):
@@ -132,6 +187,15 @@ def main(argv=None):
     sub.add_parser("unkill").set_defaults(fn=cmd_unkill)
     sub.add_parser("status").set_defaults(fn=cmd_status)
     sub.add_parser("unhalt").set_defaults(fn=cmd_unhalt)
+    e = sub.add_parser("executor")
+    e.add_argument("which", nargs="?", choices=["api", "automate"])
+    e.set_defaults(fn=cmd_executor)
+    sub.add_parser("automate-check").set_defaults(fn=cmd_automate_check)
+    t = sub.add_parser("automate-test")
+    t.add_argument("--calls", type=int, default=1)
+    t.add_argument("--gap", type=float, default=5.0)
+    t.add_argument("--which", choices=["entry", "exit"], default="entry")
+    t.set_defaults(fn=cmd_automate_test)
     a = ap.parse_args(argv)
     a.fn(a)
 

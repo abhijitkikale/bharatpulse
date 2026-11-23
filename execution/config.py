@@ -44,8 +44,11 @@ DEFAULTS = {
     "tick": 0.05,
     "stop_mode": "dashboard",        # "dashboard": the stop order uses the dashboard's absolute stop; nothing is rescaled to the fill price
     "max_ops_per_s": 8,              # FYERS allows 10 order operations a second in total
+    "executor": "api",               # "api": orders go straight to the FYERS API (needs the registered static IP). "automate": through FYERS Automate webhooks (automate.py). Revert = "api".
+    "automate_entry_watch_s": 120,   # Automate: how long to wait for the position to appear after the entry webhook
+    "automate_exit_wait_s": 45,      # Automate: how long to wait for the position to close after the exit webhook before sending it once more
 }
-INT_KEYS = {"lots", "max_lots", "entry_wait_s", "uncertain_wait_s", "exit_tries", "max_signal_age_min", "max_entries_per_day", "reconcile_every_s", "cycle_s", "stale_state_s", "ui_port", "max_ops_per_s"}
+INT_KEYS = {"lots", "max_lots", "entry_wait_s", "uncertain_wait_s", "exit_tries", "max_signal_age_min", "max_entries_per_day", "reconcile_every_s", "cycle_s", "stale_state_s", "ui_port", "max_ops_per_s", "automate_entry_watch_s", "automate_exit_wait_s"}
 
 
 def load(path=None):
@@ -58,4 +61,6 @@ def load(path=None):
     except (OSError, ValueError):
         pass
     cfg["lots"] = max(1, min(int(cfg["lots"]), int(cfg["max_lots"])))
+    if cfg["executor"] not in ("api", "automate"):
+        cfg["executor"] = "api"                                  # anything unknown means the original, direct-API path
     return cfg
