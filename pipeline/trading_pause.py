@@ -50,6 +50,14 @@ def pause(now, path=None):
     return True
 
 
+def add_window(start, end, path=None):
+    """Mark a closed window [start, end) as paused: setups inside it are listed as not taken (used when the TradingView feed went silent and the page
+    switched to its own setups, so the setups the page never saw live are not replayed as trades)."""
+    iv = _load(path)
+    iv.append([pd.Timestamp(start).isoformat(timespec="seconds"), pd.Timestamp(end).isoformat(timespec="seconds")])
+    _save(iv, path)
+
+
 def resume(now, path=None):
     """End the open pause. Returns True when there was one."""
     iv = _load(path)

@@ -47,6 +47,17 @@ def log(*a):
         pass
 
 
+def snap(page, tag):
+    """A screenshot of the hidden chart when something fails (data/tv_fail_<tag>_<HHMM>.png, the newest 8 kept), so the next failure can be seen, not guessed."""
+    try:
+        d = ROOT / "data"
+        page.screenshot(path=str(d / f"tv_fail_{tag}_{time.strftime('%H%M')}.png"))
+        for old in sorted(d.glob("tv_fail_*.png"))[:-8]:
+            old.unlink()
+    except Exception:
+        pass
+
+
 def text_file(c):
     return ROOT / "data" / f"live_levels_{c['symbol']}.txt"
 
@@ -70,12 +81,17 @@ def paste(page, c, text=None, eod=None):
     Raises if anything is missing or the text did not stick."""
     if page.get_by_text("Session disconnected").count():           # TradingView allows one live session per user: another browser took it
         raise RuntimeError("TradingView session was taken by another browser (one live session per user); not reconnecting by itself")
+    page.keyboard.press("Escape")                                  # a stray pop-up or open menu can cover the legend
     item = page.locator('[data-qa-id="legend-source-item"]', has_text=c["indicator"]).first
     item.wait_for(timeout=20000)
-    item.hover()
+    item.hover(timeout=15000, force=True)
     item.locator('[data-qa-id="legend-settings-action"]').click(force=True, timeout=10000)
     dlg = page.locator('[data-name="indicator-properties-dialog"]')
     dlg.wait_for(timeout=15000)
+    try:                                                           # the dialog remembers its last tab: the text boxes are on 'Inputs'
+        dlg.get_by_role("tab", name="Inputs").click(timeout=3000)
+    except Exception:
+        pass
     for idx, val in ((0, eod), (1, text)):                         # 0 = Levels (end of day), 1 = Live levels
         if val is None:
             continue
@@ -369,6 +385,7 @@ def main():
             alert_retry = 0.0
             fires_seen, fires_err = set(), 0
             import tv_health
+            last_new_s, last_new_t, fell_back = time.time(), live_loop.now_ist(), False       # silent-feed watchdog (see tv_health.feed_silent)
             first_t = live_loop.now_ist()
             if first_t.weekday() < 5 and (first_t.hour, first_t.minute) < END:
                 pre = {"st": run_check(page, "sign-in check", live_loop), "next": time.time() + 600, "told": time.time(), "final": False, "renew_fail": 0, "session_told": False}
@@ -428,6 +445,7 @@ def main():
                                 log("pasted", txt.splitlines()[0][:60])
                         except Exception as ex:
                             log("paste FAILED:", str(ex)[:200])
+                            snap(page, "paste")
                             if "session was taken" in str(ex):
                                 tv_health.update("session", False, "another TradingView session took the hidden browser's chart session (live-level pasting is paused; the alert keeps working)", t)
                                 if not pre["session_told"]:
@@ -468,6 +486,21 @@ def main():
                         if n:
                             log("alert log:", n, "new message(s) handed to the stream page")
                         fires_err = 0
+                        if n or hm < tv_health.WATCH_FROM:                              # a message arrived (or the watch has not started yet): restart the silence clock
+                            last_new_s, last_new_t = time.time(), t
+                        elif not fell_back and tv_health.feed_silent(last_new_s, time.time(), hm):
+                            fell_back = True
+                            why = f"no TradingView message since {last_new_t:%H:%M} IST: the page books from its own setups for the rest of today"
+                            try:
+                                tv_health.midday_fallback(t, last_new_t, why)
+                                tv_health.update("feed", False, why, t)
+                                log("WATCHDOG:", why)
+                                snap(page, "silent")
+                                tell(f"TradingView feed went SILENT at {last_new_t:%H:%M} IST (nothing for 5 minutes). From {t:%H:%M} IST the page books trades from its OWN setups "
+                                     f"(same rules). Setups between {last_new_t:%H:%M} and {t:%H:%M} are listed as not taken. Open trades carry on. Tomorrow it starts on TradingView again.")
+                            except Exception as ex2:
+                                fell_back = False
+                                log("WATCHDOG failed:", str(ex2)[:160])
                         if n or t.second < 20:                                           # a heartbeat for the page: written about once a minute and whenever a message arrives
                             tv_health.update("feed", True, f"the alert-log reader is running (last read {t:%H:%M:%S} IST)", t)
                     except Exception as ex:

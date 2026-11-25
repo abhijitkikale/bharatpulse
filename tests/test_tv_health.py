@@ -92,3 +92,23 @@ def test_the_days_fallback_to_the_pages_own_setups(tmp_path):
     assert tv_health.source_override("2026-11-17", o) == "fyers"
     assert tv_health.source_override("2026-11-18", o) is None                                          # it never carries over to the next day
     assert tv_health.REQUIRED == ("signin", "alert_log", "eod") and set(tv_health.REQUIRED) <= set(tv_health.HINTS)
+
+
+def test_feed_silent_only_inside_the_watched_session():
+    assert tv_health.feed_silent(0, 301, (10, 0)) is True
+    assert tv_health.feed_silent(0, 299, (10, 0)) is False            # a gap of 5 minutes or less is normal
+    assert tv_health.feed_silent(0, 9999, (9, 10)) is False           # before 09:20: the session has not started
+    assert tv_health.feed_silent(0, 9999, (15, 30)) is False          # after 15:25: no more setups are wanted
+
+
+def test_midday_fallback_switches_source_and_pauses_the_silent_stretch(tmp_path):
+    import trading_pause
+    ov, pz = tmp_path / "ov.json", tmp_path / "pause.json"
+    since, now = pd.Timestamp("2026-11-25 09:30:00", tz=IST), pd.Timestamp("2026-11-25 09:36:00", tz=IST)
+    tv_health.midday_fallback(now, since, "silent", override_path=ov, pause_path=pz)
+    assert tv_health.source_override(now.date(), ov) == "fyers"
+    assert tv_health.source_override(pd.Timestamp("2026-11-26").date(), ov) is None            # only for that day
+    paused = trading_pause.paused_fn(pz)
+    assert paused(pd.Timestamp("2026-11-25 09:33:00", tz=IST))                                # a setup the page never saw live: not taken
+    assert not paused(pd.Timestamp("2026-11-25 09:29:00", tz=IST))                            # one TradingView did deliver: unchanged
+    assert not paused(pd.Timestamp("2026-11-25 09:37:00", tz=IST))                            # after the switch: normal

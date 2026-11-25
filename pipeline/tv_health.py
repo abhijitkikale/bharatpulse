@@ -95,6 +95,24 @@ def source_override(day, path=None):
         return None
 
 
+SILENT_AFTER_S = 300                 # during the session TradingView sends one message per minute; none for 5 minutes = the feed is dead
+WATCH_FROM, WATCH_TO = (9, 20), (15, 25)
+
+
+def feed_silent(last_new_s, now_s, hm, limit=SILENT_AFTER_S):
+    """True when no new TradingView message arrived for `limit` seconds inside the watched part of the session. last_new_s / now_s: epoch seconds."""
+    return WATCH_FROM <= tuple(hm) < WATCH_TO and (now_s - last_new_s) > limit
+
+
+def midday_fallback(now, silent_since, why, override_path=None, pause_path=None):
+    """The feed went silent during the session: book from the page's own setups for the rest of today (same switch as the morning fallback), and mark the
+    setups since `silent_since` as not taken, so the page does not replay what it never saw live as trades (three replayed stops add up to the -30% daily
+    loss limit and would block every new entry)."""
+    import trading_pause
+    set_override(now.date(), "fyers", why, override_path)
+    trading_pause.add_window(silent_since, now, pause_path)
+
+
 def last_trading_day(day, sessions):
     """The trading day before `day`. sessions(date) -> list (empty on weekends and holidays), e.g. nse_calendar.sessions."""
     d = pd.Timestamp(day).date()
