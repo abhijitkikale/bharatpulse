@@ -80,7 +80,7 @@ const chart=LightweightCharts.createChart(el,{layout:{background:{color:'#0b0f16
 const cs=chart.addCandlestickSeries({upColor:'#2ecc9a',downColor:'#ef5b5b',borderVisible:false,wickUpColor:'#2ecc9a',wickDownColor:'#ef5b5b'});
 const vd=chart.addLineSeries({color:'#18ffff',lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
 const vw=chart.addLineSeries({color:'#ffeb3b',lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
-const SDOPT={lineWidth:1,lineStyle:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null};   // daily VWAP +1 / -1 standard deviation (dashed)
+const SDOPT={lineWidth:2,lineStyle:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null};   // daily VWAP +1 / -1 standard deviation (dashed)
 const vu=chart.addLineSeries({color:'#18ffff',...SDOPT}),vl=chart.addLineSeries({color:'#18ffff',...SDOPT});
 const CLEAN=new URLSearchParams(location.search).get('clean')==='1';if(CLEAN)document.getElementById('th').style.display='none';   // /?clean=1 : no setups table or CALL / PUT markers (for OBS)
 let lines=[],RANGE=null,LASTS=null;
@@ -90,7 +90,7 @@ function applyTheme(){
     rightPriceScale:{borderColor:L?'#c9d1dc':'#263040'},timeScale:{borderColor:L?'#c9d1dc':'#263040'}});
   cs.applyOptions({upColor:G(),downColor:R(),wickUpColor:G(),wickDownColor:R()});
   vd.applyOptions({color:THEME==='light'?'#2a8a8a':'rgba(95,179,179,.9)',lineWidth:2});vw.applyOptions({color:THEME==='light'?'#a08a1e':'rgba(201,180,88,.75)',lineWidth:1});
-  vu.applyOptions({color:THEME==='light'?'#2a8a8a':'rgba(95,179,179,.7)'});vl.applyOptions({color:THEME==='light'?'#2a8a8a':'rgba(95,179,179,.7)'});
+  vu.applyOptions({color:THEME==='light'?'#1f8f8f':'#4dd0e1'});vl.applyOptions({color:THEME==='light'?'#1f8f8f':'#4dd0e1'});
   document.getElementById('th').textContent=L?'☀ Light':'☾ Dark';
 }
 document.getElementById('th').onclick=()=>{THEME=THEME==='light'?'dark':'light';try{localStorage.setItem('bp_theme',THEME)}catch(e){}applyTheme();if(LASTS)draw(LASTS)};
