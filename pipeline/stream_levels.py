@@ -85,6 +85,20 @@ def vwaps(df):
     return daily, weekly
 
 
+def vwap_bands(df, k=1.0):
+    """(upper, lower) = the daily VWAP plus / minus k standard deviations, as on TradingView's VWAP indicator: the volume-weighted spread of the
+    typical price (hlc3) around the VWAP since the session's first candle, restarting each session."""
+    d = df.dropna(subset=["h", "l", "c", "v"])
+    d = d[d["v"] > 0]
+    tp = (d["h"] + d["l"] + d["c"]) / 3
+    day = pd.Series([str(x) for x in d.index.date], index=d.index)
+    cv = d["v"].groupby(day).cumsum()
+    vwap = (tp * d["v"]).groupby(day).cumsum() / cv
+    var = ((tp ** 2) * d["v"]).groupby(day).cumsum() / cv - vwap ** 2
+    sd = var.clip(lower=0) ** 0.5
+    return vwap + k * sd, vwap - k * sd
+
+
 def live_levels(block):
     """{name: value} for the live GEX block of live_gex.build_gex (the OI walls are end-of-day only)."""
     return {"Live " + label: block["levels"][k] for k, label in LIVE_LEVELS if block["levels"].get(k) is not None}
@@ -125,7 +139,7 @@ def build_state(df, eod, live_block, now, status, sessions=2, setups=None, trade
     return {"asof": now.isoformat(timespec="seconds"), "setups": setup_out, "trades": trades, "last": round(last, 2), "last_candle": df.index.max().strftime("%H:%M"),
             "date": str(days[-1]), "status": status, "eod_close": eod["close"] if eod else None,
             "candles": [{"time": int(t.timestamp()) + SHIFT, "open": float(r.o), "high": float(r.h), "low": float(r.l), "close": float(r.c)} for t, r in view.iterrows()],
-            "vwap": {"daily": ser(daily), "weekly": ser(weekly)}, "levels": levels, "regime": regime}
+            "vwap": {"daily": ser(daily), "weekly": ser(weekly), "up1": ser(vwap_bands(df)[0]), "dn1": ser(vwap_bands(df)[1])}, "levels": levels, "regime": regime}
 
 
 OPEN_START, OPEN_MINUTES = (9, 15), 30            # the opening candles TradingView may send: 09:15 up to 09:45

@@ -180,3 +180,17 @@ def test_setup_message_from_tradingview_is_parsed():
     assert sg["time"] == pd.Timestamp("2026-11-11 10:34", tz="Asia/Kolkata")
     assert stream_levels.parse_signal(json.dumps({"k": "sig", "t": t, "s": "HOLD", "l": "x", "v": 1, "c": 1}), pd.Timestamp("2026-11-11").date()) is None
     assert stream_levels.parse_signal('{"o":1,"h":2}', pd.Timestamp("2026-11-11").date()) is None          # a candle message is not a setup
+
+
+def test_vwap_bands_are_one_volume_weighted_deviation_around_the_daily_vwap_and_restart_each_day():
+    idx = pd.DatetimeIndex(["2026-11-05 09:15", "2026-11-05 09:16", "2026-11-06 09:15", "2026-11-06 09:16"], tz="Asia/Kolkata")
+    df = pd.DataFrame({"o": [100, 100, 200, 200], "h": [101, 111, 200, 202], "l": [99, 109, 200, 198], "c": [100, 110, 200, 200], "v": [1.0, 3.0, 1.0, 1.0]}, index=idx)
+    up, dn = stream_levels.vwap_bands(df)
+    daily, _ = stream_levels.vwaps(df)
+    tp = np.array([100, 110]); w = np.array([1.0, 3.0])
+    sd = float(np.sqrt((w * (tp - (w * tp).sum() / w.sum()) ** 2).sum() / w.sum()))
+    assert abs(up.iloc[1] - (daily.iloc[1] + sd)) < 1e-9 and abs(dn.iloc[1] - (daily.iloc[1] - sd)) < 1e-9
+    assert up.iloc[0] == dn.iloc[0] == daily.iloc[0]                         # one candle: no spread yet
+    assert up.iloc[2] == dn.iloc[2] == 200                                   # a new session starts again
+    st = stream_levels.build_state(df, None, None, pd.Timestamp("2026-11-06 09:20", tz="Asia/Kolkata"), "live")
+    assert len(st["vwap"]["up1"]) == len(st["vwap"]["dn1"]) == len(st["vwap"]["daily"])
