@@ -50,3 +50,11 @@ python -m execution unhalt                # clears today's halt for both executo
 * whether a started workflow can be triggered again the same day, and how quickly a webhook becomes an order (use the TEST workflow, then a 1-lot live test);
 * whether Automate sends the entry as a market or a limit order, and what fill it gets; whether "Square off" closes only this automation's position;
 * whether this PC can reach `api-t2.fyers.in` (Cloudflare) - the test command shows it.
+
+## Stop and target from your real fill, live prices (added 27 Nov 2026)
+- **Stop / target / trailing are measured from the price you actually paid** (the fill the broker shows), with the dashboard trade's own percentages (normally -10 % / +40 %, trailing +20 % -> +5 %, +30 % -> +15 %, +35 % -> +30 %). The dashboard's regime-tightening of its own stop is mirrored as a percentage of your fill. The status page shows "Stop from your fill".
+- **They are checked against the live price of the contract actually held** (FYERS market-data WebSocket, `execution/tick_feed.py`, uses the data token `data/fyers_token.json`), twice a second. Without the feed the broker position's last price (read every 3 s) is used; with neither, the dashboard's STOP / TRAIL / TARGET status decides as before. DAY END, square-off and the emergency exit always work.
+- **Entry guard:** no entry when the option's live price is already more than `entry_guard_pct` (default 4) above the dashboard's entry price. Skipped silently when no live price arrives within `entry_guard_wait_s`.
+- **Same contract twice in a day:** the entry price shown is what THIS trade paid (worked out from the day's buys), not the day's average.
+- Settings in execution/config.json: `levels_from_fill` (default true; false = the earlier behaviour), `tick_feed`, `price_max_age_s`, `entry_guard_pct`, `entry_guard_wait_s`. Needs a restart of the engine to take effect.
+- Not covered: the ENTRY trigger itself (option trades above the setup candle's high) is still detected by the dashboard from 1-minute candles.

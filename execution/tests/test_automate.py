@@ -45,8 +45,9 @@ class FakeAutomate:
 
 
 class AEnv:
-    def __init__(self, cfg=None, slots=SLOTS, **fake):
+    def __init__(self, cfg=None, slots=SLOTS, ticks=None, **fake):
         self.msgs = []
+        self.ticks = ticks
         import pathlib
         self.cfg = config.load(pathlib.Path("/nonexistent"))
         self.cfg.update(cfg or {})
@@ -57,7 +58,7 @@ class AEnv:
         self.e = self.make()
 
     def make(self):
-        return AutomateEngine(self.b, self.store, self.cfg, notify=lambda t, level="info": self.msgs.append((level, t)), sleep=lambda s: None, slots_cfg=self.slots, fire_fn=self.fake)
+        return AutomateEngine(self.b, self.store, self.cfg, notify=lambda t, level="info": self.msgs.append((level, t)), sleep=lambda s: None, slots_cfg=self.slots, fire_fn=self.fake, ticks=self.ticks)
 
     def step(self, its, now=NOW, **kw):
         self.e.step(its, now, **kw)
@@ -324,7 +325,8 @@ def _runner_for(monkeypatch, tmp_path, executor, slots=SLOTS):
     cfg = {**config.load(pathlib.Path("/nonexistent")), "executor": executor}
     b = MockBroker()
     r = Runner(cfg=cfg, store=Store(":memory:"), dash_path=p, notify=lambda text, level="info": None, instruments=Instruments(rows={SYM: {"lot": 65, "tick": 0.05, "expiry": 4_000_000_000}}),
-               broker_factory=lambda a_, t, c: b, feed_factory=lambda *a_, **k: type("F", (), {"start": lambda s: None})())
+               broker_factory=lambda a_, t, c: b, feed_factory=lambda *a_, **k: type("F", (), {"start": lambda s: None})(),
+               tick_factory=lambda *a_, **k: type("T", (), {"start": lambda s: True, "watch": lambda s, x: None, "price": lambda s, x, y=0: None, "wait_price": lambda s, *a2, **k2: None})())
     return r, b
 
 

@@ -40,7 +40,8 @@ def norm_order(r):
 
 def norm_pos(r):
     return BPos(symbol=r.get("symbol", ""), net_qty=int(r.get("netQty") or 0), avg=float(r.get("netAvg") or r.get("avgPrice") or 0), ltp=float(r.get("ltp") or 0),
-                realized=float(r.get("realized_profit") or 0), unrealized=float(r.get("unrealized_profit") or 0), product=str(r.get("productType") or ""))
+                realized=float(r.get("realized_profit") or 0), unrealized=float(r.get("unrealized_profit") or 0), product=str(r.get("productType") or ""),
+                buy_qty=int(r.get("buyQty") or 0), buy_avg=float(r.get("buyAvg") or 0))
 
 
 class RateLimiter:

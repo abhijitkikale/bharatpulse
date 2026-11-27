@@ -30,11 +30,12 @@ async function load(){let s;try{s=await api('/api/status')}catch(e){$('#msg').te
  $('#g').innerHTML=`
  <div class="card"><h2>Connection</h2><div class="kv"><span>Authentication</span><span>${tick(s.auth.ok)} ${s.auth.text}</span><span>FYERS</span><span>${tick(s.connection.ok)} ${s.connection.text}</span>
   <span>Order WebSocket</span><span>${tick(s.ws.connected)} ${s.ws.connected?'connected':'down (REST polling is used)'} ${s.ws.error||''}</span>
+  <span>Live prices</span><span>${s.executor==='automate'?(tick(s.ticks&&s.ticks.connected)+' '+(s.ticks&&s.ticks.connected?'connected (stop and target are watched on every price change)':'not connected: the broker price and the dashboard are used '+((s.ticks&&s.ticks.error)||''))):'not used by the direct-API engine'}</span>
   <span>Dashboard feed</span><span>${tick(s.dashboard.fresh)} ${s.dashboard.fresh?'fresh':'stale or missing: no new entries'}</span><span>Reconciliation</span><span>${s.recon.ok==null?'<span class="warn">?</span>':tick(s.recon.ok)} ${s.recon.text}</span>
   <span>Halted</span><span class="${s.halted?'bad':''}">${s.halted||'no'}</span></div></div>
  <div class="card"><h2>Current trade</h2>${c?`<div class="kv"><span>Contract</span><span>${c.symbol}</span><span>Phase</span><span>${c.phase}</span><span>Quantity filled</span><span>${c.qty||'–'}</span>
   <span>Actual entry price</span><span>${f(c.avg_entry)}</span><span>Stop-loss at broker</span><span>${c.sl_stop?f(c.sl_stop)+' (limit '+f(c.sl_limit)+', order '+c.sl_order+')':'–'}</span>
-  <span>Dashboard stop now</span><span>${d?f(d.stop_now):'–'}</span><span>Dashboard target</span><span>${d?f(d.target)+' (managed: the dashboard sends the exit)':'–'}</span>
+  <span>Stop from your fill</span><span>${c.levels?f(c.levels.stop)+' (target '+f(c.levels.target)+')':'–'}</span><span>Dashboard stop now</span><span>${d?f(d.stop_now):'–'}</span><span>Dashboard target</span><span>${d?f(d.target)+' (managed: the dashboard sends the exit)':'–'}</span>
   <span>Dashboard last price</span><span>${d?f(d.last):'–'}</span><span>Unrealised P&L</span><span>${inr(s.unrealized)}</span><span>Exit reason</span><span>${c.exit_reason||'–'}</span></div>`:'<span class="mut">no open trade</span>'}</div>
  <div class="card"><h2>Today (${s.engine})</h2><div class="kv"><span>Realised P&L (broker-confirmed)</span><span>${inr(s.realized)}</span><span>Executed entries</span><span>${s.entries_today} of ${s.config.max_entries_per_day}</span>
   <span>Lots per trade</span><span>${s.config.lots}</span><span>Loss limit</span><span>₹${s.config.max_daily_loss_inr}</span><span>Square-off</span><span>${s.config.square_off} IST</span></div></div>

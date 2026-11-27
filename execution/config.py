@@ -47,6 +47,11 @@ DEFAULTS = {
     "executor": "api",               # "api": orders go straight to the FYERS API (needs the registered static IP). "automate": through FYERS Automate webhooks (automate.py). Revert = "api".
     "automate_entry_watch_s": 120,   # Automate: how long to wait for the position to appear after the entry webhook
     "automate_exit_wait_s": 45,      # Automate: how long to wait for the position to close after the exit webhook before sending it once more
+    "levels_from_fill": True,        # Automate: stop / target / trailing are measured from the REAL fill price (same percentages as the dashboard trade) and checked against the live price of the contract actually held. False = the dashboard's own STOP / TRAIL / TARGET status decides (the earlier behaviour)
+    "tick_feed": True,               # Automate: use the FYERS live price WebSocket (data token) for those checks; without it the broker's positions price (read every pass) is used
+    "price_max_age_s": 10,           # a live price older than this is not trusted; with none, the dashboard's status decides the exit as before
+    "entry_guard_pct": 4.0,          # Automate: no entry when the option's live price is already this many percent above the dashboard's entry price (0 = off); skipped silently when no live price is available
+    "entry_guard_wait_s": 1.5,       # how long the entry waits for a first live price to run that check
 }
 INT_KEYS = {"lots", "max_lots", "entry_wait_s", "uncertain_wait_s", "exit_tries", "max_signal_age_min", "max_entries_per_day", "reconcile_every_s", "cycle_s", "stale_state_s", "ui_port", "max_ops_per_s", "automate_entry_watch_s", "automate_exit_wait_s"}
 

@@ -16,6 +16,7 @@ from .engine import Engine, IST, now_ist
 from .instrument import Instruments
 from .order_feed import OrderFeed
 from .store import Store
+from .tick_feed import TickFeed, load_data_token
 
 
 def _paused_fn():
@@ -45,6 +46,14 @@ def _lot_from_dashboard():
         return None
 
 
+def _levels_of(rec):
+    """The engine's own stop / target of an open Automate trade (measured from the real fill), for the status page; None when it has none."""
+    try:
+        return json.loads(rec["extra_json"] or "{}").get("lv")
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
 def make_notifier(log_dir=None):
     """Prints, writes a JSON line to execution/logs/<day>.jsonl and sends LIVE messages and every warning to the private Telegram chat (through the dashboard's existing notifier)."""
     log_dir = pathlib.Path(log_dir or config.LOGS)
@@ -69,7 +78,7 @@ def make_notifier(log_dir=None):
 
 
 class Runner:
-    def __init__(self, cfg=None, store=None, dash_path=None, notify=None, instruments=None, broker_factory=None, feed_factory=None):
+    def __init__(self, cfg=None, store=None, dash_path=None, notify=None, instruments=None, broker_factory=None, feed_factory=None, tick_factory=None):
         self.cfg = cfg or config.load()
         self.store = store or Store()
         self.dash_path = dash_path
@@ -82,6 +91,9 @@ class Runner:
         self.broker_factory = broker_factory or (lambda app, tok, cfg: FyersBroker(app, tok, cfg))
         self.feed_factory = feed_factory or OrderFeed
         self.feed = None
+        self.ticks = None                                        # live option prices (Automate executor): execution/tick_feed.py
+        self.tick_state = {}
+        self.tick_factory = tick_factory or TickFeed
         self.last_recon = 0.0
         self.problems = []
         self.dash_fresh = False
@@ -113,7 +125,7 @@ class Runner:
                     self.mode.disarm("the executor was changed while a trade is open")
                     return False, "LIVE not activated: a trade is still open under the other executor. Close it first (or restart the engine)."
                 if automate:
-                    self.live = automod.AutomateEngine(broker, self.store, self.cfg, self.notify, instruments=self.instruments, paused=_paused_fn(), slots_cfg=ac)
+                    self.live = automod.AutomateEngine(broker, self.store, self.cfg, self.notify, instruments=self.instruments, paused=_paused_fn(), slots_cfg=ac, ticks=self._start_ticks())
                 else:
                     self.live = Engine("LIVE", broker, self.store, self.cfg, self.notify, instruments=self.instruments, paused=_paused_fn())
             else:
@@ -127,6 +139,21 @@ class Runner:
             how = (f"through FYERS Automate ({len(ac['slots'])} workflow(s); lots are set in the workflows)" if automate else f"to FYERS: {self.cfg['lots']} lot(s) per trade")
             self.notify(f"[LIVE] LIVE mode ACTIVATED by you at {now:%H:%M:%S}. Dashboard trades are now sent {how}.", "warn")
             return True, msg
+
+    def _start_ticks(self):
+        """The live price feed for the Automate executor (market-data token). None when switched off or when there is no data token: the engine then uses the broker's price and the dashboard."""
+        if not self.cfg.get("tick_feed"):
+            return None
+        if self.ticks is None:
+            tok = load_data_token()
+            if tok is None:
+                self.tick_state.update(connected=False, error="no market-data token (data/fyers_token.json)")
+                return None
+            feed = self.tick_factory(tok[0], tok[1], self.tick_state, log=self.notify)
+            if not feed.start():
+                return None
+            self.ticks = feed
+        return self.ticks
 
     def disarm(self, why="switched off by you"):
         with self.lock:
@@ -180,9 +207,9 @@ class Runner:
             "now": now.isoformat(timespec="seconds"), "executor": self.cfg.get("executor", "api"), "mode": self.mode.mode, "note": self.mode.note, "live_checks": [{"ok": ok, "text": t} for ok, t in self.mode.checks(now)],
             "auth": {"ok": tok is not None, "text": "trading-app token valid for today" if tok else "no valid trading-app token (run tools/fyers_order_login.py after 06:30 IST)"},
             "connection": {"ok": bool(last_ok and time.time() - last_ok < 60), "text": ("FYERS reachable" if last_ok and time.time() - last_ok < 60 else "no recent answer from FYERS" if self.live else "LIVE not armed: no FYERS session")},
-            "ws": snap["ws"], "dashboard": {"fresh": self.dash_fresh, "problems": self.problems[-5:]},
+            "ws": snap["ws"], "ticks": dict(self.tick_state), "dashboard": {"fresh": self.dash_fresh, "problems": self.problems[-5:]},
             "engine": snap["mode"], "halted": snap["halted"], "recon": snap["recon"], "entries_today": snap["entries_today"], "realized": snap["realized"], "unrealized": snap["unrealized"],
-            "current": None if not cur else {"phase": cur["phase"], "symbol": cur["symbol"], "qty": cur["qty_filled"] or cur["qty_req"], "avg_entry": cur["avg_entry"], "sl_stop": cur["sl_stop"],
+            "current": None if not cur else {"levels": _levels_of(cur), "phase": cur["phase"], "symbol": cur["symbol"], "qty": cur["qty_filled"] or cur["qty_req"], "avg_entry": cur["avg_entry"], "sl_stop": cur["sl_stop"],
                                              "sl_limit": cur["sl_limit"], "sl_order": cur["sl_order_id"], "exit_reason": cur["exit_reason"],
                                              "dashboard": None if it is None else {"entry": it.entry, "stop_now": it.stop_now, "target": it.target, "status": it.status, "last": it.last}},
             "signals": snap["signals"][-12:], "events": [{"t": dt.datetime.fromtimestamp(e["ts"], IST).strftime("%H:%M:%S"), "level": e["level"], "text": e["text"], "mode": e["mode"]} for e in self.store.events(None, 25)],
@@ -197,4 +224,13 @@ class Runner:
                 self.cycle()
             except Exception as e:
                 self.notify(f"execution cycle error: {type(e).__name__}: {str(e)[:120]}", "warn")
-            stop.wait(self.cfg["cycle_s"])
+            end = time.time() + self.cfg["cycle_s"]
+            while not stop.is_set() and time.time() < end:                    # between the full passes: the live price against the stop / target of an open Automate trade, twice a second
+                stop.wait(min(0.5, max(0.0, end - time.time())))
+                live = self.live
+                if live is not None and hasattr(live, "fast_check") and getattr(live, "ticks", None) is not None:
+                    try:
+                        with self.lock:
+                            live.fast_check(now_ist())
+                    except Exception as e:
+                        self.notify(f"live-price check error: {type(e).__name__}: {str(e)[:120]}", "warn")

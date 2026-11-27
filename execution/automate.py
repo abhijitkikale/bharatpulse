@@ -18,7 +18,7 @@ import re
 import time
 import urllib.parse
 
-from . import config
+from . import config, levels
 from .engine import Engine, _hm
 from .models import Res
 
@@ -76,8 +76,9 @@ class AutomateEngine(Engine):
     Phases reuse the engine's names: ENTRY_SENT (entry webhook sent, waiting for the position), PROTECTED (position open; the Automate emergency stop is the safety net,
     the dashboard's stop / target / trailing decide the exit), EXIT_SENT, CLOSED, SKIPPED, REJECTED, CHECK_MANUALLY, STUCK."""
 
-    def __init__(self, broker, store, cfg=None, notify=None, instruments=None, paused=None, sleep=time.sleep, slots_cfg=None, fire_fn=None):
+    def __init__(self, broker, store, cfg=None, notify=None, instruments=None, paused=None, sleep=time.sleep, slots_cfg=None, fire_fn=None, ticks=None):
         super().__init__(MODE, broker, store, cfg, notify, instruments=instruments, paused=paused, sleep=sleep)
+        self.ticks = ticks                                                         # execution.tick_feed.TickFeed (or None): live prices of the contracts held
         self.ac = slots_cfg if slots_cfg is not None else load_config()
         self.fire = fire_fn or fire
         self.ws_state = {"connected": False, "last": 0.0, "error": "not used with Automate"}
@@ -122,8 +123,19 @@ class AutomateEngine(Engine):
         for p in pos or []:
             gain = p.net_qty - int(before.get(p.symbol, 0))
             if p.net_qty > 0 and gain > 0 and "NIFTY" in p.symbol and p.symbol.endswith(suffix) and (best is None or gain > best[1]):
-                best = (p.symbol, gain, p.avg)
+                best = (p.symbol, gain, self._fill_price(ex, p))
         return best
+
+    @staticmethod
+    def _fill_price(ex, p):
+        """What THIS trade paid. FYERS shows, for a contract traded more than once in a day, the average of ALL the day's buys (26 Nov: the second trade in the same contract showed 174.03,
+        the average of 179.45 and the real 168.60). So the price is worked out from what the contract's buys were before this entry (kept in `buys_before`): the buys' total value after
+        minus before, over the quantity added. Without those figures, the position's own average is all there is."""
+        b = (ex.get("buys_before") or {}).get(p.symbol)
+        bq, bavg = (int(b[0]), float(b[1])) if b else (0, 0.0)
+        if p.buy_qty and p.buy_qty > bq and p.buy_avg:
+            return round((p.buy_avg * p.buy_qty - bavg * bq) / (p.buy_qty - bq), 2)
+        return p.avg
 
     def _fire(self, rec, role, slot, event, payload=None):
         res = self.fire(slot[f"{event}_url"], {"source": "bharatpulse", "event": event, "slot": slot["name"], **(payload or {})})
@@ -166,6 +178,10 @@ class AutomateEngine(Engine):
         pos = self._positions(fresh=True)
         if pos is None:
             reasons.append("the broker's positions cannot be read, so a fill could not be confirmed")
+        if not reasons:
+            late = self._entry_guard(it)
+            if late:
+                reasons.append(late)
         if not self.store.claim(it.signal_id, self.mode, day, self._intent_json(it), "ENTRY_PENDING_SEND"):
             return
         lot = self.instruments.lot_size(it.symbol) if self.instruments is not None else None
@@ -174,7 +190,8 @@ class AutomateEngine(Engine):
             self._rec_update(it.signal_id, phase="SKIPPED", note="; ".join(reasons))
             self._say(it.signal_id, "info", "skip", f"dashboard trade {it.n} ({it.option_side} {it.symbol}) NOT ordered: {'; '.join(reasons)}.")
             return
-        extra = {"slot": slot["name"], "side": it.option_side, "before": {p.symbol: p.net_qty for p in pos if p.net_qty}, "realized_before": {p.symbol: p.realized for p in pos}}
+        extra = {"slot": slot["name"], "side": it.option_side, "before": {p.symbol: p.net_qty for p in pos if p.net_qty}, "realized_before": {p.symbol: p.realized for p in pos},
+                 "buys_before": {p.symbol: [p.buy_qty, p.buy_avg] for p in pos if p.buy_qty}}
         self._rec_update(it.signal_id, extra_json=json.dumps(extra), entry_at=time.time(), entry_tag=slot["name"])
         rec = self.store.get(it.signal_id, self.mode)
         res = self._fire(rec, "ENTRY", slot, "entry", {"signal": it.tag_base})
@@ -206,10 +223,19 @@ class AutomateEngine(Engine):
             sym, qty, avg = found
             extra = self._extra(rec)
             extra["protected_at"] = time.time()
+            if self.cfg.get("levels_from_fill") and avg:
+                extra["lv"] = levels.initial(avg, it.sl_pct, it.tp_pct)
             self._rec_update(sid, phase="PROTECTED", symbol=sym, qty_filled=qty, avg_entry=avg or it.entry, extra_json=json.dumps(extra))
             same = "" if sym == it.symbol else f" (the dashboard's contract was {it.symbol}: Automate chose the strike when it ran)"
-            self._say(sid, "info", "protected", f"trade {it.n}: the position is open: BUY {qty} {sym} at {avg:.2f} (dashboard entry {it.entry:.2f}){same}. "
-                      f"The Automate emergency stop is the safety net; the dashboard's stop {it.stop_now:.2f} / target {it.target:.2f} decide the exit.")
+            if "lv" in extra:
+                lv = extra["lv"]
+                rules = (f"The Automate emergency stop is the safety net; the engine's own stop {lv['stop']:.2f} (-{lv['sl_pct']:.0f}% of your fill) / target {lv['target']:.2f} (+{lv['tp_pct']:.0f}%) "
+                         f"decide the exit, checked against the live price of {sym}.")
+            else:
+                rules = f"The Automate emergency stop is the safety net; the dashboard's stop {it.stop_now:.2f} / target {it.target:.2f} decide the exit."
+            self._say(sid, "info", "protected", f"trade {it.n}: the position is open: BUY {qty} {sym} at {avg:.2f} (dashboard entry {it.entry:.2f}){same}. {rules}")
+            if self.ticks is not None:
+                self.ticks.watch(sym)
             return
         waited = time.time() - (rec["entry_at"] or time.time())
         if pos is not None and waited > self.cfg["automate_entry_watch_s"]:
@@ -231,22 +257,104 @@ class AutomateEngine(Engine):
         pos = self._positions()
         if pos is not None and self._held(rec, pos) == 0 and self._settled(rec):
             return self._close(rec, "position found closed at the broker (the Automate stop-loss, or a manual exit)", None, day)
-        if not self.dash_ok and not extra.get("stale_told"):
+        if self.ticks is not None:
+            self.ticks.watch(rec["symbol"])
+        px = self._price(rec["symbol"]) if self.cfg.get("levels_from_fill") else None
+        due = self._judge(rec, it, extra, px[0]) if px else None
+        own = px is not None                                                      # the engine's own levels (from the real fill, on the live price) are in charge: they need no dashboard
+        if not self.dash_ok and not own and not extra.get("stale_told"):
             extra["stale_told"] = True
             self._rec_update(sid, extra_json=json.dumps(extra))
             self._say(sid, "warn", "dashboard_silent", f"the dashboard is silent while {rec['symbol']} is open: only the Automate emergency stop protects it until the dashboard is back.")
-        if self.dash_ok:
-            reason = None
-            if self.flatten_asked:
-                reason = "emergency exit asked"
-            elif it.status != "OPEN":
-                reason = {"TARGET": "the dashboard target was reached", "DAY END": "the dashboard day end"}.get(it.status, f"the dashboard trade ended ({it.status})")
-            elif now.hour * 60 + now.minute >= _hm(self.cfg["square_off"]):
-                reason = "square-off time"
-        else:
-            reason = "emergency exit asked" if self.flatten_asked else ("square-off time" if now.hour * 60 + now.minute >= _hm(self.cfg["square_off"]) else None)
+        late = now.hour * 60 + now.minute >= _hm(self.cfg["square_off"])
+        reason = None
+        if self.flatten_asked:
+            reason = "emergency exit asked"
+        elif late:
+            reason = "square-off time"
+        elif own:
+            if due:
+                reason = f"{due[1]} ({px[1]})"
+            elif self.dash_ok and it.status == "DAY END":
+                reason = "the dashboard day end"
+        elif self.dash_ok and it.status != "OPEN":
+            reason = {"TARGET": "the dashboard target was reached", "DAY END": "the dashboard day end"}.get(it.status, f"the dashboard trade ended ({it.status})")
         if reason:
             self._begin_exit(rec, it, reason, now, day)
+
+    # ------------------------------------------------------------------ live price, levels from the real fill
+    def _price(self, symbol):
+        """(price, source) of the contract held: the live feed's last price when it is fresh, else the broker position's last price read this pass; None when neither is usable."""
+        age = float(self.cfg.get("price_max_age_s", 10))
+        if self.ticks is not None:
+            hit = self.ticks.price(symbol, age)
+            if hit is not None:
+                return hit[0], "live feed"
+        t, pos = self._pos
+        if pos is not None and t and time.time() - t <= age:
+            for p in pos:
+                if p.symbol == symbol and p.ltp > 0:
+                    return p.ltp, "broker price"
+        return None
+
+    def _levels(self, rec, extra):
+        """The stop / target of an open trade measured from its real fill (kept in the record), or None when this feature is off or the fill is unknown."""
+        if not self.cfg.get("levels_from_fill"):
+            return None
+        if extra.get("lv"):
+            return extra["lv"]
+        fill = float(rec["avg_entry"] or 0)
+        if fill <= 0:
+            return None
+        it = self.last_intents.get(rec["signal_id"]) or self._intent_from_rec(rec)
+        return levels.initial(fill, getattr(it, "sl_pct", None), getattr(it, "tp_pct", None))              # a trade opened before this feature, or before a restart
+
+    def _judge(self, rec, it, extra, price):
+        """Raises the stop if the price or the dashboard's own raised stop calls for it (saved and told once), then checks the price against the levels. (kind, text) when an exit is due."""
+        lv = self._levels(rec, extra)
+        if lv is None:
+            return None
+        new, why = levels.ratchet(lv, price, levels.dash_lock(it))
+        if new is not lv or "lv" not in extra:
+            extra["lv"] = new
+            self._rec_update(rec["signal_id"], extra_json=json.dumps(extra))
+            if why:
+                self._say(rec["signal_id"], "info", "stop_raised", f"trade {it.n}: stop raised to {new['stop']:.2f}: {why}.")
+        return levels.check(new, price)
+
+    def _entry_guard(self, it):
+        """None, or why this entry is refused: the option's live price is already more than entry_guard_pct above the dashboard's entry price (the order would buy it dearer than the trade assumed)."""
+        g = float(self.cfg.get("entry_guard_pct") or 0)
+        if g <= 0 or self.ticks is None:
+            return None
+        px = self.ticks.wait_price(it.symbol, float(self.cfg.get("entry_guard_wait_s", 1.5)), float(self.cfg.get("price_max_age_s", 10)))
+        if px is None:
+            return None
+        if px > it.entry * (1 + g / 100):
+            return f"the option is already at {px:.2f}, {(px / it.entry - 1) * 100:.1f}% above the dashboard's entry {it.entry:.2f} (limit {g:g}%): buying now would be much dearer than the trade assumes"
+        return None
+
+    def fast_check(self, now):
+        """Between the full passes (called every half second, no broker calls): compare the live price of an open position with the stop / target measured from its real fill and send
+        the exit webhook at once when one is hit. Only the live feed counts here (the broker's price is read in the full pass)."""
+        if self.ticks is None or not self.cfg.get("levels_from_fill"):
+            return
+        for rec in self.store.active(self.mode):
+            if rec["phase"] != "PROTECTED":
+                continue
+            hit = self.ticks.price(rec["symbol"], float(self.cfg.get("price_max_age_s", 10)))
+            if hit is None:
+                continue
+            it = self.last_intents.get(rec["signal_id"]) or self._intent_from_rec(rec)
+            if it is None:
+                continue
+            extra = self._extra(rec)
+            try:
+                due = self._judge(rec, it, extra, hit[0])
+            except Exception:
+                continue
+            if due and not self.flatten_asked:
+                self._begin_exit(rec, it, f"{due[1]} (live feed)", now, now.date().isoformat())
 
     def _begin_exit(self, rec, it, reason, now, day):
         sid = rec["signal_id"]

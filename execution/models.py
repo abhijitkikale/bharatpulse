@@ -58,6 +58,8 @@ class BPos:
     realized: float = 0.0
     unrealized: float = 0.0
     product: str = ""
+    buy_qty: int = 0                # everything bought in this contract today, and the average price of those buys (FYERS keeps these across trades of the same contract)
+    buy_avg: float = 0.0
 
 
 @dataclasses.dataclass

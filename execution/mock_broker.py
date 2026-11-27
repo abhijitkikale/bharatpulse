@@ -23,6 +23,8 @@ class MockBroker:
         self.reads_fail = False                 # the orderbook / positions cannot be read
         self.modify_fails = False
         self.auth_error = False
+        self.fyers_avg = False                  # behave like FYERS: after a second trade in the same contract the position's average is the day's average of ALL buys
+        self.ltp = {}                           # symbol -> last price shown in the positions
 
     @staticmethod
     def role(tag):
@@ -43,10 +45,12 @@ class MockBroker:
         o.filled += qty
         o.avg = total / o.filled
         o.status = "filled" if o.filled >= o.qty else "partial"
-        p = self.pos.setdefault(o.symbol, {"qty": 0, "cost": 0.0, "realized": 0.0})
+        p = self.pos.setdefault(o.symbol, {"qty": 0, "cost": 0.0, "realized": 0.0, "bq": 0, "bc": 0.0})
         if o.side == 1:
             p["cost"] += price * qty
             p["qty"] += qty
+            p["bq"] += qty
+            p["bc"] += price * qty
         else:
             avg = p["cost"] / p["qty"] if p["qty"] else price
             p["realized"] += (price - avg) * qty
@@ -120,7 +124,12 @@ class MockBroker:
     def positions(self):
         if self.reads_fail:
             return None
-        return [BPos(symbol=s, net_qty=p["qty"], avg=(p["cost"] / p["qty"] if p["qty"] else 0.0), realized=p["realized"]) for s, p in self.pos.items()]
+        out = []
+        for s, p in self.pos.items():
+            bq, bc = p.get("bq", 0), p.get("bc", 0.0)
+            out.append(BPos(symbol=s, net_qty=p["qty"], avg=((bc / bq if bq else 0.0) if self.fyers_avg else (p["cost"] / p["qty"] if p["qty"] else 0.0)),
+                            ltp=float(self.ltp.get(s, 0.0)), realized=p["realized"], buy_qty=bq, buy_avg=(bc / bq if bq else 0.0)))
+        return out
 
     def funds(self):
         return {"s": "ok"}
