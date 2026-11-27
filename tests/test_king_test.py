@@ -132,6 +132,6 @@ def test_the_journal_shows_the_test_apart_from_the_paper_trades(tmp_path):
     html = journal_dashboard.build_html(jd, nd, tmp_path / "none.json", king_test_dir=kt)
     data = json.loads(html.split("const DATA = ")[1].split(";\nconst CAP")[0])
     assert data["days"][0]["ktest"]["trades"][0]["pct"] == 10.0 and data["ktest"]["rs"] == 650 and data["days"][0]["trades"] == []        # the paper-trade figures are untouched
-    assert "function ktestHtml" in html and "function ktestPanel" in html and html.count("</script>") == 1
+    assert "function ktestHtml" in html and "function ktestPanel" in html and html.count("</script>") == 2
     none = journal_dashboard.build_html(jd, nd, tmp_path / "none.json", king_test_dir=tmp_path / "empty")
     assert json.loads(none.split("const DATA = ")[1].split(";\nconst CAP")[0])["ktest"] is None

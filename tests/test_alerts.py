@@ -44,7 +44,7 @@ def test_journal_page_builds_with_rupee_settings(tmp_path):
            "setups": [], "index_candles_hm_ohlcv": [["09:15", 1, 2, 3, 4, 5]], "levels_used": {"close": "2026-11-09", "levels": {"POC": 25000}}, "opening_candles": "Fyers"}
     (tmp_path / "2026-11-11.json").write_text(json.dumps(day), encoding="utf-8")
     html = journal_dashboard.build_html(tmp_path)
-    assert '"capital":25000' in html and '"lot":65' in html and "2026-11-11" in html and html.count("</script>") == 1
+    assert '"capital":25000' in html and '"lot":65' in html and "2026-11-11" in html and html.count("</script>") == 2
 
 
 def test_telegram_styles_and_routing():

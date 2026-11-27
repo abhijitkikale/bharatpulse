@@ -63,7 +63,7 @@ def test_the_journal_page_carries_the_king_analysis_and_your_notes(tmp_path):
     notes = tmp_path / "notes.json"
     notes.write_text(json.dumps({DAY: "my note about the King"}), encoding="utf-8")
     html = journal_dashboard.build_html(jd, nd, notes)
-    assert "function kingChart" in html and "King analysis" in html and "my note about the King" in html and "king_steps" in html and html.count("</script>") == 1
+    assert "function kingChart" in html and "King analysis" in html and "my note about the King" in html and "king_steps" in html and html.count("</script>") == 2          # the chart library tag and the page script
     data = json.loads(html.split("const DATA = ")[1].split(";\nconst CAP")[0])
     assert data["days"][0]["king"]["runs"][0]["king"] == 25200 and data["days"][0]["notes"] == ["my note about the King"] and data["pull"]["days"] == 1
     plain = journal_dashboard.build_html(jd, tmp_path / "none", tmp_path / "none.json")                 # no nodes data and no notes: the journal still builds

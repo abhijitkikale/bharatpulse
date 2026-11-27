@@ -13,6 +13,7 @@ import time
 import webbrowser
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import expiry_week  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FOLDER = ROOT / "data" / "journal"
 NODES = ROOT / "data" / "nodes"
@@ -49,7 +50,7 @@ def regime_bands(day, candles, reg_dir=None):
 
 
 def load_days(folder=FOLDER, start=None, reg_dir=None):
-    days = []
+    days, raw = [], []
     for f in sorted(pathlib.Path(folder).glob("????-??-??.json")):
         if start and f.stem < start:
             continue
@@ -63,11 +64,17 @@ def load_days(folder=FOLDER, start=None, reg_dir=None):
                           | {"shifts": t.get("stop_shifts") or [], "ignored": len(t.get("setups_ignored_while_open") or []), "opt": [[r[0], r[4]] for r in (t.get("option_candles_hm_ohlcv") or [])]})
         days.append({
             "date": d["date"], "symbol": d.get("symbol", "NIFTY"), "total": d.get("total_pct"), "trades": trades,
-            "setups": d.get("setups", []), "candles": [[r[0], r[2], r[3], r[4]] for r in d.get("index_candles_hm_ohlcv", [])],
+            "setups": d.get("setups", []), "candles": [[r[0], r[2], r[3], r[4], r[1]] for r in d.get("index_candles_hm_ohlcv", [])],
             "levels": (d.get("levels_used") or {}).get("levels", {}), "close": (d.get("levels_used") or {}).get("close"),
             "opening": d.get("opening_candles"), "saved": d.get("saved_at"),
         })
         days[-1]["regime"] = regime_bands(d["date"], days[-1]["candles"], reg_dir)
+        days[-1]["exp"] = expiry_week.expiry_of(d["date"])
+        days[-1]["vw"] = expiry_week.vwap_series(d.get("index_candles_hm_ohlcv", []))        # [VWAP, +1 SD, -1 SD] per candle, for the Expiry week tab
+        raw.append((d["date"], d.get("index_candles_hm_ohlcv", [])))
+    wk = expiry_week.weekly_vwap(raw)
+    for dd in days:
+        dd["vw"] = [[q[0], q[1], q[2], w] if q else ([None, None, None, w] if w is not None else None) for q, w in zip(dd["vw"], wk.get(dd["date"], []))]       # + the weekly VWAP
     return days
 
 
@@ -101,6 +108,19 @@ def king_data(nodes_dir, folder, start=None):
         return {"days": {}, "pull": None}
 
 
+def _node_strip(nodes_dir, day):
+    """(King size / net gamma per reading, the live chart's bubble rows) for one day, for the Expiry week tab; ([], []) when that day has no readings or on any problem."""
+    try:
+        import nodes_ledger
+        f = pathlib.Path(nodes_dir) / f"{day}.jsonl"
+        if not f.exists():
+            return [], []
+        rd = nodes_ledger.load_readings(f)
+        return expiry_week.node_series(rd), expiry_week.node_history(rd)
+    except Exception:
+        return [], []
+
+
 def load_settings():
     s = dict(DEFAULTS)
     try:
@@ -125,6 +145,7 @@ def build_html(folder=FOLDER, nodes_dir=NODES, notes=NOTES, king_test_dir=None, 
         d["king"] = kd["days"].get(d["date"])
         d["notes"] = nt.get(d["date"], [])
         d["ktest"] = kt.get(d["date"])
+        d["kx"], d["nh"] = _node_strip(nodes_dir, d["date"])
     data = json.dumps({"days": days, "settings": cfg, "pull": kd["pull"], "ktest": ktsum}, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
     return TEMPLATE.replace("__DATA__", data)
 
@@ -147,7 +168,9 @@ TEMPLATE = r"""<!doctype html>
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 .wrap>*{min-width:0}
-#home,#dayview{margin:0;width:100%}
+#home,#dayview,#weekview{margin:0;width:100%}
+body.wide .wrap{max-width:none}
+body.wide header .sub{max-width:1180px}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--ff);padding:20px max(16px,env(safe-area-inset-right,0px)) 48px max(16px,env(safe-area-inset-left,0px))}
 .wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
 h1{font:700 26px/1.1 var(--fh);margin:0;letter-spacing:-.01em}
@@ -215,9 +238,19 @@ tr.taken td{background:var(--soft)}
 .cell.flat{cursor:pointer}
 .cell:disabled{cursor:default}
 @media (max-width:640px){.cell{min-height:64px;padding:4px 5px}.cell .r{font-size:12px}.cell .n{display:none}}
+.topnav{display:flex;gap:8px;flex-wrap:wrap}
+.wtool{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:10px 0}
+.wtool select{border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:10px;padding:6px 10px;font:inherit}
+.lchip{border:1px solid var(--line);background:var(--panel);color:var(--mut);border-radius:999px;padding:2px 10px;cursor:pointer;font:inherit;font-size:12px}
+.lchip[aria-pressed="true"]{color:var(--fg);border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
+.wrow{display:flex;align-items:stretch;min-width:0}
+.wrow>svg.ax{flex:0 0 auto}
+.wscroll{overflow-x:auto;flex:1 1 auto;min-width:0;position:relative}
+.wscroll svg{display:block}
+.wread{min-height:22px;font-size:12px;color:var(--fg);margin:6px 0}
 .band.small{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 </style></head><body><div class="wrap">
-<header><div><h1>Trading Journal</h1><div class="sub">Paper trades from the BharatPulse stream page. +40% target, &minus;10% stop that trails up (+20% &rarr; +5%, +30% &rarr; +15%, +35% &rarr; +30%); the same rules all day from 18 Nov (until 17 Nov, trades entered from 13:00 used a +20% target, &minus;7% stop and trailing +10% &rarr; +5%, +15% &rarr; +10%); in negative gamma a trade against the session trend is skipped; no trade in the first 10 minutes (before 9:25), one trade at a time, one lot of 65 on a &#8377;25,000 capital. A record of what the rules did, not advice. <a href="/nodes-replay" style="color:inherit">Node replay and reaction ledger</a> (opens when the stream page is running).</div></div></header>
+<header><div><h1>Trading Journal</h1><div class="sub">Paper trades from the BharatPulse stream page. +40% target, &minus;10% stop that trails up (+20% &rarr; +5%, +30% &rarr; +15%, +35% &rarr; +30%); the same rules all day from 18 Nov (until 17 Nov, trades entered from 13:00 used a +20% target, &minus;7% stop and trailing +10% &rarr; +5%, +15% &rarr; +10%); in negative gamma a trade against the session trend is skipped; no trade in the first 10 minutes (before 9:25), one trade at a time, one lot of 65 on a &#8377;25,000 capital. A record of what the rules did, not advice. <a href="/nodes-replay" style="color:inherit">Node replay and reaction ledger</a> (opens when the stream page is running).</div></div><div class="topnav" id="topnav"><button class="tab" id="navhome" aria-selected="true"><b>Calendar &amp; days</b></button><button class="tab" id="navweek" aria-selected="false"><b>Expiry week</b><small>one connected chart, Wed to Tue</small></button></div></header>
 <div id="home" class="wrap" style="gap:18px">
 <section class="panel"><div class="mhead"><div class="nav"><button class="btn" id="prev" aria-label="Previous month">&lsaquo;</button><span class="t" id="mname"></span><button class="btn" id="next" aria-label="Next month">&rsaquo;</button></div><div id="msum" class="num"></div></div><div class="cal" id="cal"></div><div class="legend"><span>Each box is one trading day: result in rupees and number of trades. Click a day for its details.</span></div></section>
 <section><h2>Overall</h2><div class="band small" id="stats"></div></section>
@@ -228,9 +261,11 @@ tr.taken td{background:var(--soft)}
 <section class="panel"><h2>Result after each trade</h2><div class="chartbox" id="curve"></div></section>
 <section class="panel"><h2>All days</h2><div class="tablewrap"><table id="all"></table></div></section>
 </div>
+<div id="weekview" class="wrap" style="gap:18px" hidden><section class="panel" id="week"></section></div>
 <div id="dayview" class="wrap" style="gap:18px" hidden><div><button class="btn" id="back">&lsaquo; Calendar</button></div><section class="panel" id="day"></section></div>
 <div class="foot" id="foot"></div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 const DATA = __DATA__;
 const CAP = DATA.settings.capital, LOT = DATA.settings.lot;
@@ -491,15 +526,176 @@ function alltable(){
   $('all').innerHTML = `<thead><tr><th>Date</th><th>Trades</th><th>Target</th><th>Trail</th><th>Stop</th><th>Result</th><th>% of capital</th><th>Opening candles</th></tr></thead><tbody>${days.map(d=>`<tr class="row" tabindex="0" data-d="${d.date}"><td>${wk(d.date)} ${d.date.slice(0,4)}</td><td class="num">${d.trades.length}</td><td class="num">${d.trades.filter(t=>t.result==='TARGET').length}</td><td class="num">${d.trades.filter(t=>t.result==='TRAIL').length}</td><td class="num">${d.trades.filter(t=>t.result==='STOP').length}</td><td class="num ${cls(dayRs(d))}">${rs(dayRs(d))}</td><td class="num ${cls(dayRs(d))}">${pct(dayRs(d)/CAP*100)}</td><td>${esc(d.opening||'n/a')}</td></tr>`).join('')}</tbody>`;
   $('all').querySelectorAll('tr.row').forEach(r=>{const f=()=>go(r.dataset.d);r.onclick=f;r.onkeydown=e=>{if(e.key==='Enter')f();};});
 }
+/* ---- Expiry week: one connected chart per Wednesday-to-Tuesday cycle. Drawn with the SAME chart library, colours, lines and bubbles as the live dashboard (tools/stream_page/index.html) ---- */
+const WS = {exp:null, theme:(()=>{ try{ return localStorage.getItem('bp_theme')==='dark'?'dark':'light'; }catch(e){ return 'light'; } })(), on:{vwap:true,wvwap:true,sd:true,lv:true,bub:true,mk:true,gam:true}, range:null};
+const WLAYERS = [['vwap','Daily VWAP'],['wvwap','Weekly VWAP'],['sd','VWAP ± 1 SD'],['lv','Levels'],['bub','Node bubbles'],['mk','Setups / trades'],['gam','Gamma regime']];
+const weeks = (()=>{ const m={}; days.forEach(d=>{ (m[d.exp||d.date]=m[d.exp||d.date]||[]).push(d); }); Object.values(m).forEach(a=>a.sort((p,q)=>p.date<q.date?-1:1)); return m; })();
+const weekKeys = Object.keys(weeks).sort().reverse();
+const dshort = d => new Date(d+'T12:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+const dlong = d => new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'});
+const hmOf = m => { const h=9*60+15+m; return String(Math.floor(h/60)).padStart(2,'0')+':'+String(h%60).padStart(2,'0'); };
+const WK = (()=>{
+  let charts=[], cv=null, S=null;
+  const LIGHT={'#ffeb3b':'#c79100','#18ffff':'#0097a7','#ff80ab':'#d81b60','#80cbc4':'#00796b','#d4e157':'#827717','#f5a623':'#e65100','#ef5b5b':'#c62828','#2ecc9a':'#2e7d32','#ff9f6b':'#e64a19','#66c2ff':'#0277bd','#e8c547':'#b8860b','#b388ff':'#6a1b9a'};
+  const isL=()=>WS.theme==='light', G=()=>isL()?'#0f8a5f':'#2ecc9a', R=()=>isL()?'#d33f3f':'#ef5b5b';
+  const tsOf=(date,hm)=>{ const [Y,M,D]=date.split('-').map(Number), [h,m]=hm.split(':').map(Number); return Date.UTC(Y,M-1,D,h,m)/1000; };
+  /* level colours and line styles by name: copied from the live dashboard */
+  const chartColor=n=>{ n=n.toLowerCase(); const w=n.includes('weekly');
+    if(n.includes('flip')) return 'rgba(217,162,74,.8)'; if(n.includes('gex call')) return 'rgba(217,140,106,.75)'; if(n.includes('gex put')) return 'rgba(106,166,201,.75)';
+    if(n.includes('poc')) return w?'rgba(201,180,88,.45)':'rgba(201,180,88,.75)'; return w?'rgba(155,143,196,.4)':'rgba(155,143,196,.7)'; };
+  const lstyle=n=>{ const s=n.toLowerCase(); if(s.includes('poc')) return 0; if(s.includes('weekly')) return 1; if(s.includes('max pain')||s.includes('flip')) return 1; return 2; };
+  const reacts=n=>{ n=n.toLowerCase(); return !(n==='spot'||n.includes('oi ')||n.includes('max pain')); };
+  const nodeCol=(sign,a)=>sign==='+'?`rgba(255,213,79,${a})`:`rgba(179,136,255,${a})`;
+  const axisFont=()=>13;
+  function build(list){
+    const candles=[], gap={}, dv=[], wv=[], up=[], dn=[], lvs=[], hist=[], regs=[], marks=[], idx=new Map(), starts=[], kS=[], gS=[];
+    list.forEach(d=>{
+      const first=d.candles.length?tsOf(d.date,d.candles[0][0]):null; if(first==null) return;
+      starts.push({t:first,date:d.date,last:tsOf(d.date,d.candles[d.candles.length-1][0])});
+      const ts=d.candles.map(c=>tsOf(d.date,c[0]));
+      gap[first-60]=1;
+      d.candles.forEach((c,i)=>{ const t=ts[i]; candles.push({time:t,open:c[4]==null?c[3]:c[4],high:c[1],low:c[2],close:c[3]});
+        const v=(d.vw||[])[i]; if(v){ if(v[0]!=null){ dv.push({time:t,value:v[0]}); up.push({time:t,value:v[1]}); dn.push({time:t,value:v[2]}); } if(v[3]!=null) wv.push({time:t,value:v[3]}); }
+        idx.set(t,{date:d.date,hm:c[0],c:c,v:v}); });
+      Object.entries(d.levels||{}).forEach(([k,v])=>{ if(reacts(k)&&v>0) lvs.push({name:k,value:v,a:ts[0],b:ts[ts.length-1],date:d.date}); });
+      (d.nh||[]).forEach(r=>{ hist.push(r); });
+      (d.regime||[]).forEach(([a,b,r])=>{ const ia=d.candles.findIndex(c=>c[0]>=a), jb=(()=>{ let j=-1; d.candles.forEach((c,i)=>{ if(c[0]<=b) j=i; }); return j; })(); if(ia>=0&&jb>=ia) regs.push({a:ts[ia],b:ts[jb],r:r}); });
+      /* setups not taken: grey arrows; trades: coloured entry arrow and exit circle (the live dashboard's marker scheme) */
+      d.setups.filter(q=>!q.status.startsWith('TRADE')).forEach(q=>{ const t=tsOf(d.date,q.time); if(idx.has(t)) marks.push({time:t,position:q.side==='CALL'?'belowBar':'aboveBar',color:'#8b97a8',shape:q.side==='CALL'?'arrowUp':'arrowDown',text:(q.grade||'')}); });
+      d.trades.forEach(t=>{ if(!t.entry_time) return; const te=tsOf(d.date,t.entry_time); const call=t.side==='CALL';
+        marks.push({time:te,position:call?'belowBar':'aboveBar',color:call?'CALL':'PUT',shape:call?'arrowUp':'arrowDown',text:'T'+t.n,side:t.side,entry:true});
+        if(t.exit_time&&t.pnl_pct!=null){ const tx=tsOf(d.date,t.exit_time); marks.push({time:tx,position:call?'aboveBar':'belowBar',color:t.pnl_pct>=0?'+':'-',shape:'circle',text:(t.pnl_pct>0?'+':'')+t.pnl_pct.toFixed(1)+'%',exit:true}); } });
+      /* King size and net gamma: the latest reading carried forward to each candle */
+      const kx=d.kx||[]; let j=-1;
+      d.candles.forEach((c,i)=>{ while(j+1<kx.length&&kx[j+1][0]<=c[0]) j++; if(j<0) return; const r=kx[j]; kS.push({time:ts[i],value:r[1],sign:r[2]}); gS.push({time:ts[i],value:r[3]}); });
+    });
+    hist.sort((a,b)=>a[0]-b[0]);
+    return {candles,gap,dv,wv,up,dn,lvs,hist,regs,marks,idx,starts,kS,gS};
+  }
+  const withGaps=(arr,gap)=>{ const out=[]; const times=new Set(arr.map(x=>x.time)); arr.forEach(x=>out.push(x)); Object.keys(gap).forEach(t=>{ if(!times.has(+t)) out.push({time:+t}); }); return out.sort((a,b)=>a.time-b.time); };
+  function make(el,h,opts){ const L=isL();
+    return LightweightCharts.createChart(el,Object.assign({layout:{background:{color:L?'#ffffff':'#0b0f16'},textColor:L?'#1f2937':'#c9d1d9',fontSize:axisFont()},grid:{vertLines:{color:L?'#eef1f5':'#141c28'},horzLines:{color:L?'#eef1f5':'#141c28'}},
+      rightPriceScale:{borderColor:L?'#c9d1dc':'#263040',scaleMargins:{top:0.03,bottom:0.03},minimumWidth:78},timeScale:{borderColor:L?'#c9d1dc':'#263040',timeVisible:true,secondsVisible:false,rightOffset:6},crosshair:{mode:0},autoSize:true,handleScale:{axisPressedMouseMove:{time:true,price:false},mouseWheel:true,pinch:true},handleScroll:{pressedMouseMove:true,horzTouchDrag:true,vertTouchDrag:false,mouseWheel:false}},opts||{})); }
+  const LS={priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null};
+  function render(list){
+    destroy();
+    if(typeof LightweightCharts==='undefined'){ $('wcwrap').innerHTML='<div class="empty">The chart library could not be loaded (it comes from the internet, the same as the live dashboard page). Check the connection and reload.</div>'; return; }
+    const D=build(list); S=D; if(!D.candles.length) return;
+    const L=isL(), on=WS.on;
+    const main=make($('wchart')), cs=main.addCandlestickSeries({upColor:G(),downColor:R(),borderVisible:false,wickUpColor:G(),wickDownColor:R()});
+    cs.setData(withGaps(D.candles,D.gap));
+    const vd=main.addLineSeries(Object.assign({color:L?'#2a8a8a':'rgba(95,179,179,.9)',lineWidth:2,visible:on.vwap},LS)), vw=main.addLineSeries(Object.assign({color:L?'#a08a1e':'rgba(201,180,88,.75)',lineWidth:1,visible:on.wvwap},LS));
+    const SD=Object.assign({lineWidth:2,lineStyle:2,color:L?'#1f8f8f':'#4dd0e1',visible:on.sd},LS), vu=main.addLineSeries(SD), vl=main.addLineSeries(SD);
+    [[vd,D.dv],[vw,D.wv],[vu,D.up],[vl,D.dn]].forEach(([s,a])=>s.setData(withGaps(a,D.gap)));
+    if(on.lv) D.lvs.forEach(l=>{ const s=main.addLineSeries(Object.assign({color:chartColor(l.name),lineWidth:1,lineStyle:lstyle(l.name)},LS)); s.setData([{time:l.a,value:l.value},{time:l.b,value:l.value}]); });
+    const mk=D.marks.map(m=>({time:m.time,position:m.position,shape:m.shape,text:'',color:m.color==='CALL'?G():m.color==='PUT'?R():m.color==='+'?G():m.color==='-'?R():m.color})).sort((a,b)=>a.time-b.time);
+    cs.setMarkers(on.mk?mk:[]);
+    /* the strips: King size and net gamma, on the same time axis */
+    const kc=make($('wkchart'),0,{timeScale:{visible:false,rightOffset:6,borderColor:L?'#c9d1dc':'#263040'}}), ks=kc.addHistogramSeries({priceLineVisible:false,lastValueVisible:false,priceFormat:{type:'price',precision:0,minMove:1}});
+    ks.setData(withGaps(D.kS.map(x=>({time:x.time,value:x.value,color:nodeCol(x.sign,.85)})),D.gap));
+    const gc=make($('wgchart'),0,{timeScale:{visible:false,rightOffset:6,borderColor:L?'#c9d1dc':'#263040'}}), gs=gc.addHistogramSeries({priceLineVisible:false,lastValueVisible:false,priceFormat:{type:'price',precision:0,minMove:1}});
+    gs.setData(withGaps(D.gS.map(x=>({time:x.time,value:x.value,color:x.value>=0?G():R()})),D.gap));
+    charts=[main,kc,gc];
+    let busy=false; const sync=(src)=>src.timeScale().subscribeVisibleLogicalRangeChange(r=>{ if(!r||busy) return; busy=true; charts.forEach(c=>{ if(c!==src) c.timeScale().setVisibleLogicalRange(r); c.priceScale('right').applyOptions({autoScale:true}); }); busy=false; WS.range=r; draw(); });
+    charts.forEach(sync);
+    const first=D.starts[D.starts.length-1], last=D.candles[D.candles.length-1].time;
+    main.timeScale().setVisibleRange({from:first.t-600,to:last+900});
+    cv=$('wcv');
+    S.main=main; S.cs=cs; S.sdraw=draw;
+    main.subscribeCrosshairMove(p=>{ const o=$('wread'); if(!p||!p.time){ return; } const r=D.idx.get(p.time); if(!r){ return; }
+      const v=r.v, kx=(list.find(x=>x.date===r.date).kx||[]).filter(q=>q[0]<=r.hm).slice(-1)[0], sg=(list.find(x=>x.date===r.date).setups||[]).filter(q=>q.time===r.hm);
+      o.innerHTML=`<b>${dlong(r.date)} ${r.hm}</b> &middot; O ${(r.c[4]==null?r.c[3]:r.c[4]).toFixed(2)} H ${r.c[1].toFixed(2)} L ${r.c[2].toFixed(2)} C ${r.c[3].toFixed(2)}`+(v&&v[0]!=null?` &middot; VWAP ${v[0].toFixed(1)} (&plusmn;1 SD ${v[2].toFixed(1)} to ${v[1].toFixed(1)})`:'')+(v&&v[3]!=null?` &middot; weekly VWAP ${v[3].toFixed(1)}`:'')+(kx?` &middot; King size ${kx[1]} (${kx[2]==='+'?'positive':'negative'}), net gamma ${kx[3]}`:'')+sg.map(q=>` &middot; <b style="color:${q.side==='CALL'?G():R()}">${q.time} ${q.side} ${q.strike}</b> ${esc(q.level)} (${esc(status(q.status)[0])})`).join(''); });
+    draw();
+  }
+  function destroy(){ charts.forEach(c=>{ try{ c.remove(); }catch(e){} }); charts=[]; S=null; }
+  /* overlay: gamma regime wash, day dividers, node bubbles (the dashboard's own bubble code) and marker labels */
+  function draw(){
+    if(!S||!S.main||!cv) return; const main=S.main, cs=S.cs, el=$('wchart'); const w=el.clientWidth, h=el.clientHeight, dpr=window.devicePixelRatio||1;
+    if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); cv.style.width=w+'px'; cv.style.height=h+'px'; }
+    const g=cv.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
+    const ts=main.timeScale(), Wp=w-main.priceScale('right').width(), ch=ts.height?ts.height():0, sc=Math.max(.7,Math.min(1.4,w/1300));
+    const C=[]; S.idx.forEach((v,t)=>C.push({time:t,high:v.c[1],low:v.c[2]})); C.sort((a,b)=>a.time-b.time);
+    const X=t=>ts.timeToCoordinate(t);
+    const xa=C.length>1?X(C[C.length-1].time):null, xb=C.length>1?X(C[C.length-2].time):null, bs=(xa!=null&&xb!=null&&xa!==xb)?Math.abs(xa-xb):6;
+    g.save(); g.beginPath(); g.rect(0,0,Wp,h); g.clip();
+    if(WS.on.gam) S.regs.forEach(q=>{ const x1=X(q.a), x2=X(q.b); if(x1==null||x2==null) return; const neg=q.r==='N', xl=Math.min(x1,x2)-bs/2, wd=Math.abs(x2-x1)+bs;
+      g.fillStyle=neg?'rgba(239,91,91,.045)':'rgba(46,204,154,.04)'; g.fillRect(xl,0,wd,h); g.fillStyle=neg?'rgba(239,91,91,.8)':'rgba(46,204,154,.8)'; g.fillRect(xl,0,wd,4);
+      const lab=neg?'NEGATIVE GAMMA':'POSITIVE GAMMA'; g.font=`700 ${Math.round(axisFont()*.75)}px sans-serif`; if(g.measureText(lab).width+16<wd){ g.textAlign='center'; g.textBaseline='top'; g.lineWidth=3; g.strokeStyle=isL()?'rgba(255,255,255,.85)':'rgba(11,15,22,.8)'; g.strokeText(lab,xl+wd/2,8); g.fillStyle=neg?(isL()?'#c62828':'#ff9d9d'):(isL()?'#2e7d32':'#9df0cf'); g.fillText(lab,xl+wd/2,8); } });
+    S.starts.forEach(s=>{ const x=X(s.t); if(x==null) return; const xx=x-bs/2; g.strokeStyle=isL()?'rgba(100,116,139,.55)':'rgba(139,151,168,.55)'; g.lineWidth=1; g.beginPath(); g.moveTo(xx,0); g.lineTo(xx,h); g.stroke();
+      g.font=`700 ${Math.round(axisFont()*.8)}px sans-serif`; g.textAlign='left'; g.textBaseline='bottom'; g.fillStyle=isL()?'#334155':'#c9d1d9'; g.fillText(dlong(s.date),xx+6,h-ch-6); });
+    g.restore();
+    const obst=[];
+    if(WS.on.bub&&S.hist.length&&C.length>2){
+      g.save(); g.beginPath(); g.rect(0,0,Wp,h); g.clip();
+      const LET=true, every=Math.max(1,Math.round(Math.max(16,19*sc)/bs));
+      const bub=(x,y,pct,king,sign,lt,showLt)=>{ const f=Math.min(1,pct/100), r0=(1+6.8*Math.pow(f,1.2))*Math.max(sc,.95), r=(lt&&LET)?Math.max(r0,6.8*Math.max(sc,.95)):r0, a=Math.min(.8,.05+.65*Math.pow(f,1.4)+(king?.08:0)), col=sign>0?'255,213,79':'179,136,255';
+        g.fillStyle=`rgba(${col},${a})`; g.strokeStyle=`rgba(${col},${Math.min(.75,a+.25)})`; g.lineWidth=.8; g.beginPath(); g.arc(x,y,r,0,6.283); g.fill(); g.stroke();
+        if(lt&&LET&&showLt){ g.save(); g.font=`800 ${Math.round(r*1.15)}px sans-serif`; g.textAlign='center'; g.textBaseline='middle'; g.fillStyle='rgba(255,255,255,.95)'; g.fillText(lt,x,y+.5); g.restore(); } };
+      const HIST=S.hist, rd=t=>{ let lo=0,hi=HIST.length-1,ans=-1; while(lo<=hi){ const m=(lo+hi)>>1; if(HIST[m][0]<=t){ ans=m; lo=m+1; } else hi=m-1; } return ans; };
+      for(let i=C.length-1;i>=0;i--){ if(i%every) continue; const x=X(C[i].time); if(x==null) continue; if(x<-10) break; if(x>Wp+10) continue;
+        const k=rd(C[i].time); if(k<0) continue; if(Math.floor(HIST[k][0]/86400)!==Math.floor(C[i].time/86400)) continue;
+        HIST[k][1].forEach(([lv,pct,sg,kg,lt])=>{ const y=cs.priceToCoordinate(lv); if(y!=null&&y>-8&&y<h+8) bub(x,y,pct,kg,sg,lt,Math.round(i/every)%3===0); }); }
+      g.restore();
+    }
+    /* marker labels, pushed apart so they never sit on each other (the live dashboard's drawMarks) */
+    if(WS.on.mk&&bs>=1.2){
+      const byT=new Map(C.map(c=>[c.time,c])), fs=Math.round(axisFont()*.72), step=fs+5; g.font=`700 ${fs}px sans-serif`; g.textBaseline='middle'; g.textAlign='left';
+      const items=[], grp={};
+      S.marks.forEach(m=>{ if(!m.text) return; const pos=m.position==='aboveBar'?'above':'below', k=m.time+'|'+pos; (grp[k]=grp[k]||{time:m.time,position:pos,items:[]}).items.push(m); });
+      Object.values(grp).forEach(q=>{ const c=byT.get(q.time); if(!c) return; const x=X(q.time); if(x==null||x<0||x>Wp) return; const yb=cs.priceToCoordinate(q.position==='above'?c.high:c.low); if(yb==null) return;
+        const m0=q.items[0], col=m0.color==='CALL'?G():m0.color==='PUT'?R():m0.color==='+'?G():m0.color==='-'?R():m0.color;
+        items.push({x,yb,above:q.position==='above',text:q.items.map(i=>i.text).join(' · '),color:col}); });
+      items.sort((a,b)=>a.x-b.x);
+      const placed=[], hit=r=>placed.some(o=>o[0]<r[2]&&o[2]>r[0]&&o[1]<r[3]&&o[3]>r[1]);
+      items.forEach(it=>{ const tw=g.measureText(it.text).width, x0=it.x+9; let y=it.yb+(it.above?-16:16), r, tries=0;
+        do{ r=[x0-2,y-fs/2-2,x0+tw+2,y+fs/2+2]; if(!hit(r)) break; y+=it.above?-step:step; tries++; }while(tries<8);
+        placed.push(r); obst.push(r);
+        if(Math.abs(y-it.yb)>22){ g.beginPath(); g.moveTo(it.x,it.yb); g.lineTo(x0-2,y); g.lineWidth=1; g.strokeStyle=it.color; g.globalAlpha=.55; g.stroke(); g.globalAlpha=1; }
+        g.lineWidth=3.5; g.strokeStyle=isL()?'rgba(255,255,255,.9)':'rgba(11,15,22,.9)'; g.strokeText(it.text,x0,y); g.fillStyle=it.color; g.fillText(it.text,x0,y); });
+    }
+  }
+  function zoom(f){ if(!S||!S.main) return; const ts=S.main.timeScale(), r=ts.getVisibleLogicalRange(); if(!r) return; const c=(r.from+r.to)/2, half=(r.to-r.from)/2*f; ts.setVisibleLogicalRange({from:c-half,to:c+half}); }
+  function showDay(i){ if(!S||!S.main) return; const s=S.starts[i]; if(s) S.main.timeScale().setVisibleRange({from:s.t-600,to:s.last+900}); }
+  function showAll(){ if(!S||!S.main) return; S.main.timeScale().setVisibleRange({from:S.starts[0].t-600,to:S.starts[S.starts.length-1].last+900}); }
+  window.addEventListener('resize',()=>setTimeout(draw,200));
+  return {render,destroy,zoom,showDay,showAll,draw};
+})();
+function weekView(){
+  const exp = WS.exp && weeks[WS.exp] ? WS.exp : weekKeys[0];
+  if(!exp){ $('week').innerHTML='<div class="empty">No journal days yet.</div>'; return; }
+  WS.exp=exp; const list=weeks[exp];
+  const tot=list.reduce((s,d)=>s+dayRs(d),0), nt=list.reduce((s,d)=>s+d.trades.length,0), wins=list.reduce((s,d)=>s+d.trades.filter(t=>t.result==='TARGET'||t.result==='TRAIL').length,0);
+  const opts=weekKeys.map(k=>{ const a=weeks[k]; return `<option value="${k}"${k===exp?' selected':''}>Expiry ${dlong(k)} &middot; ${dshort(a[0].date)} to ${dshort(a[a.length-1].date)} (${a.length} day${a.length===1?'':'s'})</option>`; }).join('');
+  const L=WS.theme==='light', bg=L?'#ffffff':'#0b0f16';
+  let h=`<div class="dayhead"><div><div class="t">Expiry week &middot; ${dlong(exp)} ${exp.slice(0,4)}</div><div class="pills"><span class="pill">${list.length} trading day${list.length===1?'':'s'} so far</span><span class="pill">${nt} trade${nt===1?'':'s'}, ${wins} won</span></div></div><div style="text-align:right"><div class="t ${cls(tot)} num">${rs(tot)}</div><div class="sub num">one lot of ${LOT}, all trades of the week</div></div></div>`;
+  h+=`<div class="wtool"><select id="wsel" aria-label="Expiry week">${opts}</select><span class="nav"><button class="btn" id="zout" aria-label="Zoom out">&minus;</button><button class="btn" id="zin" aria-label="Zoom in">+</button><button class="btn" id="zall">Whole week</button></span><button class="btn" id="wtheme" title="Light / dark background, the same switch as the live dashboard">${L?'☀ Light':'☾ Dark'}</button>${WLAYERS.map(([k,l])=>`<button class="lchip" data-l="${k}" aria-pressed="${WS.on[k]}">${l}</button>`).join('')}</div>`;
+  h+=`<div class="wtool" style="margin-top:0">Jump to: ${list.map((d,i)=>`<button class="lchip" data-j="${i}">${dlong(d.date)}</button>`).join('')}</div><div class="wread num" id="wread">Point at a candle for its readings. Drag to move along the week, scroll the wheel to zoom.</div>`;
+  h+=`<div id="wcwrap" style="position:relative;height:clamp(520px,74vh,980px);background:${bg};border:1px solid var(--line);border-radius:10px;overflow:hidden"><div id="wchart" style="position:absolute;left:0;top:0;right:0;bottom:0"></div><canvas id="wcv" style="position:absolute;left:0;top:0;pointer-events:none;z-index:5"></canvas></div>`;
+  h+=`<div class="sub" style="margin:10px 0 2px"><b>King size</b> (the largest node's gamma, crore; yellow positive, purple negative)</div><div id="wkchart" style="height:96px;background:${bg};border:1px solid var(--line);border-radius:10px;overflow:hidden"></div>`;
+  h+=`<div class="sub" style="margin:10px 0 2px"><b>Net gamma</b> of the whole map (crore; green above zero, red below)</div><div id="wgchart" style="height:96px;background:${bg};border:1px solid var(--line);border-radius:10px;overflow:hidden"></div>`;
+  h+=`<div class="foot" style="margin-top:10px">Drawn like the live dashboard: candles, cyan daily VWAP with dashed &plusmn;1 SD, yellow weekly VWAP, level lines in the same colours and styles (each day's own end-of-day levels, across that day only), the gamma-node bubbles (yellow positive, purple negative; K King, G gatekeeper, C ceiling, F floor), setups (grey arrows: not taken) and trades (T1, T2 &hellip; with the result). Overnight gaps are removed. The King and gamma strips need the nodes agent's readings (from 16 Nov).</div>`;
+  $('week').innerHTML=h; bindWeek(list); WK.render(list);
+}
+function bindWeek(list){
+  $('wsel').onchange=e=>{ WS.exp=e.target.value; weekView(); };
+  $('zin').onclick=()=>WK.zoom(1/1.5); $('zout').onclick=()=>WK.zoom(1.5); $('zall').onclick=()=>WK.showAll();
+  $('wtheme').onclick=()=>{ WS.theme=WS.theme==='light'?'dark':'light'; try{ localStorage.setItem('bp_theme',WS.theme); }catch(e){} weekView(); };
+  document.querySelectorAll('#week [data-l]').forEach(b=>b.onclick=()=>{ WS.on[b.dataset.l]=!WS.on[b.dataset.l]; weekView(); });
+  document.querySelectorAll('#week [data-j]').forEach(b=>b.onclick=()=>WK.showDay(+b.dataset.j));
+}
 function render(){
-  view = location.hash.slice(1); const isDay = !!byDate[view];
-  $('home').hidden = isDay; $('dayview').hidden = !isDay;
-  if(isDay){ dayview(); window.scrollTo(0,0); } else { if(view) location.hash=''; calendar(); statsBand(); curve(); alltable(); }
+  view = location.hash.slice(1); document.body.classList.toggle('wide', view==='week' || view.startsWith('week/')); const isDay = !!byDate[view], isWeek = view==='week' || view.startsWith('week/');
+  $('home').hidden = isDay || isWeek; $('dayview').hidden = !isDay; $('weekview').hidden = !isWeek;
+  $('navhome').setAttribute('aria-selected', String(!isWeek)); $('navweek').setAttribute('aria-selected', String(isWeek));
+  if(isWeek){ if(view.startsWith('week/')) WS.exp = view.slice(5); weekView(); }
+  else if(isDay){ dayview(); window.scrollTo(0,0); } else { if(view) location.hash=''; calendar(); statsBand(); curve(); alltable(); }
   $('foot').textContent = days.length ? 'Last saved ' + (days[0].saved||'').replace('T',' ') + ' (PC clock). Source: data/journal/*.json' : 'No journal days yet. They appear after a trading session.';
 }
 $('prev').onclick = () => { const [Y,M]=mon.split('-').map(Number); const d=new Date(Y,M-2,1); mon=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; calendar(); };
 $('next').onclick = () => { const [Y,M]=mon.split('-').map(Number); const d=new Date(Y,M,1); mon=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; calendar(); };
 $('back').onclick = () => go('');
+$('navhome').onclick = () => go('');
+$('navweek').onclick = () => go('week');
 window.addEventListener('hashchange', render);
 render();
 </script></body></html>
