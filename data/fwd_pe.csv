@@ -427,7 +427,7 @@ date,index,fpe
 2026-11-23,IT,16.23
 2026-11-25,IT,16.49
 2026-11-26,IT,17.18
-2026-11-27,IT,16.79
+2026-11-27,IT,15.77
 2026-10-01,India Consumption,26.79
 2026-10-05,India Consumption,27.11
 2026-10-06,India Consumption,27.35
@@ -700,7 +700,7 @@ date,index,fpe
 2026-11-23,Nifty 50,17.94
 2026-11-25,Nifty 50,18.24
 2026-11-26,Nifty 50,18.32
-2026-11-27,Nifty 50,18.12
+2026-11-27,Nifty 50,18.0
 2026-10-01,Nifty 500,16.67
 2026-10-05,Nifty 500,16.76
 2026-10-06,Nifty 500,16.88
@@ -739,7 +739,7 @@ date,index,fpe
 2026-11-23,Nifty 500,18.3
 2026-11-25,Nifty 500,18.48
 2026-11-26,Nifty 500,18.54
-2026-11-27,Nifty 500,18.42
+2026-11-27,Nifty 500,18.35
 2026-10-01,Nifty Microcap 250,14.83
 2026-10-05,Nifty Microcap 250,14.87
 2026-10-06,Nifty Microcap 250,14.96
@@ -1168,7 +1168,7 @@ date,index,fpe
 2026-11-23,Services Sector,17.35
 2026-11-25,Services Sector,17.68
 2026-11-26,Services Sector,17.76
-2026-11-27,Services Sector,17.51
+2026-11-27,Services Sector,17.34
 2026-10-01,Tourism,27.54
 2026-10-05,Tourism,27.6
 2026-10-06,Tourism,28.1
